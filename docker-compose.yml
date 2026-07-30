@@ -61,7 +61,7 @@ services:
       context: ./juweirat-admin
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: /api
+        NEXT_PUBLIC_API_URL: ""
     container_name: juweirat-admin
     restart: unless-stopped
     environment:
