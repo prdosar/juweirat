@@ -1,0 +1,6 @@
+@Juweirat.Api_HostAddress = http://localhost:5177
+
+GET {{Juweirat.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

@@ -1,0 +1,60 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace Juweirat.Application.DTOs.Reservations;
+
+public record ReservationDto(
+    long Id,
+    string Reference,
+    long RoomId,
+    string RoomNumber,
+    string RoomNameFr,
+    string RoomNameEn,
+    long ClientId,
+    string ClientFullName,
+    string? ClientEmail,
+    string? ClientPhone,
+    DateOnly CheckInDate,
+    DateOnly CheckOutDate,
+    int Nights,
+    int Adults,
+    int Children,
+    decimal PricePerNightSnapshot,
+    decimal TotalPrice,
+    string Currency,
+    string Status,
+    string? Source,
+    string? SpecialRequests,
+    string? InternalNotes,
+    decimal AmountPaid,
+    decimal AmountDue,
+    DateTime? ConfirmedAt,
+    DateTime? CancelledAt,
+    DateTime CreatedAt
+);
+
+public record CreateReservationRequest(
+    [Required] long RoomId,
+    [Required] long ClientId,
+    [Required] DateOnly CheckInDate,
+    [Required] DateOnly CheckOutDate,
+    [Range(1, 20)] int Adults = 1,
+    [Range(0, 10)] int Children = 0,
+    string Currency = "XOF",
+    string? Source = "website",
+    string? SpecialRequests = null,
+    string? InternalNotes = null
+);
+
+public record UpdateReservationStatusRequest(
+    [Required] string Status,
+    string? InternalNotes = null,
+    string? CancellationReason = null
+);
+
+// For public website availability check
+public record AvailabilityRequest(
+    [Required] DateOnly CheckInDate,
+    [Required] DateOnly CheckOutDate,
+    int Adults = 1,
+    int Children = 0
+);

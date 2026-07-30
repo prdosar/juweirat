@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Juweirat.Api/Juweirat.Api.csproj" />
+    <Project Path="src/Juweirat.Application/Juweirat.Application.csproj" />
+    <Project Path="src/Juweirat.Domain/Juweirat.Domain.csproj" />
+    <Project Path="src/Juweirat.Infrastructure/Juweirat.Infrastructure.csproj" />
+  </Folder>
+</Solution>

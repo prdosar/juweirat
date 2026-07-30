@@ -1,0 +1,94 @@
+services:
+
+  # ─── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:17-alpine
+    container_name: juweirat-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       juweirat
+      POSTGRES_USER:     juweirat
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-juweirat_dev_2026}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - juweirat-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U juweirat -d juweirat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Backend API (ASP.NET Core 10) ──────────────────────────────────────────
+  juweirat-api:
+    build:
+      context: ./juweirat-api
+      dockerfile: Dockerfile
+    container_name: juweirat-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Postgres: >-
+        Host=postgres;Port=5432;Database=juweirat;
+        Username=juweirat;Password=${POSTGRES_PASSWORD:-juweirat_dev_2026}
+      Jwt__Key:      ${JWT_SECRET:-CHANGE_ME_USE_A_LONG_RANDOM_SECRET_KEY_AT_LEAST_32_CHARS}
+      Jwt__Issuer:   juweirat-api
+      Jwt__Audience: juweirat-clients
+    networks:
+      - juweirat-net
+
+  # ─── Public Website (Next.js) ────────────────────────────────────────────────
+  juweirat-web:
+    build:
+      context: ./juweirat-web
+      dockerfile: Dockerfile
+    container_name: juweirat-web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV:            production
+      API_URL:             http://juweirat-api:8080
+      NEXT_PUBLIC_API_URL: /api
+    networks:
+      - juweirat-net
+
+  # ─── Admin Panel (Next.js) ──────────────────────────────────────────────────
+  juweirat-admin:
+    build:
+      context: ./juweirat-admin
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: /api
+    container_name: juweirat-admin
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    networks:
+      - juweirat-net
+
+  # ─── Nginx Reverse Proxy ────────────────────────────────────────────────────
+  # Port 3002 exposé sur l'hôte → le nginx hôte proxy juweirat.com vers ici
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: juweirat-nginx
+    restart: unless-stopped
+    ports:
+      - "3002:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - juweirat-api
+      - juweirat-web
+      - juweirat-admin
+    networks:
+      - juweirat-net
+
+volumes:
+  postgres_data:
+
+networks:
+  juweirat-net:
+    driver: bridge
