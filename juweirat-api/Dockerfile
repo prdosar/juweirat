@@ -22,9 +22,9 @@ RUN dotnet publish src/Juweirat.Api/Juweirat.Api.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Non-root user for security
-RUN addgroup --system --gid 1001 dotnet && \
-    adduser  --system --uid  1001 --ingroup dotnet appuser
+# Non-root user for security (Debian-based image)
+RUN groupadd --system --gid 1001 dotnet && \
+    useradd  --system --uid 1001 --gid dotnet appuser
 
 COPY --from=build --chown=appuser:dotnet /app/publish .
 
