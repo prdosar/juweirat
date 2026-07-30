@@ -13,8 +13,8 @@ export default async function ContactPage() {
   const lang = await getLang()
 
   const contacts = [
-    { icon: Phone,  label: 'WhatsApp',                      value: '+228 70 79 08 89',      href: 'https://wa.me/22870790889' },
-    { icon: Mail,   label: 'Email',                          value: 'scijuweirat@gmail.com', href: 'mailto:scijuweirat@gmail.com' },
+    { icon: Phone,  label: 'WhatsApp',                           value: '+228 70 79 08 89',     href: 'https://wa.me/22870790889' },
+    { icon: Mail,   label: 'Email',                               value: 'contact@juweirat.com', href: 'mailto:contact@juweirat.com' },
     { icon: MapPin, label: lang === 'en' ? 'Address' : 'Adresse', value: '376, Bd. de la Kara · Gbossimé · Lomé, Togo', href: '#' },
   ]
 
@@ -70,6 +70,12 @@ export default async function ContactPage() {
                 376, Boulevard de la Kara<br />
                 {lang === 'en' ? 'Near Gbossimé market' : 'Non loin du marché Gbossimé'}<br />
                 08 BP 80859 · Lomé, Togo
+              </p>
+              <p className="text-charcoal/35 text-xs font-light mt-3">
+                {lang === 'en' ? 'Also reachable at' : 'Également joignable sur'}{' '}
+                <a href="mailto:scijuweirat@gmail.com" className="hover:text-green transition-colors duration-300">
+                  scijuweirat@gmail.com
+                </a>
               </p>
             </div>
 

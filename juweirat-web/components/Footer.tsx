@@ -74,8 +74,8 @@ export default async function Footer({ lang }: Props) {
                 </a>
               </li>
               <li>
-                <a href="mailto:scijuweirat@gmail.com" className="hover:text-green transition-colors duration-300">
-                  scijuweirat@gmail.com
+                <a href="mailto:contact@juweirat.com" className="hover:text-green transition-colors duration-300">
+                  contact@juweirat.com
                 </a>
               </li>
               <li>376, Bd. de la Kara, Gbossimé<br />Lomé, Togo</li>

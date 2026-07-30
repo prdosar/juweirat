@@ -8,7 +8,7 @@ export default async function ContactSection() {
 
   const contacts = [
     { icon: Phone,  labelFr: 'WhatsApp',  labelEn: 'WhatsApp',  value: '+228 70 79 08 89',      href: 'https://wa.me/22870790889' },
-    { icon: Mail,   labelFr: 'Email',     labelEn: 'Email',     value: 'scijuweirat@gmail.com', href: 'mailto:scijuweirat@gmail.com' },
+    { icon: Mail,   labelFr: 'Email',     labelEn: 'Email',     value: 'contact@juweirat.com', href: 'mailto:contact@juweirat.com' },
     { icon: MapPin, labelFr: 'Adresse',   labelEn: 'Address',   value: '376, Bd. de la Kara · Gbossimé · Lomé', href: '/contact' },
   ]
 
