@@ -9,11 +9,17 @@
   --color-green-light:   #5FDB42;
   --color-green-dark:    #2B9618;
   --color-sidebar-bg:    #1A1A1A;
-  --color-content-bg:    #F4F6F9;
+  --color-content-bg:    #F0F2F5;
 }
 
 body {
   background-color: var(--color-content-bg);
-  color: #1a202c;
+  color: #1a1a1a;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
+
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d0d0d0; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #aaa; }

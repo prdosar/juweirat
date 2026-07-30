@@ -31,84 +31,94 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-charcoal">
-      <div className="w-full max-w-sm">
+    <div className="min-h-screen flex items-center justify-center bg-charcoal relative overflow-hidden">
+      {/* Subtle background decoration */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-green/5 rounded-full -translate-y-1/2 translate-x-1/2" />
+        <div className="absolute bottom-0 left-0 w-80 h-80 bg-green/3 rounded-full translate-y-1/2 -translate-x-1/2" />
+      </div>
+
+      <div className="w-full max-w-sm relative z-10">
         {/* Logo */}
-        <div className="flex justify-center mb-8">
+        <div className="flex flex-col items-center mb-8">
           <Image
             src="/img/logo.png"
             alt="Résidence Juweirat"
-            width={200}
-            height={79}
-            className="h-16 w-auto object-contain"
+            width={180}
+            height={72}
+            className="h-14 w-auto object-contain"
             priority
           />
-        </div>
-
-        <div className="text-center mb-6">
-          <p className="text-white/40 text-xs tracking-[0.3em] uppercase">Administration</p>
+          <p className="text-white/25 text-[9px] tracking-[0.35em] mt-3 uppercase font-medium">
+            Administration
+          </p>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="bg-white rounded-2xl shadow-2xl p-8 space-y-5"
+          className="bg-white rounded-2xl shadow-2xl overflow-hidden"
         >
-          <h2 className="text-xl font-semibold text-charcoal text-center">Connexion</h2>
+          {/* Green top accent */}
+          <div className="h-1 bg-green w-full" />
 
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
-              {error}
-            </div>
-          )}
+          <div className="p-8 space-y-5">
+            <h2 className="text-lg font-semibold text-charcoal text-center">Connexion</h2>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">Email</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="admin@juweirat.com"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green focus:border-transparent"
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-gray-700">Mot de passe</label>
-            <div className="relative">
-              <input
-                type={showPwd ? 'text' : 'password'}
-                required
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-green focus:border-transparent"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPwd(!showPwd)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-charcoal hover:bg-charcoal-800 text-white font-medium rounded-lg py-2.5 flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
-          >
-            {loading ? (
-              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            ) : (
-              <LogIn size={16} />
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
+                {error}
+              </div>
             )}
-            {loading ? 'Connexion…' : 'Se connecter'}
-          </button>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Email</label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="admin@juweirat.com"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green/40 focus:border-green/50 transition-colors"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Mot de passe</label>
+              <div className="relative">
+                <input
+                  type={showPwd ? 'text' : 'password'}
+                  required
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-green/40 focus:border-green/50 transition-colors"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPwd(!showPwd)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  {showPwd ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-charcoal hover:bg-charcoal-800 text-white font-medium rounded-lg py-2.5 flex items-center justify-center gap-2 transition-colors disabled:opacity-60 mt-2"
+            >
+              {loading ? (
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <LogIn size={15} />
+              )}
+              {loading ? 'Connexion…' : 'Se connecter'}
+            </button>
+          </div>
         </form>
 
-        <p className="text-center text-white/30 text-xs mt-6">
+        <p className="text-center text-white/20 text-xs mt-6">
           Résidence Juweirat · Lomé, Togo
         </p>
       </div>

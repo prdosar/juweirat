@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, BedDouble, Users, CalendarCheck,
-  CreditCard, LogOut, Settings,
+  CreditCard, LogOut,
 } from 'lucide-react';
 import { clearAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
@@ -19,8 +19,8 @@ const navItems = [
 ];
 
 export default function Sidebar() {
-  const pathname  = usePathname();
-  const router    = useRouter();
+  const pathname = usePathname();
+  const router   = useRouter();
 
   function logout() {
     clearAuth();
@@ -28,54 +28,49 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-64 h-full bg-charcoal flex flex-col">
+    <aside className="w-60 h-full bg-charcoal flex flex-col shrink-0">
       {/* Logo */}
-      <div className="px-6 py-5 border-b border-white/10 flex flex-col items-start">
+      <div className="px-5 py-6 border-b border-white/8">
         <Image
           src="/img/logo.png"
           alt="Juweirat"
-          width={140}
-          height={55}
-          className="h-10 w-auto object-contain"
+          width={130}
+          height={52}
+          className="h-9 w-auto object-contain"
         />
-        <p className="text-white/40 text-[10px] tracking-widest mt-1.5 uppercase">Administration</p>
+        <p className="text-white/25 text-[9px] tracking-[0.3em] mt-2 uppercase font-medium">
+          Administration
+        </p>
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         {navItems.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + '/');
           return (
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                 active
                   ? 'bg-green text-charcoal'
-                  : 'text-white/70 hover:bg-white/10 hover:text-white'
+                  : 'text-white/55 hover:bg-white/8 hover:text-white'
               }`}
             >
-              <Icon size={18} />
+              <Icon size={16} />
               {label}
             </Link>
           );
         })}
       </nav>
 
-      {/* Bottom actions */}
-      <div className="px-3 py-4 border-t border-white/10 space-y-1">
-        <Link
-          href="/settings"
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/50 hover:bg-white/10 hover:text-white transition-colors"
-        >
-          <Settings size={18} />
-          Paramètres
-        </Link>
+      {/* Logout */}
+      <div className="px-3 pb-5 pt-3 border-t border-white/8">
         <button
           onClick={logout}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/50 hover:bg-red-900/40 hover:text-red-300 transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-white/35 hover:bg-white/8 hover:text-white/80 transition-all"
         >
-          <LogOut size={18} />
+          <LogOut size={16} />
           Déconnexion
         </button>
       </div>

@@ -100,7 +100,9 @@ export default function RoomFormPage() {
   if (loading) return (
     <div className="flex flex-col h-full overflow-auto">
       <Header title="Chambre" />
-      <div className="flex-1 flex items-center justify-center text-gray-400">Chargement…</div>
+      <div className="flex-1 flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-green/30 border-t-green rounded-full animate-spin" />
+      </div>
     </div>
   );
 
@@ -233,8 +235,8 @@ export default function RoomFormPage() {
                   onClick={() => toggleAmenity(a.id)}
                   className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
                     form.amenityIds.includes(a.id)
-                      ? 'bg-charcoal text-white border-navy'
-                      : 'border-gray-300 text-gray-600 hover:border-navy hover:text-charcoal'
+                      ? 'bg-charcoal text-white border-charcoal'
+                      : 'border-gray-200 text-gray-600 hover:border-green/40 hover:text-charcoal'
                   }`}
                 >
                   {a.nameFr}
@@ -270,8 +272,8 @@ export default function RoomFormPage() {
           outline: none;
         }
         .input:focus {
-          box-shadow: 0 0 0 2px rgba(13,27,42,0.2);
-          border-color: transparent;
+          box-shadow: 0 0 0 2px rgba(61,199,32,0.25);
+          border-color: rgba(61,199,32,0.4);
         }
       `}</style>
     </div>

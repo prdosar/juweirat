@@ -9,12 +9,12 @@ import type { ReservationDto } from '@/lib/types';
 import { ArrowLeft, AlertTriangle } from 'lucide-react';
 
 const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
-  Pending:    { label: 'En attente', cls: 'bg-yellow-100 text-yellow-700' },
-  Confirmed:  { label: 'Confirmée',  cls: 'bg-blue-100 text-blue-700'    },
-  CheckedIn:  { label: 'Arrivé',     cls: 'bg-green-100 text-green-700'  },
-  CheckedOut: { label: 'Parti',      cls: 'bg-gray-100 text-gray-600'    },
-  Cancelled:  { label: 'Annulée',    cls: 'bg-red-100 text-red-600'      },
-  NoShow:     { label: 'No Show',    cls: 'bg-orange-100 text-orange-700'},
+  Pending:    { label: 'En attente', cls: 'bg-amber-100 text-amber-800'      },
+  Confirmed:  { label: 'Confirmée',  cls: 'bg-green/20 text-green-dark'      },
+  CheckedIn:  { label: 'Arrivé',     cls: 'bg-green text-charcoal'           },
+  CheckedOut: { label: 'Parti',      cls: 'bg-charcoal/10 text-charcoal/60'  },
+  Cancelled:  { label: 'Annulée',    cls: 'bg-red-100 text-red-700'          },
+  NoShow:     { label: 'No Show',    cls: 'bg-charcoal/15 text-charcoal/50'  },
 };
 
 const TRANSITIONS: Record<string, string[]> = {
@@ -78,8 +78,11 @@ export default function ReservationDetailPage() {
   }
 
   if (loading) return (
-    <div className="flex flex-col h-full"><Header title="Réservation" />
-      <div className="flex-1 flex items-center justify-center text-gray-400">Chargement…</div>
+    <div className="flex flex-col h-full">
+      <Header title="Réservation" />
+      <div className="flex-1 flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-green/30 border-t-green rounded-full animate-spin" />
+      </div>
     </div>
   );
 
@@ -241,7 +244,7 @@ export default function ReservationDetailPage() {
 
         <Link
           href={`/payments?reservation=${r.id}`}
-          className="inline-flex items-center gap-2 text-sm text-charcoal border border-navy/30 px-4 py-2 rounded-lg hover:bg-charcoal hover:text-white transition-colors"
+          className="inline-flex items-center gap-2 text-sm text-charcoal border border-charcoal/20 px-4 py-2 rounded-lg hover:bg-charcoal hover:text-white transition-colors"
         >
           Voir les paiements de cette réservation →
         </Link>
