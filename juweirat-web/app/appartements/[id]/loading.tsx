@@ -7,12 +7,13 @@ export default function RoomLoading() {
         <div className="h-3 w-28 bg-charcoal/8 rounded animate-pulse" />
       </div>
 
-      {/* Gallery skeleton */}
-      <div className="max-w-7xl mx-auto px-6 lg:px-10 pb-10">
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-1">
-          <div className="col-span-2 aspect-video bg-charcoal/8 animate-pulse" />
-          <div className="aspect-video bg-charcoal/6 animate-pulse" />
-          <div className="aspect-video bg-charcoal/6 animate-pulse hidden md:block" />
+      {/* Gallery skeleton — main photo + thumbnail strip */}
+      <div className="max-w-7xl mx-auto px-6 lg:px-10 pb-10 space-y-2">
+        <div className="aspect-[16/9] bg-charcoal/8 animate-pulse" />
+        <div className="flex gap-1.5">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="w-[88px] h-[58px] shrink-0 bg-charcoal/6 animate-pulse" />
+          ))}
         </div>
       </div>
 
