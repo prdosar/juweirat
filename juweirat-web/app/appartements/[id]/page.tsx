@@ -39,7 +39,7 @@ export default async function RoomPage({ params }: Props) {
       <div className="max-w-7xl mx-auto px-6 lg:px-10">
 
         {/* Back */}
-        <div className="pt-8 pb-6">
+        <div className="pt-8 pb-5">
           <Link
             href="/appartements"
             className="inline-flex items-center gap-2 text-charcoal/40 hover:text-green text-sm font-light tracking-widest uppercase transition-colors duration-300"
@@ -49,58 +49,57 @@ export default async function RoomPage({ params }: Props) {
           </Link>
         </div>
 
-        {/* Two-column layout */}
+        {/* ── Header — full width, above the grid ──────────────────────── */}
+        <div className="mb-6">
+          <div className="flex items-start gap-4 flex-wrap mb-1">
+            <h1 className="font-display text-3xl md:text-4xl font-light text-charcoal leading-tight">{name}</h1>
+            {room.floor === 6 && (
+              <span className="text-xs tracking-widest uppercase bg-green text-charcoal px-3 py-1.5 font-semibold mt-1 shrink-0">
+                {t(lang, 'ap_prestige')}
+              </span>
+            )}
+          </div>
+          <p className="text-charcoal/30 text-xs font-light mb-3">{room.roomNumber}</p>
+
+          <div className="flex flex-wrap items-center gap-5">
+            <div className="flex items-center gap-2">
+              <Users size={14} className="text-green" />
+              <span className="text-charcoal/60 text-sm font-light">
+                {room.capacityAdults} {t(lang, 'apts_adults')}
+              </span>
+            </div>
+            {room.capacityChildren > 0 && (
+              <div className="flex items-center gap-2">
+                <Baby size={14} className="text-green" />
+                <span className="text-charcoal/60 text-sm font-light">
+                  {room.capacityChildren} {t(lang, 'apts_children')}
+                </span>
+              </div>
+            )}
+            {room.sizeSqm && (
+              <div className="flex items-center gap-2">
+                <Maximize2 size={14} className="text-green" />
+                <span className="text-charcoal/60 text-sm font-light">
+                  {room.sizeSqm} {t(lang, 'apts_sqm')}
+                </span>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <span className={`inline-block w-2 h-2 rounded-full ${available ? 'bg-green' : 'bg-charcoal/25'}`} />
+              <span className={`text-sm font-light ${available ? 'text-green' : 'text-charcoal/50'}`}>
+                {available ? t(lang, 'apts_available') : t(lang, 'apts_occupied')}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Two-column grid — gallery and price start at the same level ── */}
         <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_360px] lg:gap-10 pb-24">
 
-          {/* ── Left column ─────────────────────────────────────────── */}
+          {/* Left column */}
           <div className="min-w-0">
 
-            {/* Title + status — above the gallery */}
-            <div className="mb-6">
-              <div className="flex items-start gap-4 flex-wrap mb-1">
-                <h1 className="font-display text-3xl md:text-4xl font-light text-charcoal leading-tight">{name}</h1>
-                {room.floor === 6 && (
-                  <span className="text-xs tracking-widest uppercase bg-green text-charcoal px-3 py-1.5 font-semibold mt-1 shrink-0">
-                    {t(lang, 'ap_prestige')}
-                  </span>
-                )}
-              </div>
-              <p className="text-charcoal/30 text-xs font-light mb-3">{room.roomNumber}</p>
-
-              {/* Capacity + size — inline chips */}
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Users size={14} className="text-green" />
-                  <span className="text-charcoal/60 text-sm font-light">
-                    {room.capacityAdults} {t(lang, 'apts_adults')}
-                  </span>
-                </div>
-                {room.capacityChildren > 0 && (
-                  <div className="flex items-center gap-2">
-                    <Baby size={14} className="text-green" />
-                    <span className="text-charcoal/60 text-sm font-light">
-                      {room.capacityChildren} {t(lang, 'apts_children')}
-                    </span>
-                  </div>
-                )}
-                {room.sizeSqm && (
-                  <div className="flex items-center gap-2">
-                    <Maximize2 size={14} className="text-green" />
-                    <span className="text-charcoal/60 text-sm font-light">
-                      {room.sizeSqm} {t(lang, 'apts_sqm')}
-                    </span>
-                  </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <span className={`inline-block w-2 h-2 rounded-full ${available ? 'bg-green' : 'bg-charcoal/25'}`} />
-                  <span className={`text-sm font-light ${available ? 'text-green' : 'text-charcoal/50'}`}>
-                    {available ? t(lang, 'apts_available') : t(lang, 'apts_occupied')}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Gallery — compact aspect ratio */}
+            {/* Gallery */}
             <div className="mb-8">
               <RoomGallery images={room.images} lang={lang} roomName={name} compact />
             </div>
@@ -143,7 +142,7 @@ export default async function RoomPage({ params }: Props) {
             )}
           </div>
 
-          {/* ── Right column — sticky ────────────────────────────────── */}
+          {/* Right column — sticky */}
           <div className="mt-8 lg:mt-0">
             <div className="lg:sticky lg:top-24 space-y-3">
 
