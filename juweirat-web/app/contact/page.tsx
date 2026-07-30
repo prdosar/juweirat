@@ -13,8 +13,8 @@ export default async function ContactPage() {
   const lang = await getLang()
 
   const contacts = [
-    { icon: Phone,  label: 'WhatsApp',                      value: '+228 90 00 00 00',    href: 'https://wa.me/22890000000' },
-    { icon: Mail,   label: 'Email',                          value: 'contact@juweirat.com', href: 'mailto:contact@juweirat.com' },
+    { icon: Phone,  label: 'WhatsApp',                      value: '+228 70 79 08 89',      href: 'https://wa.me/22870790889' },
+    { icon: Mail,   label: 'Email',                          value: 'scijuweirat@gmail.com', href: 'mailto:scijuweirat@gmail.com' },
     { icon: MapPin, label: lang === 'en' ? 'Address' : 'Adresse', value: '376, Bd. de la Kara · Gbossimé · Lomé, Togo', href: '#' },
   ]
 

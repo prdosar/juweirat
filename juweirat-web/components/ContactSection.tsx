@@ -7,8 +7,8 @@ export default async function ContactSection() {
   const lang = await getLang()
 
   const contacts = [
-    { icon: Phone,  labelFr: 'WhatsApp',  labelEn: 'WhatsApp',  value: '+228 90 00 00 00',    href: 'https://wa.me/22890000000' },
-    { icon: Mail,   labelFr: 'Email',     labelEn: 'Email',     value: 'contact@juweirat.com', href: 'mailto:contact@juweirat.com' },
+    { icon: Phone,  labelFr: 'WhatsApp',  labelEn: 'WhatsApp',  value: '+228 70 79 08 89',      href: 'https://wa.me/22870790889' },
+    { icon: Mail,   labelFr: 'Email',     labelEn: 'Email',     value: 'scijuweirat@gmail.com', href: 'mailto:scijuweirat@gmail.com' },
     { icon: MapPin, labelFr: 'Adresse',   labelEn: 'Address',   value: '376, Bd. de la Kara · Gbossimé · Lomé', href: '/contact' },
   ]
 
@@ -59,7 +59,7 @@ export default async function ContactSection() {
             {t(lang, 'cs_cta')}
           </Link>
           <a
-            href="https://wa.me/22890000000"
+            href="https://wa.me/22870790889"
             target="_blank"
             rel="noopener noreferrer"
             className="px-8 py-3.5 border border-charcoal/20 text-charcoal/70 text-xs tracking-widest uppercase font-light

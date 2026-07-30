@@ -69,13 +69,13 @@ export default async function Footer({ lang }: Props) {
             </p>
             <ul className="space-y-3 text-white/50 text-sm font-light">
               <li>
-                <a href="https://wa.me/22890000000" className="hover:text-green transition-colors duration-300">
-                  +228 90 00 00 00
+                <a href="https://wa.me/22870790889" className="hover:text-green transition-colors duration-300">
+                  +228 70 79 08 89
                 </a>
               </li>
               <li>
-                <a href="mailto:contact@juweirat.com" className="hover:text-green transition-colors duration-300">
-                  contact@juweirat.com
+                <a href="mailto:scijuweirat@gmail.com" className="hover:text-green transition-colors duration-300">
+                  scijuweirat@gmail.com
                 </a>
               </li>
               <li>376, Bd. de la Kara, Gbossimé<br />Lomé, Togo</li>
