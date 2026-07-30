@@ -89,15 +89,13 @@ export default function Navbar({ lang }: Props) {
 
         {/* Right: Book CTA + Lang dropdown + Mobile toggle */}
         <div className="flex items-center gap-3">
-          <a
-            href="https://wa.me/22890000000"
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={() => document.dispatchEvent(new CustomEvent('open-calixia', { detail: { context: 'booking' } }))}
             className="hidden md:inline-flex items-center gap-2 px-5 py-2.5 border border-green text-green text-xs tracking-widest uppercase font-medium
                        hover:bg-green hover:text-charcoal transition-all duration-300"
           >
             {t(lang, 'nav_book')}
-          </a>
+          </button>
 
           {/* Lang dropdown */}
           <div ref={langRef} className="relative hidden md:block">
@@ -162,10 +160,12 @@ export default function Navbar({ lang }: Props) {
             </li>
           ))}
           <li>
-            <a href="https://wa.me/22890000000" target="_blank" rel="noopener noreferrer"
-               className="inline-block px-5 py-2.5 border border-green text-green text-xs tracking-widest uppercase font-medium">
+            <button
+              onClick={() => { setOpen(false); document.dispatchEvent(new CustomEvent('open-calixia', { detail: { context: 'booking' } })) }}
+              className="inline-block px-5 py-2.5 border border-green text-green text-xs tracking-widest uppercase font-medium"
+            >
               {t(lang, 'nav_book')}
-            </a>
+            </button>
           </li>
           <li className="border-t border-charcoal/8 pt-4">
             <p className="text-charcoal/30 text-[10px] tracking-widest uppercase font-light mb-3">

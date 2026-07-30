@@ -9,11 +9,12 @@ interface Props {
   images: RoomImage[]
   lang: Lang
   roomName: string
+  compact?: boolean
 }
 
 const FALLBACK = '/images/IMG_5101.jpg'
 
-export default function RoomGallery({ images, lang, roomName }: Props) {
+export default function RoomGallery({ images, lang, roomName, compact = false }: Props) {
   // Cover first, then by sortOrder
   const sorted = images.length
     ? [...images].sort((a, b) => {
@@ -78,7 +79,7 @@ export default function RoomGallery({ images, lang, roomName }: Props) {
       <div className="space-y-2">
 
         {/* Hero photo */}
-        <div className="relative aspect-[16/9] overflow-hidden bg-charcoal/8 group cursor-pointer"
+        <div className={`relative ${compact ? 'aspect-[4/3]' : 'aspect-[16/9]'} overflow-hidden bg-charcoal/8 group cursor-pointer`}
              onClick={() => setLightbox(true)}>
           <Image
             src={current.filePath}

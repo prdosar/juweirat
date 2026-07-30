@@ -17,6 +17,11 @@ const GREETING: Record<Lang, string> = {
   en: "Hello! I'm **Calixia**, your stay advisor at Résidence Juweirat. 🏠\n\nHow can I help you today?",
 }
 
+const BOOKING_GREETING: Record<Lang, string> = {
+  fr: "Bonjour ! Je suis **Calixia**, votre conseillère à la Résidence Juweirat. 🏠\n\nJe vais vous aider à réserver votre appartement. Pour commencer, dites-moi :\n- Vos dates d'arrivée et de départ\n- Le nombre d'adultes (et d'enfants le cas échéant)\n\nJe vais vous trouver les disponibilités !",
+  en: "Hello! I'm **Calixia**, your advisor at Résidence Juweirat. 🏠\n\nI'll help you book your apartment. To get started, tell me:\n- Your check-in and check-out dates\n- Number of adults (and children if any)\n\nI'll find available options for you!",
+}
+
 /* Render text with basic formatting and internal links */
 function MessageContent({ text }: { text: string }) {
   const linkPattern = /(\/(?:appartements|reserver)\/\d+)/g
@@ -73,11 +78,26 @@ export default function CalixiaWidget({ lang }: Props) {
   const [input,      setInput]      = useState('')
   const [streaming,  setStreaming]  = useState(false)
 
-  const bottomRef  = useRef<HTMLDivElement>(null)
-  const inputRef   = useRef<HTMLTextAreaElement>(null)
-  const abortRef   = useRef<AbortController | null>(null)
+  const bottomRef   = useRef<HTMLDivElement>(null)
+  const inputRef    = useRef<HTMLTextAreaElement>(null)
+  const abortRef    = useRef<AbortController | null>(null)
+  const messagesRef = useRef(messages)
+  useEffect(() => { messagesRef.current = messages }, [messages])
 
-  /* Greeting on first open */
+  /* Listen for open-calixia event from external triggers (e.g. navbar Réserver) */
+  useEffect(() => {
+    function onOpenCalixia(e: Event) {
+      const context = (e as CustomEvent<{ context?: string }>).detail?.context
+      if (messagesRef.current.length === 0) {
+        setMessages([{ role: 'assistant', content: context === 'booking' ? BOOKING_GREETING[lang] : GREETING[lang] }])
+      }
+      setOpen(true)
+    }
+    document.addEventListener('open-calixia', onOpenCalixia)
+    return () => document.removeEventListener('open-calixia', onOpenCalixia)
+  }, [lang])
+
+  /* Greeting on first open via floating button */
   useEffect(() => {
     if (open && messages.length === 0) {
       setMessages([{ role: 'assistant', content: GREETING[lang] }])
