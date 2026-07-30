@@ -7,7 +7,8 @@ import { rooms, amenities, roomImages } from '@/lib/api';
 import type { RoomDto, AmenityDto, RoomImageDto } from '@/lib/types';
 import { ArrowLeft, Save, ImagePlus, Trash2, Star } from 'lucide-react';
 import Link from 'next/link';
-import Image from 'next/image';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 const STATUSES = ['Available', 'Occupied', 'Maintenance', 'Inactive'];
 const STATUS_FR: Record<string, string> = {
@@ -365,12 +366,11 @@ export default function RoomFormPage() {
                     }`}
                   >
                     <div className="aspect-video relative bg-gray-100">
-                      <Image
-                        src={img.filePath}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`${API_URL}${img.filePath}`}
                         alt={img.altTextFr ?? ''}
-                        fill
-                        className="object-cover"
-                        sizes="(max-width: 768px) 50vw, 33vw"
+                        className="object-cover w-full h-full"
                       />
                     </div>
 

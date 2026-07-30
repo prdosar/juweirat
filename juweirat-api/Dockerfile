@@ -28,6 +28,9 @@ RUN groupadd --system --gid 1001 dotnet && \
 
 COPY --from=build --chown=appuser:dotnet /app/publish .
 
+# Pre-create uploads dir so the volume mount is writable by appuser
+RUN mkdir -p /app/uploads && chown appuser:dotnet /app/uploads
+
 USER appuser
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080

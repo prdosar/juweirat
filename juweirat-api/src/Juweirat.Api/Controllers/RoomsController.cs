@@ -62,7 +62,8 @@ public class RoomsController(RoomService roomService, IWebHostEnvironment env) :
     [Authorize]
     [HttpPost("{id:long}/images")]
     [RequestSizeLimit(20_000_000)]
-    public async Task<IActionResult> UploadImage(long id, IFormFile? file)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UploadImage(long id, [FromForm] IFormFile? file)
     {
         if (file is null || file.Length == 0)
             return BadRequest(new { error = "Aucun fichier fourni" });
