@@ -37,6 +37,8 @@ services:
       Jwt__Key:      ${JWT_SECRET:-CHANGE_ME_USE_A_LONG_RANDOM_SECRET_KEY_AT_LEAST_32_CHARS}
       Jwt__Issuer:   juweirat-api
       Jwt__Audience: juweirat-clients
+    volumes:
+      - uploads_data:/app/uploads
     networks:
       - juweirat-net
 
@@ -88,6 +90,7 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:
 
 networks:
   juweirat-net:

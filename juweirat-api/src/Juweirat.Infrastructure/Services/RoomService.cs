@@ -2,6 +2,7 @@ using Juweirat.Application.DTOs.Rooms;
 using Juweirat.Domain.Entities;
 using Juweirat.Domain.Enums;
 using Juweirat.Infrastructure.Data;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Infrastructure.Services;
@@ -109,6 +110,76 @@ public class RoomService(AppDbContext db)
         var room = await db.Rooms.FindAsync(id);
         if (room is null) return false;
         db.Rooms.Remove(room);
+        await db.SaveChangesAsync();
+        return true;
+    }
+
+    // ── Images ────────────────────────────────────────────────────────────────
+
+    public async Task<RoomImageDto?> UploadImageAsync(long roomId, IFormFile file, string uploadsRoot)
+    {
+        if (await db.Rooms.FindAsync(roomId) is null) return null;
+
+        var dir = Path.Combine(uploadsRoot, "rooms", roomId.ToString());
+        Directory.CreateDirectory(dir);
+
+        var ext      = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var fileName = $"{Guid.NewGuid()}{ext}";
+
+        await using (var stream = File.Create(Path.Combine(dir, fileName)))
+            await file.CopyToAsync(stream);
+
+        var isFirst   = !await db.RoomImages.AnyAsync(i => i.RoomId == roomId);
+        var sortOrder = await db.RoomImages.CountAsync(i => i.RoomId == roomId);
+
+        var image = new RoomImage
+        {
+            RoomId    = roomId,
+            FilePath  = $"/uploads/rooms/{roomId}/{fileName}",
+            SortOrder = sortOrder,
+            IsCover   = isFirst,
+        };
+
+        db.RoomImages.Add(image);
+        await db.SaveChangesAsync();
+
+        return new RoomImageDto(image.Id, image.FilePath, null, null, image.SortOrder, image.IsCover);
+    }
+
+    public async Task<bool> DeleteImageAsync(long roomId, long imageId, string uploadsRoot)
+    {
+        var image = await db.RoomImages
+            .FirstOrDefaultAsync(i => i.Id == imageId && i.RoomId == roomId);
+        if (image is null) return false;
+
+        if (image.FilePath.StartsWith("/uploads/"))
+        {
+            var rel      = image.FilePath["/uploads/".Length..];
+            var fullPath = Path.Combine(uploadsRoot, rel);
+            if (File.Exists(fullPath)) File.Delete(fullPath);
+        }
+
+        var wasCover = image.IsCover;
+        db.RoomImages.Remove(image);
+        await db.SaveChangesAsync();
+
+        if (wasCover)
+        {
+            var next = await db.RoomImages
+                .Where(i => i.RoomId == roomId)
+                .OrderBy(i => i.SortOrder)
+                .FirstOrDefaultAsync();
+            if (next is not null) { next.IsCover = true; await db.SaveChangesAsync(); }
+        }
+
+        return true;
+    }
+
+    public async Task<bool> SetCoverAsync(long roomId, long imageId)
+    {
+        var images = await db.RoomImages.Where(i => i.RoomId == roomId).ToListAsync();
+        if (!images.Any(i => i.Id == imageId)) return false;
+        foreach (var img in images) img.IsCover = img.Id == imageId;
         await db.SaveChangesAsync();
         return true;
     }

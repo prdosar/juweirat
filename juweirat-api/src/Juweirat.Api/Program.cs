@@ -2,7 +2,9 @@ using System.Text;
 using Juweirat.Infrastructure.Data;
 using Juweirat.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
@@ -54,6 +56,9 @@ builder.Services.AddCors(options =>
     });
 });
 
+// ─── File upload size limit (20 MB) ─────────────────────────────────────────
+builder.Services.Configure<FormOptions>(o => o.MultipartBodyLengthLimit = 20_000_000);
+
 // ─── Controllers + Swagger ───────────────────────────────────────────────────
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -102,6 +107,16 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors();
+
+// Serve uploaded images at /uploads/**  (volume-persistent directory)
+var uploadsPath = Path.Combine(app.Environment.ContentRootPath, "uploads");
+Directory.CreateDirectory(uploadsPath);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(uploadsPath),
+    RequestPath  = "/uploads",
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();

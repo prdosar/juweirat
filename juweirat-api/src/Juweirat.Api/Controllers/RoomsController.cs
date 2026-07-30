@@ -7,8 +7,10 @@ namespace Juweirat.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class RoomsController(RoomService roomService) : ControllerBase
+public class RoomsController(RoomService roomService, IWebHostEnvironment env) : ControllerBase
 {
+    private string UploadsPath => Path.Combine(env.ContentRootPath, "uploads");
+
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? status, [FromQuery] int? floor)
         => Ok(await roomService.GetAllAsync(status, floor));
@@ -53,5 +55,40 @@ public class RoomsController(RoomService roomService) : ControllerBase
     {
         var deleted = await roomService.DeleteAsync(id);
         return deleted ? NoContent() : NotFound();
+    }
+
+    // ── Images ────────────────────────────────────────────────────────────────
+
+    [Authorize]
+    [HttpPost("{id:long}/images")]
+    [RequestSizeLimit(20_000_000)]
+    public async Task<IActionResult> UploadImage(long id, IFormFile? file)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { error = "Aucun fichier fourni" });
+
+        var allowed = new[] { ".jpg", ".jpeg", ".png", ".webp" };
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!allowed.Contains(ext))
+            return BadRequest(new { error = "Formats acceptés : JPG, PNG, WEBP" });
+
+        var image = await roomService.UploadImageAsync(id, file, UploadsPath);
+        return image is null ? NotFound() : Ok(image);
+    }
+
+    [Authorize]
+    [HttpDelete("{id:long}/images/{imageId:long}")]
+    public async Task<IActionResult> DeleteImage(long id, long imageId)
+    {
+        var deleted = await roomService.DeleteImageAsync(id, imageId, UploadsPath);
+        return deleted ? NoContent() : NotFound();
+    }
+
+    [Authorize]
+    [HttpPatch("{id:long}/images/{imageId:long}/cover")]
+    public async Task<IActionResult> SetCover(long id, long imageId)
+    {
+        var ok = await roomService.SetCoverAsync(id, imageId);
+        return ok ? NoContent() : NotFound();
     }
 }

@@ -90,6 +90,27 @@ export const reservations = {
     request<import('./types').ReservationDto>(`/api/reservations/${id}/status`, { method: 'PATCH', body: JSON.stringify(body) }),
 };
 
+// ── Room Images ───────────────────────────────────────────────────────────────
+export const roomImages = {
+  upload: async (roomId: number, file: File): Promise<import('./types').RoomImageDto> => {
+    const token = getToken();
+    const body  = new FormData();
+    body.append('file', file);
+    const res = await fetch(`${BASE_URL}/api/rooms/${roomId}/images`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body,
+    });
+    if (res.status === 401) { window.location.href = '/login'; throw new Error('Unauthorized'); }
+    if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error ?? `HTTP ${res.status}`); }
+    return res.json();
+  },
+  delete: (roomId: number, imageId: number) =>
+    request<void>(`/api/rooms/${roomId}/images/${imageId}`, { method: 'DELETE' }),
+  setCover: (roomId: number, imageId: number) =>
+    request<void>(`/api/rooms/${roomId}/images/${imageId}/cover`, { method: 'PATCH' }),
+};
+
 // ── Payments ──────────────────────────────────────────────────────────────────
 export const payments = {
   getByReservation: (reservationId: number) =>
