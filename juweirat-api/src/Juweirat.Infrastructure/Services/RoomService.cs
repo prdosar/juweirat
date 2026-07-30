@@ -2,7 +2,6 @@ using Juweirat.Application.DTOs.Rooms;
 using Juweirat.Domain.Entities;
 using Juweirat.Domain.Enums;
 using Juweirat.Infrastructure.Data;
-using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Infrastructure.Services;
@@ -116,18 +115,17 @@ public class RoomService(AppDbContext db)
 
     // ── Images ────────────────────────────────────────────────────────────────
 
-    public async Task<RoomImageDto?> UploadImageAsync(long roomId, IFormFile file, string uploadsRoot)
+    public async Task<RoomImageDto?> UploadImageAsync(long roomId, Stream fileStream, string extension, string uploadsRoot)
     {
         if (await db.Rooms.FindAsync(roomId) is null) return null;
 
         var dir = Path.Combine(uploadsRoot, "rooms", roomId.ToString());
         Directory.CreateDirectory(dir);
 
-        var ext      = Path.GetExtension(file.FileName).ToLowerInvariant();
-        var fileName = $"{Guid.NewGuid()}{ext}";
+        var fileName = $"{Guid.NewGuid()}{extension}";
 
-        await using (var stream = File.Create(Path.Combine(dir, fileName)))
-            await file.CopyToAsync(stream);
+        await using (var dest = File.Create(Path.Combine(dir, fileName)))
+            await fileStream.CopyToAsync(dest);
 
         var isFirst   = !await db.RoomImages.AnyAsync(i => i.RoomId == roomId);
         var sortOrder = await db.RoomImages.CountAsync(i => i.RoomId == roomId);

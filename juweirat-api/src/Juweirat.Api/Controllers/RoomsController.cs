@@ -72,7 +72,7 @@ public class RoomsController(RoomService roomService, IWebHostEnvironment env) :
         if (!allowed.Contains(ext))
             return BadRequest(new { error = "Formats acceptés : JPG, PNG, WEBP" });
 
-        var image = await roomService.UploadImageAsync(id, file, UploadsPath);
+        var image = await roomService.UploadImageAsync(id, file.OpenReadStream(), ext, UploadsPath);
         return image is null ? NotFound() : Ok(image);
     }
 
