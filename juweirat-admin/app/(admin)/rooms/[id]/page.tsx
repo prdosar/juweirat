@@ -17,6 +17,43 @@ const STATUS_FR: Record<string, string> = {
 };
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_WIDTH  = 2000;
+const MAX_BYTES  = 2 * 1024 * 1024; // 2 MB target
+
+function resizeImage(file: File): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Lecture fichier échouée'));
+    reader.onload = (e) => {
+      const img = new window.Image();
+      img.onerror = () => reject(new Error('Décodage image échoué'));
+      img.onload = () => {
+        const { width, height } = img;
+        let scale = 1;
+        if (width > MAX_WIDTH)    scale = Math.min(scale, MAX_WIDTH / width);
+        if (file.size > MAX_BYTES) scale = Math.min(scale, Math.sqrt(MAX_BYTES / file.size));
+
+        if (scale >= 1) { resolve(file); return; }
+
+        const canvas = document.createElement('canvas');
+        canvas.width  = Math.round(width  * scale);
+        canvas.height = Math.round(height * scale);
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) { reject(new Error('Compression échouée')); return; }
+            resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+          },
+          'image/jpeg',
+          0.85,
+        );
+      };
+      img.src = e.target!.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function RoomFormPage() {
   const { id }   = useParams<{ id: string }>();
@@ -119,7 +156,8 @@ export default function RoomFormPage() {
     setUploading(true);
     try {
       for (const file of files) {
-        const img = await roomImages.upload(Number(id), file);
+        const compressed = await resizeImage(file);
+        const img = await roomImages.upload(Number(id), compressed);
         setImages(prev => [...prev, img]);
       }
     } catch (err: unknown) {
