@@ -3,6 +3,7 @@ using Juweirat.Domain.Entities;
 using Juweirat.Domain.Enums;
 using Juweirat.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using FolioStatus = Juweirat.Domain.Enums.FolioResaStatus;
 
 namespace Juweirat.Infrastructure.Services;
 
@@ -111,6 +112,9 @@ public class ReservationService(AppDbContext db)
         {
             case ReservationStatus.Confirmed:
                 r.ConfirmedAt = DateTime.UtcNow;
+                // Auto-create a PMS folio if none exists yet
+                if (r.Folio is null)
+                    await CreateFolioFromReservationAsync(r);
                 break;
             case ReservationStatus.Cancelled:
                 r.CancelledAt         = DateTime.UtcNow;
@@ -120,6 +124,41 @@ public class ReservationService(AppDbContext db)
 
         await db.SaveChangesAsync();
         return (ToDto(r), null);
+    }
+
+    private async Task CreateFolioFromReservationAsync(Reservation r)
+    {
+        var config = await db.HotelConfig.FindAsync(1);
+        if (config is null) return; // PMS not seeded yet — skip silently
+
+        var nights = r.CheckOutDate.DayNumber - r.CheckInDate.DayNumber;
+        var unit   = r.Room;
+        var tarif  = Services.TarifEngine.ForStay(unit.TarifNuit, unit.TarifN15, unit.TarifN30, nights);
+
+        config.ResaSeq++;
+        var number = $"FL-{config.DateHotel.Year}-{config.ResaSeq:D4}";
+
+        var folio = new Folio
+        {
+            Number        = number,
+            UnitId        = r.RoomId,
+            Nom           = r.Client.LastName,
+            Prenom        = r.Client.FirstName,
+            Guest         = r.Client.FullName,
+            Segment       = FolioSegment.Direct,
+            Pax           = r.Adults,
+            Arrival       = r.CheckInDate,
+            Departure     = r.CheckOutDate,
+            Rate          = tarif.PerNight,
+            TarifTier     = tarif.Tier,
+            ElecIncluded  = tarif.ElecIncluded,
+            ResaStatus    = FolioStatus.Confirmee,
+            ReservationId = r.Id,
+            Note          = r.SpecialRequests,
+        };
+
+        db.Folios.Add(folio);
+        // SaveChangesAsync is called by the caller after this method returns
     }
 
     private async Task<string> GenerateReferenceAsync()
