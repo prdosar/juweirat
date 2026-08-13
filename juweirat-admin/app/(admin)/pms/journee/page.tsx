@@ -42,7 +42,7 @@ function FolioRow({ f, onAction }: { f: FolioDto; onAction: () => void }) {
     <div className="flex items-center gap-4 py-3 px-4 hover:bg-gray-50/60 border-b border-gray-50 last:border-0">
       <div className="flex-1 min-w-0">
         <Link href={`/pms/folios/${f.id}`} className="font-semibold text-charcoal hover:text-green-dark text-sm truncate block">
-          {f.guest ?? `${f.prenom ?? ''} ${f.nom ?? ''}`.trim() || '—'}
+          {f.guest ?? (`${f.prenom ?? ''} ${f.nom ?? ''}`.trim() || '—')}
         </Link>
         <p className="text-xs text-gray-400 font-mono">{f.number} · {f.unitLabel}</p>
         {err && <p className="text-xs text-red-600 mt-0.5">{err}</p>}

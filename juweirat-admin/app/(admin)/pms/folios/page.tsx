@@ -106,7 +106,7 @@ export default function FoliosPage() {
                     >
                       <td className="px-5 py-3.5 font-mono text-xs text-green-dark font-bold">{f.number}</td>
                       <td className="px-5 py-3.5 font-medium text-charcoal">
-                        {f.guest ?? `${f.prenom ?? ''} ${f.nom ?? ''}`.trim() || '—'}
+                        {f.guest ?? (`${f.prenom ?? ''} ${f.nom ?? ''}`.trim() || '—')}
                         {f.societe && <span className="block text-xs text-gray-400">{f.societe}</span>}
                       </td>
                       <td className="px-5 py-3.5 text-gray-500">{f.unitLabel}</td>

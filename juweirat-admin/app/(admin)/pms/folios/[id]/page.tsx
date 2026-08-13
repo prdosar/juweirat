@@ -106,7 +106,7 @@ export default function FolioDetailPage() {
             <div>
               <p className="font-mono font-bold text-lg text-green-dark">{f.number}</p>
               <p className="text-base font-semibold text-charcoal mt-0.5">
-                {f.guest ?? `${f.prenom ?? ''} ${f.nom ?? ''}`.trim() || '—'}
+                {f.guest ?? (`${f.prenom ?? ''} ${f.nom ?? ''}`.trim() || '—')}
               </p>
               {f.societe && <p className="text-sm text-gray-500">{f.societe}</p>}
               <div className="flex gap-2 mt-2 flex-wrap">
