@@ -34,15 +34,22 @@ public record ReservationDto(
 
 public record CreateReservationRequest(
     [Required] long RoomId,
-    [Required] long ClientId,
+    long? ClientId,
+    ClientInlineRequest? Client,
     [Required] DateOnly CheckInDate,
     [Required] DateOnly CheckOutDate,
+    decimal? PricePerNight,
     [Range(1, 20)] int Adults = 1,
     [Range(0, 10)] int Children = 0,
     string Currency = "XOF",
     string? Source = "website",
     string? SpecialRequests = null,
     string? InternalNotes = null
+);
+
+public record ClientInlineRequest(
+    string NameFr,
+    string? Phone
 );
 
 public record UpdateReservationStatusRequest(

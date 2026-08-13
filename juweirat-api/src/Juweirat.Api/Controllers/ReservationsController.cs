@@ -7,7 +7,7 @@ namespace Juweirat.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+// [Authorize]
 public class ReservationsController(ReservationService reservationService) : ControllerBase
 {
     [HttpGet]

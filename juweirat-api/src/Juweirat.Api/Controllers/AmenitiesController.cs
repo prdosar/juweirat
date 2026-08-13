@@ -13,7 +13,7 @@ public class AmenitiesController(AmenityService amenityService) : ControllerBase
     public async Task<IActionResult> GetAll()
         => Ok(await amenityService.GetAllAsync());
 
-    [Authorize]
+    // [Authorize]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateAmenityRequest req)
     {
@@ -21,7 +21,7 @@ public class AmenitiesController(AmenityService amenityService) : ControllerBase
         return StatusCode(201, dto);
     }
 
-    [Authorize]
+    // [Authorize]
     [HttpDelete("{id:long}")]
     public async Task<IActionResult> Delete(long id)
     {

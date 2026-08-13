@@ -58,20 +58,38 @@ public class ReservationService(AppDbContext db)
 
         if (blockOverlap) return (null, "Room is blocked for these dates");
 
+        long finalClientId;
+        if (req.ClientId.HasValue)
+        {
+            finalClientId = req.ClientId.Value;
+        }
+        else if (req.Client != null)
+        {
+            var newClient = new Client { FirstName = req.Client.NameFr, LastName = "", Phone = req.Client.Phone };
+            db.Clients.Add(newClient);
+            await db.SaveChangesAsync();
+            finalClientId = newClient.Id;
+        }
+        else
+        {
+            return (null, "ClientId or Client object is required");
+        }
+
         var nights = req.CheckOutDate.DayNumber - req.CheckInDate.DayNumber;
-        var total  = room.PricePerNight * nights;
+        var finalPrice = req.PricePerNight ?? room.PricePerNight;
+        var total  = finalPrice * nights;
 
         var reservation = new Reservation
         {
             Reference              = await GenerateReferenceAsync(),
             RoomId                 = req.RoomId,
-            ClientId               = req.ClientId,
+            ClientId               = finalClientId,
             CheckInDate            = req.CheckInDate,
             CheckOutDate           = req.CheckOutDate,
             Nights                 = nights,
             Adults                 = req.Adults,
             Children               = req.Children,
-            PricePerNightSnapshot  = room.PricePerNight,
+            PricePerNightSnapshot  = finalPrice,
             TotalPrice             = total,
             Currency               = req.Currency,
             Source                 = req.Source,

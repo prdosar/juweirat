@@ -33,7 +33,7 @@ public class RoomsController(RoomService roomService, IWebHostEnvironment env) :
         return Ok(await roomService.GetAvailableAsync(checkIn, checkOut, adults));
     }
 
-    [Authorize]
+    // [Authorize]
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateRoomRequest req)
     {
@@ -41,7 +41,7 @@ public class RoomsController(RoomService roomService, IWebHostEnvironment env) :
         return CreatedAtAction(nameof(GetById), new { id = room.Id }, room);
     }
 
-    [Authorize]
+    // [Authorize]
     [HttpPut("{id:long}")]
     public async Task<IActionResult> Update(long id, [FromBody] UpdateRoomRequest req)
     {
@@ -49,7 +49,7 @@ public class RoomsController(RoomService roomService, IWebHostEnvironment env) :
         return room is null ? NotFound() : Ok(room);
     }
 
-    [Authorize]
+    // [Authorize]
     [HttpDelete("{id:long}")]
     public async Task<IActionResult> Delete(long id)
     {
@@ -59,7 +59,7 @@ public class RoomsController(RoomService roomService, IWebHostEnvironment env) :
 
     // ── Images ────────────────────────────────────────────────────────────────
 
-    [Authorize]
+    // [Authorize]
     [HttpPost("{id:long}/images")]
     [RequestSizeLimit(20_000_000)]
     [Consumes("multipart/form-data")]
@@ -77,7 +77,7 @@ public class RoomsController(RoomService roomService, IWebHostEnvironment env) :
         return image is null ? NotFound() : Ok(image);
     }
 
-    [Authorize]
+    // [Authorize]
     [HttpDelete("{id:long}/images/{imageId:long}")]
     public async Task<IActionResult> DeleteImage(long id, long imageId)
     {
@@ -85,7 +85,7 @@ public class RoomsController(RoomService roomService, IWebHostEnvironment env) :
         return deleted ? NoContent() : NotFound();
     }
 
-    [Authorize]
+    // [Authorize]
     [HttpPatch("{id:long}/images/{imageId:long}/cover")]
     public async Task<IActionResult> SetCover(long id, long imageId)
     {

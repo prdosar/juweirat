@@ -12,7 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // ─── Database ────────────────────────────────────────────────────────────────
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("Postgres")));
+    options.UseInMemoryDatabase("juweirat"));
 
 // ─── Application Services ────────────────────────────────────────────────────
 builder.Services.AddScoped<AuthService>();
@@ -125,7 +125,7 @@ app.MapControllers();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
+    db.Database.EnsureCreated();
     await PmsSeeder.SeedAsync(db);
 }
 
