@@ -30,6 +30,9 @@ public class Reservation
     public Client Client { get; set; } = null!;
     public ICollection<Payment> Payments { get; set; } = [];
 
+    // Folio PMS créé lorsque la réservation est prise en charge par la réception.
+    public Folio? Folio { get; set; }
+
     public decimal AmountPaid => Payments
         .Where(p => p.Status == PaymentStatus.Completed)
         .Sum(p => p.Amount);

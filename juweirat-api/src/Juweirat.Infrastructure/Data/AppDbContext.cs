@@ -6,6 +6,7 @@ namespace Juweirat.Infrastructure.Data;
 
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
+    // ── Existant (site public) ───────────────────────────────────────────────
     public DbSet<User>        Users        { get; set; }
     public DbSet<Room>        Rooms        { get; set; }
     public DbSet<RoomImage>   RoomImages   { get; set; }
@@ -14,6 +15,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Reservation> Reservations { get; set; }
     public DbSet<Payment>     Payments     { get; set; }
     public DbSet<RoomBlock>   RoomBlocks   { get; set; }
+
+    // ── PMS ──────────────────────────────────────────────────────────────────
+    public DbSet<HotelConfig>      HotelConfig      { get; set; }
+    public DbSet<Folio>            Folios           { get; set; }
+    public DbSet<Facture>          Factures         { get; set; }
+    public DbSet<Posting>          Postings         { get; set; }
+    public DbSet<Cloture>          Clotures         { get; set; }
+    public DbSet<MaintenanceTicket> MaintenanceTickets { get; set; }
+    public DbSet<Debtor>           Debtors          { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -31,9 +41,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<Room>(e =>
         {
             e.HasIndex(r => r.RoomNumber).IsUnique();
+            e.HasIndex(r => r.PmsRoomNo).IsUnique().HasFilter("\"pmsRoomNo\" IS NOT NULL");
             e.Property(r => r.Status)
              .HasConversion<string>()
              .HasDefaultValue(RoomStatus.Available);
+            e.Property(r => r.StatutMenage)
+             .HasConversion<string>()
+             .HasDefaultValue(MenageStatus.Propre);
             e.Property(r => r.PricePerNight).HasPrecision(10, 2);
             e.Property(r => r.PricePerWeek).HasPrecision(10, 2);
             e.Property(r => r.PricePerMonth).HasPrecision(10, 2);
@@ -112,6 +126,101 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
             e.ToTable(t => t.HasCheckConstraint("ck_blockEndAfterStart",
                 "\"endDate\" > \"startDate\""));
+        });
+
+        // ── PMS : hotelConfig ─────────────────────────────────────
+        // Singleton : toujours 1 ligne, Id = 1.
+        modelBuilder.Entity<HotelConfig>(e =>
+        {
+            e.HasKey(c => c.Id);
+        });
+
+        // ── PMS : folios ──────────────────────────────────────────
+        modelBuilder.Entity<Folio>(e =>
+        {
+            e.HasIndex(f => f.Number).IsUnique();
+            e.Property(f => f.ResaStatus).HasConversion<string>();
+            e.Property(f => f.Segment).HasConversion<string>();
+            e.Property(f => f.TarifTier).HasConversion<string>();
+
+            e.HasOne(f => f.Unit)
+             .WithMany(r => r.Folios)
+             .HasForeignKey(f => f.UnitId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            // Relation Facture : 1:0..1 — FK portée par Facture, pas par Folio.
+            e.Property(f => f.FactureId).IsRequired(false);
+
+            // Relation Reservation web : 1:0..1 — FK portée par Folio (ReservationId).
+            e.HasOne(f => f.Reservation)
+             .WithOne(r => r.Folio)
+             .HasForeignKey<Folio>(f => f.ReservationId)
+             .IsRequired(false)
+             .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ── PMS : factures ────────────────────────────────────────
+        modelBuilder.Entity<Facture>(e =>
+        {
+            e.HasIndex(f => f.Number).IsUnique();
+            e.Property(f => f.Status).HasConversion<string>();
+
+            e.HasOne(f => f.Folio)
+             .WithOne(f => f.Facture)
+             .HasForeignKey<Facture>(f => f.FolioId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            // Snapshot figé en JSONB via le support JSON natif d'EF Core 8+.
+            // HasColumnName explicite car ApplyCamelCaseNaming saute les types JSON-mappés.
+            e.OwnsOne(f => f.Snapshot, sb =>
+            {
+                sb.ToJson("snapshot");
+                sb.OwnsMany(s => s.Lines);
+            });
+        });
+
+        // ── PMS : postings (main courante) ────────────────────────
+        modelBuilder.Entity<Posting>(e =>
+        {
+            e.HasOne(p => p.Folio)
+             .WithMany(f => f.Postings)
+             .HasForeignKey(p => p.FolioId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(p => p.Unit)
+             .WithMany()
+             .HasForeignKey(p => p.UnitId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── PMS : clotures ────────────────────────────────────────
+        modelBuilder.Entity<Cloture>(e =>
+        {
+            e.HasIndex(c => c.DateHotel).IsUnique();
+            e.Property(c => c.Occupation).HasPrecision(5, 2);
+        });
+
+        // ── PMS : maintenanceTickets ──────────────────────────────
+        modelBuilder.Entity<MaintenanceTicket>(e =>
+        {
+            e.Property(t => t.Priority).HasConversion<string>();
+            e.Property(t => t.Status).HasConversion<string>();
+
+            e.HasOne(t => t.Unit)
+             .WithMany(r => r.Tickets)
+             .HasForeignKey(t => t.UnitId)
+             .IsRequired(false)
+             .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ── PMS : debtors ─────────────────────────────────────────
+        modelBuilder.Entity<Debtor>(e =>
+        {
+            e.HasOne(d => d.Folio)
+             .WithMany(f => f.Debtors)
+             .HasForeignKey(d => d.FolioId)
+             .IsRequired(false)
+             .OnDelete(DeleteBehavior.SetNull);
         });
 
         // Apply camelCase naming to all tables and columns

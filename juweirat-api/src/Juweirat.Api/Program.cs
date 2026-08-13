@@ -121,11 +121,12 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-// Auto-apply pending migrations on startup
+// Auto-apply pending migrations on startup, then seed PMS data
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
+    await PmsSeeder.SeedAsync(db);
 }
 
 app.Run();

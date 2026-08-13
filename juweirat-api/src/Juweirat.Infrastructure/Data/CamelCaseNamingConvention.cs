@@ -13,6 +13,10 @@ public static class CamelCaseNamingExtensions
     {
         foreach (var entity in modelBuilder.Model.GetEntityTypes())
         {
+            // Skip entity types mapped to JSON — they use JSON property names, not column names.
+            if (entity.IsMappedToJson())
+                continue;
+
             // Table name
             var tableName = entity.GetTableName();
             if (tableName is not null)

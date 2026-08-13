@@ -3,6 +3,7 @@ using Juweirat.Domain.Entities;
 using Juweirat.Domain.Enums;
 using Juweirat.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using FolioStatus = Juweirat.Domain.Enums.FolioResaStatus;
 
 namespace Juweirat.Infrastructure.Services;
 
@@ -184,6 +185,7 @@ public class RoomService(AppDbContext db)
 
     public async Task<List<RoomDto>> GetAvailableAsync(DateOnly checkIn, DateOnly checkOut, int adults)
     {
+        // Réservations web bloquant les créneaux
         var occupiedRoomIds = await db.Reservations
             .Where(r =>
                 r.Status != ReservationStatus.Cancelled &&
@@ -193,12 +195,27 @@ public class RoomService(AppDbContext db)
             .Select(r => r.RoomId)
             .ToListAsync();
 
+        // Blocages manuels
         var blockedRoomIds = await db.RoomBlocks
             .Where(b => b.StartDate < checkOut && b.EndDate > checkIn)
             .Select(b => b.RoomId)
             .ToListAsync();
 
-        var unavailable = occupiedRoomIds.Union(blockedRoomIds).ToHashSet();
+        // Folios PMS actifs sur le même créneau — source de vérité côté réception
+        var folioOccupiedIds = await db.Folios
+            .Where(f =>
+                f.ResaStatus != FolioStatus.Annulee &&
+                f.ResaStatus != FolioStatus.NoShow &&
+                !f.Closed &&
+                f.Arrival  < checkOut &&
+                f.Departure > checkIn)
+            .Select(f => f.UnitId)
+            .ToListAsync();
+
+        var unavailable = occupiedRoomIds
+            .Union(blockedRoomIds)
+            .Union(folioOccupiedIds)
+            .ToHashSet();
 
         var rooms = await db.Rooms
             .Include(r => r.Images.OrderBy(i => i.SortOrder))
