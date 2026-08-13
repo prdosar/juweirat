@@ -8,7 +8,7 @@ namespace Juweirat.Api.Controllers;
 [ApiController]
 [Route("api/pms")]
 [Authorize]
-public class PmsController(PmsService pms) : ControllerBase
+public class PmsController(PmsService pms, ClotureService cloture, FactureService facture) : ControllerBase
 {
     // ── Config ────────────────────────────────────────────────────────────────
 
@@ -116,6 +116,89 @@ public class PmsController(PmsService pms) : ControllerBase
     {
         var (dto, error) = await pms.TransferDebiteurAsync(id, req);
         if (error is not null) return BadRequest(new { error });
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    // ── Facturation (depuis un folio) ─────────────────────────────────────────
+
+    [HttpPost("folios/{id:long}/facturer")]
+    public async Task<IActionResult> Facturer(long id)
+    {
+        var (dto, error) = await facture.EmettreAsync(id);
+        if (error is not null) return BadRequest(new { error });
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    // ── Clôture ───────────────────────────────────────────────────────────────
+
+    [HttpGet("cloture/preview")]
+    public async Task<IActionResult> GetCloturePreview()
+    {
+        var dto = await cloture.GetPreviewAsync();
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    [HttpPost("cloture")]
+    public async Task<IActionResult> ExecuteCloture()
+    {
+        var (dto, error) = await cloture.ExecuteAsync();
+        if (error is not null) return UnprocessableEntity(new { error });
+        return Ok(dto);
+    }
+
+    [HttpGet("cloture/history")]
+    public async Task<IActionResult> GetClotureHistory([FromQuery] int limit = 90)
+        => Ok(await cloture.GetHistoryAsync(limit));
+
+    [HttpGet("cloture/{date}")]
+    public async Task<IActionResult> GetClotureByDate(DateOnly date)
+    {
+        var dto = await cloture.GetByDateAsync(date);
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    [HttpGet("postings")]
+    public async Task<IActionResult> GetPostings(
+        [FromQuery] DateOnly? date = null,
+        [FromQuery] long? folioId = null)
+        => Ok(await cloture.GetPostingsAsync(date, folioId));
+
+    // ── Factures ──────────────────────────────────────────────────────────────
+
+    [HttpGet("factures")]
+    public async Task<IActionResult> GetFactures(
+        [FromQuery] string? search = null,
+        [FromQuery] DateOnly? from = null,
+        [FromQuery] DateOnly? to = null)
+        => Ok(await facture.GetAllAsync(search, from, to));
+
+    [HttpGet("factures/{id:long}")]
+    public async Task<IActionResult> GetFacture(long id)
+    {
+        var dto = await facture.GetByIdAsync(id);
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    [HttpPost("factures/{id:long}/annuler")]
+    public async Task<IActionResult> AnnulerFacture(long id)
+    {
+        var (dto, error) = await facture.AnnulerAsync(id);
+        if (error is not null) return BadRequest(new { error });
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    [HttpPatch("factures/{id:long}/rectifier")]
+    public async Task<IActionResult> RectifierFacture(long id, [FromBody] RectifierRequest req)
+    {
+        var (dto, error) = await facture.RectifierAsync(id, req);
+        if (error is not null) return BadRequest(new { error });
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    [HttpPost("factures/{id:long}/print")]
+    public async Task<IActionResult> PrintFacture(long id)
+    {
+        var dto = await facture.IncrementPrintAsync(id);
         return dto is null ? NotFound() : Ok(dto);
     }
 }
