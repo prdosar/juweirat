@@ -5,7 +5,8 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, BedDouble, Users, CalendarCheck,
-  CreditCard, LogOut,
+  CreditCard, LogOut, CalendarDays, Building2,
+  ClipboardList, Wrench, Receipt, FileText, Settings,
 } from 'lucide-react';
 import { clearAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
@@ -16,6 +17,17 @@ const navItems = [
   { href: '/clients',      label: 'Clients',          icon: Users           },
   { href: '/reservations', label: 'Réservations',     icon: CalendarCheck   },
   { href: '/payments',     label: 'Paiements',        icon: CreditCard      },
+];
+
+const pmsItems = [
+  { href: '/pms/journee',      label: 'Journée',         icon: CalendarDays   },
+  { href: '/pms/folios',       label: 'Folios',           icon: ClipboardList  },
+  { href: '/pms/gouvernante',  label: 'Gouvernante',      icon: Building2      },
+  { href: '/pms/cloture',      label: 'Clôture',          icon: Receipt        },
+  { href: '/pms/factures',     label: 'Factures',         icon: FileText       },
+  { href: '/pms/maintenance',  label: 'Maintenance',      icon: Wrench         },
+  { href: '/pms/debiteurs',    label: 'Débiteurs',        icon: CreditCard     },
+  { href: '/pms/config',       label: 'Config PMS',       icon: Settings       },
 ];
 
 export default function Sidebar() {
@@ -46,6 +58,28 @@ export default function Sidebar() {
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         {navItems.map(({ href, label, icon: Icon }) => {
+          const active = pathname === href || pathname.startsWith(href + '/');
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                active
+                  ? 'bg-green text-charcoal'
+                  : 'text-white/55 hover:bg-white/8 hover:text-white'
+              }`}
+            >
+              <Icon size={16} />
+              {label}
+            </Link>
+          );
+        })}
+
+        {/* PMS section */}
+        <div className="pt-4 pb-1">
+          <p className="px-3 text-[10px] text-white/25 uppercase tracking-[0.2em] font-medium">PMS</p>
+        </div>
+        {pmsItems.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + '/');
           return (
             <Link

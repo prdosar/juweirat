@@ -8,7 +8,7 @@ namespace Juweirat.Api.Controllers;
 [ApiController]
 [Route("api/pms")]
 [Authorize]
-public class PmsController(PmsService pms, ClotureService cloture, FactureService facture) : ControllerBase
+public class PmsController(PmsService pms, ClotureService cloture, FactureService facture, MaintenanceService maintenance, DebiteurService debiteur) : ControllerBase
 {
     // ── Config ────────────────────────────────────────────────────────────────
 
@@ -201,4 +201,81 @@ public class PmsController(PmsService pms, ClotureService cloture, FactureServic
         var dto = await facture.IncrementPrintAsync(id);
         return dto is null ? NotFound() : Ok(dto);
     }
+
+    // ── Maintenance ───────────────────────────────────────────────────────────
+
+    [HttpGet("maintenance")]
+    public async Task<IActionResult> GetTickets(
+        [FromQuery] string? status = null,
+        [FromQuery] string? priority = null,
+        [FromQuery] long? unitId = null)
+        => Ok(await maintenance.GetAllAsync(status, priority, unitId));
+
+    [HttpGet("maintenance/{id:long}")]
+    public async Task<IActionResult> GetTicket(long id)
+    {
+        var dto = await maintenance.GetByIdAsync(id);
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    [HttpPost("maintenance")]
+    public async Task<IActionResult> CreateTicket([FromBody] CreateMaintenanceRequest req)
+    {
+        var (dto, error) = await maintenance.CreateAsync(req);
+        if (error is not null) return BadRequest(new { error });
+        return CreatedAtAction(nameof(GetTicket), new { id = dto!.Id }, dto);
+    }
+
+    [HttpPatch("maintenance/{id:long}")]
+    public async Task<IActionResult> UpdateTicket(long id, [FromBody] UpdateMaintenanceRequest req)
+    {
+        var (dto, error) = await maintenance.UpdateAsync(id, req);
+        if (error is not null) return BadRequest(new { error });
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    [HttpDelete("maintenance/{id:long}")]
+    public async Task<IActionResult> DeleteTicket(long id)
+        => await maintenance.DeleteAsync(id) ? NoContent() : NotFound();
+
+    // ── Débiteurs ─────────────────────────────────────────────────────────────
+
+    [HttpGet("debiteurs")]
+    public async Task<IActionResult> GetDebiteurs()
+        => Ok(await debiteur.GetAllAsync());
+
+    [HttpGet("debiteurs/{id:long}")]
+    public async Task<IActionResult> GetDebiteur(long id)
+    {
+        var dto = await debiteur.GetByIdAsync(id);
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    [HttpPost("debiteurs")]
+    public async Task<IActionResult> CreateDebiteur([FromBody] CreateDebiteurRequest req)
+    {
+        var (dto, error) = await debiteur.CreateAsync(req);
+        if (error is not null) return BadRequest(new { error });
+        return CreatedAtAction(nameof(GetDebiteur), new { id = dto!.Id }, dto);
+    }
+
+    [HttpPatch("debiteurs/{id:long}")]
+    public async Task<IActionResult> UpdateDebiteur(long id, [FromBody] UpdateDebiteurRequest req)
+    {
+        var (dto, error) = await debiteur.UpdateAsync(id, req);
+        if (error is not null) return BadRequest(new { error });
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    [HttpPost("debiteurs/{id:long}/payer")]
+    public async Task<IActionResult> PayDebiteur(long id, [FromBody] PayDebiteurRequest req)
+    {
+        var (dto, error) = await debiteur.PayAsync(id, req);
+        if (error is not null) return BadRequest(new { error });
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    [HttpDelete("debiteurs/{id:long}")]
+    public async Task<IActionResult> DeleteDebiteur(long id)
+        => await debiteur.DeleteAsync(id) ? NoContent() : NotFound();
 }

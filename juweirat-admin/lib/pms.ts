@@ -1,0 +1,147 @@
+import type {
+  HotelConfigDto, UnitDto, FolioDto,
+  CloturePreviewDto, ClotureDto, PostingDto,
+  FactureDto,
+  MaintenanceTicketDto, DebiteurDto,
+} from './pmsTypes';
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
+
+function getToken() {
+  return typeof window !== 'undefined' ? localStorage.getItem('juweirat_token') : null;
+}
+
+async function pmsReq<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options.headers as Record<string, string>),
+  };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+
+  if (res.status === 401) {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('juweirat_token');
+      localStorage.removeItem('juweirat_user');
+      window.location.href = '/login';
+    }
+    throw new Error('Non autorisé');
+  }
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? `HTTP ${res.status}`);
+  }
+
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+// ── Config ────────────────────────────────────────────────────────────────────
+export const pmsConfig = {
+  get:    () => pmsReq<HotelConfigDto>('/api/pms/config'),
+  update: (body: Partial<HotelConfigDto>) =>
+    pmsReq<HotelConfigDto>('/api/pms/config', { method: 'PUT', body: JSON.stringify(body) }),
+};
+
+// ── Units ─────────────────────────────────────────────────────────────────────
+export const pmsUnits = {
+  getAll:      () => pmsReq<UnitDto[]>('/api/pms/units'),
+  getById:     (id: number) => pmsReq<UnitDto>(`/api/pms/units/${id}`),
+  patchMenage: (id: number, statutMenage: string) =>
+    pmsReq<UnitDto>(`/api/pms/units/${id}/menage`, { method: 'PATCH', body: JSON.stringify({ statutMenage }) }),
+  patchHs:     (id: number, horsService: boolean) =>
+    pmsReq<UnitDto>(`/api/pms/units/${id}/hs`, { method: 'PATCH', body: JSON.stringify({ horsService }) }),
+};
+
+// ── Folios ────────────────────────────────────────────────────────────────────
+export const pmsFolios = {
+  getAll: (params?: { closed?: boolean; unitId?: number; status?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.closed !== undefined) qs.set('closed', String(params.closed));
+    if (params?.unitId !== undefined) qs.set('unitId', String(params.unitId));
+    if (params?.status) qs.set('status', params.status);
+    return pmsReq<FolioDto[]>(`/api/pms/folios?${qs}`);
+  },
+  getById:  (id: number) => pmsReq<FolioDto>(`/api/pms/folios/${id}`),
+  create:   (body: Record<string, unknown>) =>
+    pmsReq<FolioDto>('/api/pms/folios', { method: 'POST', body: JSON.stringify(body) }),
+  update:   (id: number, body: Record<string, unknown>) =>
+    pmsReq<FolioDto>(`/api/pms/folios/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  checkIn:  (id: number) =>
+    pmsReq<FolioDto>(`/api/pms/folios/${id}/checkin`, { method: 'POST' }),
+  checkOut: (id: number) =>
+    pmsReq<FolioDto>(`/api/pms/folios/${id}/checkout`, { method: 'POST' }),
+  encaisser: (id: number, montant: number, payMode?: string) =>
+    pmsReq<FolioDto>(`/api/pms/folios/${id}/encaisser`, {
+      method: 'POST', body: JSON.stringify({ montant, payMode }),
+    }),
+  transferDebiteur: (id: number, label?: string) =>
+    pmsReq<FolioDto>(`/api/pms/folios/${id}/transfer-debiteur`, {
+      method: 'POST', body: JSON.stringify({ label }),
+    }),
+  facturer: (id: number) =>
+    pmsReq<FactureDto>(`/api/pms/folios/${id}/facturer`, { method: 'POST' }),
+};
+
+// ── Clôture ───────────────────────────────────────────────────────────────────
+export const pmsCloture = {
+  preview: () => pmsReq<CloturePreviewDto>('/api/pms/cloture/preview'),
+  execute: () => pmsReq<ClotureDto>('/api/pms/cloture', { method: 'POST' }),
+  history: (limit = 90) => pmsReq<ClotureDto[]>(`/api/pms/cloture/history?limit=${limit}`),
+  byDate:  (date: string) => pmsReq<ClotureDto>(`/api/pms/cloture/${date}`),
+  postings: (params?: { date?: string; folioId?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.date)    qs.set('date', params.date);
+    if (params?.folioId) qs.set('folioId', String(params.folioId));
+    return pmsReq<PostingDto[]>(`/api/pms/postings?${qs}`);
+  },
+};
+
+// ── Factures ──────────────────────────────────────────────────────────────────
+export const pmsFactures = {
+  getAll: (params?: { search?: string; from?: string; to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.search) qs.set('search', params.search);
+    if (params?.from)   qs.set('from',   params.from);
+    if (params?.to)     qs.set('to',     params.to);
+    return pmsReq<FactureDto[]>(`/api/pms/factures?${qs}`);
+  },
+  getById:   (id: number) => pmsReq<FactureDto>(`/api/pms/factures/${id}`),
+  annuler:   (id: number) => pmsReq<FactureDto>(`/api/pms/factures/${id}/annuler`, { method: 'POST' }),
+  rectifier: (id: number, body: Record<string, unknown>) =>
+    pmsReq<FactureDto>(`/api/pms/factures/${id}/rectifier`, { method: 'PATCH', body: JSON.stringify(body) }),
+  print:     (id: number) => pmsReq<FactureDto>(`/api/pms/factures/${id}/print`, { method: 'POST' }),
+};
+
+// ── Maintenance ───────────────────────────────────────────────────────────────
+export const pmsMaintenance = {
+  getAll:  (params?: { status?: string; priority?: string; unitId?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.status)   qs.set('status',   params.status);
+    if (params?.priority) qs.set('priority', params.priority);
+    if (params?.unitId)   qs.set('unitId',   String(params.unitId));
+    return pmsReq<MaintenanceTicketDto[]>(`/api/pms/maintenance?${qs}`);
+  },
+  getById: (id: number) => pmsReq<MaintenanceTicketDto>(`/api/pms/maintenance/${id}`),
+  create:  (body: Record<string, unknown>) =>
+    pmsReq<MaintenanceTicketDto>('/api/pms/maintenance', { method: 'POST', body: JSON.stringify(body) }),
+  update:  (id: number, body: Record<string, unknown>) =>
+    pmsReq<MaintenanceTicketDto>(`/api/pms/maintenance/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  delete:  (id: number) => pmsReq<void>(`/api/pms/maintenance/${id}`, { method: 'DELETE' }),
+};
+
+// ── Débiteurs ─────────────────────────────────────────────────────────────────
+export const pmsDebiteurs = {
+  getAll:  () => pmsReq<DebiteurDto[]>('/api/pms/debiteurs'),
+  getById: (id: number) => pmsReq<DebiteurDto>(`/api/pms/debiteurs/${id}`),
+  create:  (body: Record<string, unknown>) =>
+    pmsReq<DebiteurDto>('/api/pms/debiteurs', { method: 'POST', body: JSON.stringify(body) }),
+  update:  (id: number, body: Record<string, unknown>) =>
+    pmsReq<DebiteurDto>(`/api/pms/debiteurs/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  pay:     (id: number, montant: number) =>
+    pmsReq<DebiteurDto>(`/api/pms/debiteurs/${id}/payer`, { method: 'POST', body: JSON.stringify({ montant }) }),
+  delete:  (id: number) => pmsReq<void>(`/api/pms/debiteurs/${id}`, { method: 'DELETE' }),
+};
