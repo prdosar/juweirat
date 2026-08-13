@@ -28,4 +28,13 @@ public class MaintenanceController(AppDbContext db) : ControllerBase
         await db.SaveChangesAsync();
         return Ok(req);
     }
+    [HttpDelete("{id:long}")]
+    public async Task<IActionResult> Delete(long id)
+    {
+        var item = await db.Set<MaintenanceTicket>().FindAsync(id);
+        if (item is null) return NotFound();
+        db.Set<MaintenanceTicket>().Remove(item);
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
 }

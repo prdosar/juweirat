@@ -20,23 +20,26 @@ export const apiServices = {
       return acc;
     }, {});
   },
+  updateHousekeeping: async (id, status) => {
+    const { data } = await client.patch(`/Rooms/${id}/housekeeping?status=${status}`);
+    return mapRoomToUnit(data);
+  },
 
-  // RESERVATIONS (Folios)
-  getReservations: async () => {
-    const { data } = await client.get('/Reservations');
-    return (data || []).map(mapReservationToFolio).reduce((acc, folio) => {
+  // FOLIOS (PMS)
+  getFolios: async () => {
+    const { data } = await client.get('/Folios');
+    return (data || []).reduce((acc, folio) => {
       acc[folio.id] = folio;
       return acc;
     }, {});
   },
-  createReservation: async (folio) => {
-    const req = mapFolioToReservationRequest(folio);
-    const { data } = await client.post('/Reservations', req);
-    return mapReservationToFolio(data);
+  createFolio: async (folio) => {
+    const { data } = await client.post('/Folios', folio);
+    return data;
   },
-  updateReservationStatus: async (id, status) => {
-    const { data } = await client.patch(`/Reservations/${id}/status`, { status });
-    return mapReservationToFolio(data);
+  updateFolio: async (id, patch) => {
+    const { data } = await client.put(`/Folios/${id}`, patch);
+    return data;
   },
 
   // FACTURES
@@ -47,14 +50,13 @@ export const apiServices = {
       return acc;
     }, {});
   },
-  saveFacture: async (facture) => {
-    if (facture.id) {
-      const { data } = await client.put(`/Factures/${facture.id}`, facture);
-      return data;
-    } else {
-      const { data } = await client.post('/Factures', facture);
-      return data;
-    }
+  emitFacture: async (folioId, recipient) => {
+    const { data } = await client.post(`/Factures/Emit/${folioId}?recipient=${recipient}`);
+    return data;
+  },
+  cancelFacture: async (id) => {
+    const { data } = await client.post(`/Factures/${id}/Cancel`);
+    return data;
   },
 
   // CLOTURES
@@ -62,23 +64,15 @@ export const apiServices = {
     const { data } = await client.get('/Clotures');
     return data || [];
   },
-  createCloture: async (cloture) => {
-    const { data } = await client.post('/Clotures', cloture);
-    return data;
-  },
 
   // POSTINGS
   getPostings: async () => {
     const { data } = await client.get('/Postings');
     return data || [];
   },
-  createPosting: async (posting) => {
-    const { data } = await client.post('/Postings', posting);
-    return data;
-  },
 
-  executeCloture: async (payload) => {
-    const { data } = await client.post('/Clotures/Execute', payload);
+  executeCloture: async () => {
+    const { data } = await client.post('/Clotures/Execute');
     return data;
   },
 
@@ -94,6 +88,9 @@ export const apiServices = {
       const { data } = await client.post('/Debtors', debtor);
       return data;
     }
+  },
+  deleteDebtor: async (id) => {
+    await client.delete(`/Debtors/${id}`);
   },
 
   getMonthly: async () => {
@@ -117,5 +114,8 @@ export const apiServices = {
       const { data } = await client.post('/Maintenance', ticket);
       return data;
     }
+  },
+  deleteMaintenanceTicket: async (id) => {
+    await client.delete(`/Maintenance/${id}`);
   }
 };

@@ -114,6 +114,20 @@ public class RoomService(AppDbContext db)
         return true;
     }
 
+    public async Task<RoomDto?> UpdateHousekeepingAsync(long id, string statutMenage)
+    {
+        var room = await db.Rooms.Include(r => r.Images).Include(r => r.Amenities).FirstOrDefaultAsync(r => r.Id == id);
+        if (room is null) return null;
+
+        if (Enum.TryParse<MenageStatus>(statutMenage, true, out var s))
+        {
+            room.StatutMenage = s;
+            await db.SaveChangesAsync();
+        }
+
+        return ToDto(room);
+    }
+
     // ── Images ────────────────────────────────────────────────────────────────
 
     public async Task<RoomImageDto?> UploadImageAsync(long roomId, Stream fileStream, string extension, string uploadsRoot)

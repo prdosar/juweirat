@@ -12,11 +12,4 @@ public class PostingsController(AppDbContext db) : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await db.Set<Posting>().ToListAsync());
 
-    [HttpPost]
-    public async Task<IActionResult> Create([FromBody] Posting req)
-    {
-        db.Set<Posting>().Add(req);
-        await db.SaveChangesAsync();
-        return Ok(req);
-    }
 }

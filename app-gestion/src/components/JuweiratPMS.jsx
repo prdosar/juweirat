@@ -64,7 +64,7 @@ async function loadKey(key, fb) {
   try {
     if (key === "juweirat:config") return await apiServices.getConfig() || fb;
     if (key === "juweirat:units") { const obj = await apiServices.getRooms(); return Object.values(obj) || fb; }
-    if (key === "juweirat:folios") { const obj = await apiServices.getReservations(); return Object.values(obj) || fb; }
+    if (key === "juweirat:folios") { const obj = await apiServices.getFolios(); return Object.values(obj) || fb; }
     if (key === "juweirat:factures") { const obj = await apiServices.getFactures(); return Object.values(obj) || fb; }
     if (key === "juweirat:clotures") return await apiServices.getClotures() || fb;
     if (key === "juweirat:postings") return await apiServices.getPostings() || fb;
@@ -141,15 +141,19 @@ function Modal({ title, onClose, children, footer, wide }) {
    Domaine
    ============================================================ */
 function folioCalc(f) {
-  const nights = Math.max(0, dayDiff(f.arrival, f.departure));
-  const heb = num(f.heb) > 0 ? num(f.heb) : num(f.rate) * nights;
-  const pdjTot = num(f.pdjParJour) * num(f.pdjPrix) * nights;
-  const deb = num(f.debiteur), dep = num(f.dependances);
-  const total = heb + pdjTot + deb + dep;
-  const brut = num(f.paid) + num(f.arrhes);
-  const solde = Math.max(0, total - brut);
-  const avoir = Math.max(0, brut - total);
-  return { nights, heb, pdjTot, deb, dep, total, arrhes: num(f.arrhes), encaisse: Math.min(brut, total), solde, avoir };
+  // Now relies exclusively on backend computations
+  return { 
+    nights: f.nights || 0, 
+    heb: f.heb || 0, 
+    pdjTot: f.pdjTot || 0, 
+    deb: f.debiteur || 0, 
+    dep: f.dependances || 0, 
+    total: f.total || 0, 
+    arrhes: num(f.arrhes), 
+    encaisse: f.encaisse || 0, 
+    solde: f.solde || 0, 
+    avoir: f.avoir || 0 
+  };
 }
 const overlapNights = (a, b, d0, d1excl) => { const s = a > d0 ? a : d0; const e = b < d1excl ? b : d1excl; return Math.max(0, dayDiff(s, e)); };
 const active = (f) => f.resaStatus !== "annulée" && f.resaStatus !== "no-show";
@@ -433,12 +437,12 @@ function Bandeau({ config, units, folios, monthly, tickets }) {
 /* ============================================================
    Écran journée
    ============================================================ */
-function Journee({ units, setUnits, folios, setFolios, monthly, setMonthly, config, setTab }) {
+function Journee({ units, setUnits, folios, setFolios, monthly, setMonthly, config, setTab, updateHousekeeping }) {
   const money = useMoney();
   const { open } = useContext(FolioCtx);
   const [date, setDate] = useState(config.dateHotel);
   const updateFolio = (id, patch) => setFolios((p) => p.map((f) => (f.id === id ? { ...f, ...patch } : f)));
-  const roomDirty = (unitId) => setUnits((p) => p.map((u) => (u.id === unitId ? { ...u, statutMenage: "sale" } : u)));
+  const roomDirty = (unitId) => updateHousekeeping(unitId, "Sale");
 
   const info = useMemo(() => units.map((u) => ({ u, ...unitDayInfo(u, date, folios, monthly) })), [units, folios, monthly, date]);
   const hsN = info.filter((x) => x.status === "hs").length;
@@ -505,7 +509,7 @@ function Journee({ units, setUnits, folios, setFolios, monthly, setMonthly, conf
 /* ============================================================
    Planning visuel
    ============================================================ */
-function Planning({ units, folios, config }) {
+function Planning({ units, folios, config, updateHousekeeping }) {
   const { open } = useContext(FolioCtx);
   const [start, setStart] = useState(config.dateHotel);
   const [days, setDays] = useState(14);
@@ -552,7 +556,7 @@ function Planning({ units, folios, config }) {
 /* ============================================================
    Réservations
    ============================================================ */
-function Reservations({ units, setUnits, folios, setFolios, updateFolio, config, createResa }) {
+function Reservations({ units, setUnits, folios, setFolios, updateFolio, config, createResa, updateHousekeeping }) {
   const money = useMoney();
   const { open } = useContext(FolioCtx);
   const [scope, setScope] = useState("avenir");
@@ -565,7 +569,7 @@ function Reservations({ units, setUnits, folios, setFolios, updateFolio, config,
   const makeFolio = (u, arr, dep) => { const nights = Math.max(0, dayDiff(arr, dep)); const tf = u.tarifs ? tarifForStay(u.tarifs, nights) : null; return { unitId: u.id, tarifTier: tf ? tf.tier : "nuitée", elecIncluded: tf ? tf.elec : true, guest: "", nom: "", prenom: "", societe: "", reservataire: "", cardNumber: "", cardExpiry: "", cardHolder: "", segment: "Direct", pax: 1, arrival: arr, departure: dep, rate: u.rate, heb: 0, pdjParJour: 0, pdjPrix: 3000, debiteur: 0, dependances: 0, arrhes: 0, paid: 0, resaStatus: "confirmée", checkedIn: false, note: "", closed: false }; };
   const reserve = (u) => { const f = makeFolio(u, a, b); const nights = Math.max(0, dayDiff(a, b)); const tf = u.tarifs ? tarifForStay(u.tarifs, nights) : null; if (tf) f.rate = Math.round(tf.perNight); createResa(f); };
   const del = (id) => setFolios((p) => p.filter((f) => f.id !== id));
-  const roomDirty = (unitId) => setUnits((p) => p.map((u) => (u.id === unitId ? { ...u, statutMenage: "sale" } : u)));
+  const roomDirty = (unitId) => updateHousekeeping(unitId, "Sale");
   const t = config.dateHotel;
   const list = folios.filter((f) => (scope === "avenir" ? f.departure >= t && active(f) && !f.closed : true)).sort((x, y) => (x.arrival < y.arrival ? -1 : 1));
   const unitOf = (f) => units.find((u) => u.id === f.unitId);
@@ -630,14 +634,14 @@ function Reservations({ units, setUnits, folios, setFolios, updateFolio, config,
 /* ============================================================
    Folios / séjours
    ============================================================ */
-function Folios({ units, setUnits, folios, setFolios, updateFolio, config, createResa }) {
+function Folios({ units, setUnits, folios, setFolios, updateFolio, config, createResa, updateHousekeeping }) {
   const money = useMoney();
   const { open } = useContext(FolioCtx);
   const t = config.dateHotel;
   const [q, setQ] = useState("");
   const [dsej, setDsej] = useState("");
   const del = (id) => setFolios((p) => p.filter((f) => f.id !== id));
-  const roomDirty = (unitId) => setUnits((p) => p.map((u) => (u.id === unitId ? { ...u, statutMenage: "sale" } : u)));
+  const roomDirty = (unitId) => updateHousekeeping(unitId, "Sale");
   const unitOf = (f) => units.find((u) => u.id === f.unitId);
   const checkIn = (f) => { const u = unitOf(f); if (!clearForCheckin(u)) return; updateFolio(f.id, { checkedIn: true, resaStatus: f.resaStatus === "option" ? "confirmée" : f.resaStatus, arrival: f.arrival > t ? t : f.arrival }); };
   const checkOut = (f) => { if (!settledForCheckout(f)) return; updateFolio(f.id, { closed: true, checkoutDate: t }); roomDirty(f.unitId); };
@@ -691,12 +695,18 @@ function Folios({ units, setUnits, folios, setFolios, updateFolio, config, creat
 /* ============================================================
    Gouvernante (statut ménage — 2e axe)
    ============================================================ */
-function Gouvernante({ units, setUnits, folios, monthly, config, applyPlan }) {
+function Gouvernante({ units, setUnits, folios, monthly, config, applyPlan, updateHousekeeping }) {
   const D = config.dateHotel;
   const set = (id, patch) => setUnits((p) => p.map((u) => (u.id === id ? { ...u, ...patch } : u)));
-  const toggleHS = (u) => set(u.id, u.hs ? { hs: false, statutMenage: "sale" } : { hs: true });
-  const clean = (u) => set(u.id, { statutMenage: "propre", lastCleaned: config.dateHotel });
-  const soil = (u) => set(u.id, { statutMenage: "sale" });
+  const toggleHS = async (u) => {
+    updateHousekeeping(u.id, u.hs ? "Sale" : "HS");
+  };
+  const clean = async (u) => { 
+    updateHousekeeping(u.id, "Propre");
+  };
+  const soil = async (u) => { 
+    updateHousekeeping(u.id, "Sale");
+  };
   const state = (u) => { const di = unitDayInfo(u, D, folios, monthly); const occupe = di.status === "occ"; const depart = folios.some((f) => f.unitId === u.id && f.departure === D && active(f) && !f.closed); const due = occupe && menageDue(u, folios, D); const menage = ((u.statutMenage || "propre") === "sale" || due) ? "sale" : "propre"; let statut, color, bg; if (u.hs) { statut = "Hors service"; color = C.warn; bg = "repeating-linear-gradient(45deg,#F5ECD8,#F5ECD8 7px,#ECDFC0 7px,#ECDFC0 14px)"; } else if (occupe) { statut = "Occupée " + (menage === "sale" ? "Sale" : "Propre"); color = menage === "sale" ? C.danger : C.green2; bg = menage === "sale" ? "#FBEDEA" : "#EAF4EC"; } else { statut = "Libre " + (menage === "sale" ? "Sale" : "Propre"); color = menage === "sale" ? C.danger : C.ok; bg = menage === "sale" ? "#FBEDEA" : "#F4FAF5"; } const tache = u.hs ? "" : depart ? "Départ" : due ? "Recouche · à rafraîchir" : occupe ? "Recouche" : ""; return { occupe, menage, due, statut, color, bg, tache }; };
   const aNettoyer = units.filter((u) => needsClean(u, folios, D)).length;
   const propres = units.filter((u) => !u.hs && !needsClean(u, folios, D)).length;
@@ -825,11 +835,11 @@ function Stats({ units, folios, monthly }) {
 /* ============================================================
    Clôture journalière
    ============================================================ */
-function Cloture({ config, setConfig, units, setUnits, folios, setFolios, updateFolio, monthly, postings, setPostings, clotures, setClotures }) {
+function Cloture({ config, setConfig, units, setUnits, folios, setFolios, updateFolio, monthly, postings, setPostings, clotures, setClotures, updateHousekeeping }) {
   const money = useMoney();
   const [step, setStep] = useState(1);
   const D = config.dateHotel;
-  const roomDirty = (unitId) => setUnits((p) => p.map((u) => (u.id === unitId ? { ...u, statutMenage: "sale" } : u)));
+  const roomDirty = (unitId) => updateHousekeeping(unitId, "Sale");
   const alreadyClosed = clotures.some((c) => c.dateHotel === D);
 
   const pendingArrivals = folios.filter((f) => f.arrival === D && !f.checkedIn && active(f) && !f.closed);
@@ -847,18 +857,22 @@ function Cloture({ config, setConfig, units, setUnits, folios, setFolios, update
   const ind = dayIndicators(units, folios, monthly, D);
 
   const validate = async () => {
-    const stamp = new Date().toISOString();
-    const lines = previewLines.map((l, i) => ({ dateHotel: D, ...l, libelle: l.famille + " – " + frDate(D), horodatage: stamp }));
     try {
-      const cloture = { dateHotel: D, executedAt: stamp, indicators: ind, nbArrivals: folios.filter((f) => f.arrival === D && active(f)).length, nbDeparts: folios.filter((f) => f.departure === D && f.closed).length, nbNoShow: folios.filter((f) => f.arrival === D && f.resaStatus === "no-show").length, nbLignes: lines.length, montant: totalPassage };
+      const response = await apiServices.executeCloture();
       
-      await apiServices.executeCloture({ cloture, postings: lines });
+      // Reload postings and clotures to get the backend-generated data
+      const newPostings = await apiServices.getPostings();
+      const newClotures = await apiServices.getClotures();
       
-      setPostings((p) => [...p, ...lines]);
-      setClotures((p) => [...p, cloture]);
+      setPostings(newPostings || []);
+      setClotures(newClotures || []);
+      
       setConfig((c) => ({ ...c, dateHotel: addDays(D, 1) }));
       setStep(5);
-    } catch (e) { console.error(e); alert("Erreur d'API lors de la clôture."); }
+    } catch (e) { 
+      console.error(e); 
+      alert("Erreur d'API lors de la clôture: " + (e.response?.data?.error || "Erreur interne")); 
+    }
   };
 
   const StepHead = ({ n, title, done, blocked }) => (<div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}><div style={{ width: 26, height: 26, borderRadius: 13, background: done ? C.ok : blocked ? C.danger : C.green, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>{n}</div><div style={{ fontWeight: 800, color: C.green }}>{title}</div></div>);
@@ -934,13 +948,16 @@ function ClotureHistory({ clotures, money }) {
 /* ============================================================
    Débiteurs & créances
    ============================================================ */
-function Debiteurs({ units, monthly, debtors, setDebtors, updateMonthly }) {
+function Debiteurs({ units, monthly, debtors, saveDebtor, deleteDebtor, updateMonthly }) {
   const money = useMoney();
   const arr = useMemo(() => arrears(units, monthly), [units, monthly]);
   const arrTotal = arr.reduce((s, a) => s + a.impaye, 0);
-  const add = () => setDebtors((p) => [{ id: Date.now(), client: "", label: "", dueDate: addDays(today(), 30), amount: 0, paid: 0 }, ...p]);
-  const upd = (id, patch) => setDebtors((p) => p.map((d) => (d.id === id ? { ...d, ...patch } : d)));
-  const del = (id) => setDebtors((p) => p.filter((d) => d.id !== id));
+  const add = () => saveDebtor({ client: "", label: "", dueDate: addDays(today(), 30), amount: 0, paid: 0 });
+  const upd = (id, patch) => {
+    const d = debtors.find((x) => x.id === id);
+    if (d) saveDebtor({ ...d, ...patch });
+  };
+  const del = (id) => deleteDebtor(id);
   const t = today();
   const other = debtors.map((d) => { const rest = num(d.amount) - num(d.paid); const overdue = d.dueDate < t && rest > 0.5; return { ...d, rest, overdue, daysLate: overdue ? Math.round((new Date(t) - new Date(d.dueDate)) / 86400000) : 0 }; });
   const otherTotal = other.reduce((s, d) => s + Math.max(0, d.rest), 0);
@@ -1145,17 +1162,17 @@ function MaintenanceModal({ draft, isNew, units, onSave, onDelete, onClose }) {
   </Modal>);
 }
 
-function Maintenance({ tickets, setTickets, units, setUnits, config }) {
+function Maintenance({ tickets, saveMaintenanceTicket, deleteMaintenanceTicket, updateHousekeeping, units, config }) {
   const money = useMoney();
   const [edit, setEdit] = useState(null);
   const [fStatus, setFStatus] = useState("actifs");
   const [fUnit, setFUnit] = useState("tous");
-  const blank = () => ({ id: Date.now(), createdAt: config.dateHotel, zone: "logement", unitId: units[0] ? units[0].id : "", spot: "", category: "Plomberie", priority: "normale", title: "", description: "", tech: "", cost: 0, status: "ouvert", resolvedAt: "", note: "" });
-  const save = (tk, putHS) => { setTickets((p) => (p.some((x) => x.id === tk.id) ? p.map((x) => (x.id === tk.id ? tk : x)) : [tk, ...p])); if (putHS && tk.zone === "logement" && tk.unitId) setUnits((p) => p.map((u) => (u.id === tk.unitId ? { ...u, hs: true } : u))); setEdit(null); };
-  const del = (id) => { setTickets((p) => p.filter((x) => x.id !== id)); setEdit(null); };
-  const setStatus = (tk, status) => setTickets((p) => p.map((x) => (x.id === tk.id ? { ...x, status, resolvedAt: status === "resolu" ? config.dateHotel : "" } : x)));
-  const putHS = (unitId) => setUnits((p) => p.map((u) => (u.id === unitId ? { ...u, hs: true } : u)));
-  const backInService = (unitId) => setUnits((p) => p.map((u) => (u.id === unitId ? { ...u, hs: false, statutMenage: "sale" } : u)));
+  const blank = () => ({ createdAt: config.dateHotel, zone: "logement", unitId: units[0] ? units[0].id : "", spot: "", category: "Plomberie", priority: "normale", title: "", description: "", tech: "", cost: 0, status: "ouvert", resolvedAt: "", note: "" });
+  const save = (tk, putHS_flag) => { saveMaintenanceTicket(tk); if (putHS_flag && tk.zone === "logement" && tk.unitId) updateHousekeeping(tk.unitId, "HS"); setEdit(null); };
+  const del = (id) => { deleteMaintenanceTicket(id); setEdit(null); };
+  const setStatus = (tk, status) => saveMaintenanceTicket({ ...tk, status, resolvedAt: status === "resolu" ? config.dateHotel : "" });
+  const putHS = (unitId) => updateHousekeeping(unitId, "HS");
+  const backInService = (unitId) => updateHousekeeping(unitId, "Sale");
   const unitOf = (t) => units.find((u) => u.id === t.unitId);
   const isHS = (t) => { const u = unitOf(t); return u && u.hs; };
   const locLabel = (t) => (t.zone === "commun" ? (t.spot ? "Communs · " + t.spot : "Parties communes") : (unitOf(t) ? unitOf(t).label : "—"));
@@ -1396,61 +1413,133 @@ export default function JuweiratPMS() {
   const [openFolioId, setOpenFolioId] = useState(null);
   const [openFactureId, setOpenFactureId] = useState(null);
 
-  useEffect(() => { (async () => {
-    const cfg = await loadKey(KEYS.config, DEFAULT_CONFIG); if (!cfg.dateHotel) cfg.dateHotel = today();
-    setConfig(cfg);
-    const savedU = await loadKey(KEYS.units, genUnits());
-    if (savedU.some((u) => u.floor != null)) { const mapped = savedU.map((u) => { const tar = tarifsForRoom(u.roomNo || u.id, u.type); return { statutMenage: "propre", ...u, mode: "court", gamme: u.gamme || (TARIFS[u.roomNo || u.id] && TARIFS[u.roomNo || u.id].gamme) || "standard", tarifs: u.tarifs || { nuit: tar.nuit, n15: tar.n15, n30: tar.n30 }, rate: u.tarifs ? u.rate : tar.nuit }; }); const have = new Set(mapped.map((u) => u.id)); const missing = genUnits().filter((g) => !have.has(g.id)); setUnits([...mapped, ...missing]); } else setUnits(genUnits());
-    setFolios(await loadKey(KEYS.folios, []));
-    setMonthly(await loadKey(KEYS.monthly, {}));
-    setDebtors(await loadKey(KEYS.debtors, []));
-    setPostings(await loadKey(KEYS.postings, []));
-    setClotures(await loadKey(KEYS.clotures, []));
-    setFactures(await loadKey(KEYS.factures, []));
-    setTickets(await loadKey(KEYS.maintenance, []));
-    setLoaded(true);
-  })(); }, []);
-  useEffect(() => { if (loaded) saveKey(KEYS.config, config); }, [config, loaded]);
-  useEffect(() => { if (loaded) saveKey(KEYS.units, units); }, [units, loaded]);
-  useEffect(() => { if (loaded) saveKey(KEYS.folios, folios); }, [folios, loaded]);
-  useEffect(() => { if (loaded) saveKey(KEYS.monthly, monthly); }, [monthly, loaded]);
-  useEffect(() => { if (loaded) saveKey(KEYS.debtors, debtors); }, [debtors, loaded]);
-  useEffect(() => { if (loaded) saveKey(KEYS.postings, postings); }, [postings, loaded]);
-  useEffect(() => { if (loaded) saveKey(KEYS.clotures, clotures); }, [clotures, loaded]);
-  useEffect(() => { if (loaded) saveKey(KEYS.factures, factures); }, [factures, loaded]);
-  useEffect(() => { if (loaded) saveKey(KEYS.maintenance, tickets); }, [tickets, loaded]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const cfg = await apiServices.getConfig(); 
+        if (!cfg || !cfg.dateHotel) cfg.dateHotel = today();
+        setConfig(cfg);
+        
+        const apiUnits = await apiServices.getRooms();
+        const savedU = Object.values(apiUnits);
+        if (savedU.length > 0) { 
+          setUnits(savedU); 
+        } else {
+          setUnits(genUnits());
+        }
 
-  const updateMonthly = (ym, id, patch) => setMonthly((p) => ({ ...p, [ym]: { ...(p[ym] || {}), [id]: { ...((p[ym] || {})[id] || {}), ...patch } } }));
+        const apiFolios = await apiServices.getFolios();
+        setFolios(Object.values(apiFolios));
+
+        setMonthly(await apiServices.getMonthly() || {});
+        setDebtors(await apiServices.getDebtors() || []);
+        setPostings(await apiServices.getPostings() || []);
+        setClotures(await apiServices.getClotures() || []);
+        
+        const apiFactures = await apiServices.getFactures();
+        setFactures(Object.values(apiFactures));
+        
+        setTickets(await apiServices.getMaintenanceTickets() || []);
+        setLoaded(true);
+      } catch (e) {
+        console.error("Initial load failed", e);
+      }
+    })();
+  }, []);
+
+  const updateMonthly = async (ym, id, patch) => {
+    const updatedState = { ...monthly, [ym]: { ...(monthly[ym] || {}), [id]: { ...((monthly[ym] || {})[id] || {}), ...patch } } };
+    setMonthly(updatedState);
+    try {
+      await apiServices.saveMonthly(updatedState);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const updateHousekeeping = async (unitId, status) => {
+    const isHS = status === "HS";
+    setUnits((p) => p.map((u) => (u.id === unitId ? { ...u, hs: isHS, statutMenage: isHS ? u.statutMenage : status.toLowerCase(), lastCleaned: status === 'Propre' ? config.dateHotel : u.lastCleaned } : u)));
+    try {
+      await apiServices.updateHousekeeping(unitId, status);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const saveDebtor = async (debtor) => {
+    try {
+      const saved = await apiServices.saveDebtor(debtor);
+      setDebtors((p) => {
+        if (p.find((x) => x.id === saved.id)) return p.map((x) => (x.id === saved.id ? saved : x));
+        return [saved, ...p];
+      });
+      return saved;
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const deleteDebtor = async (id) => {
+    try {
+      await apiServices.deleteDebtor(id);
+      setDebtors((p) => p.filter((x) => x.id !== id));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const saveMaintenanceTicket = async (ticket) => {
+    try {
+      const saved = await apiServices.saveMaintenanceTicket(ticket);
+      setTickets((p) => {
+        if (p.find((x) => x.id === saved.id)) return p.map((x) => (x.id === saved.id ? saved : x));
+        return [saved, ...p];
+      });
+      return saved;
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const deleteMaintenanceTicket = async (id) => {
+    try {
+      await apiServices.deleteMaintenanceTicket(id);
+      setTickets((p) => p.filter((x) => x.id !== id));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const updateFolio = async (id, patch) => {
+    const originalFolio = folios.find((f) => f.id === id);
     // Optimistic UI update
     setFolios((p) => p.map((f) => (f.id === id ? { ...f, ...patch } : f)));
     
-    // API Call to sync with .NET backend if it's a status change
     try {
-      if (patch.checkedIn === true || patch.resaStatus === "confirmée" || patch.closed === true || patch.resaStatus === "no-show") {
-        const statusMap = {
-          "confirmée": "Confirmed",
-          "en cours": "CheckedIn",
-          "cloturé": "Completed",
-          "no-show": "Cancelled"
-        };
-        let apiStatus = patch.closed ? "Completed" : patch.checkedIn ? "CheckedIn" : statusMap[patch.resaStatus];
-        if (apiStatus) await apiServices.updateReservationStatus(id, apiStatus);
+      if (originalFolio) {
+        const { error, ...updatedFolio } = await apiServices.updateFolio(id, { ...originalFolio, ...patch });
+        // Use backend returned object to refresh computed fields (Total, Solde, Nights)
+        setFolios((p) => p.map((f) => (f.id === id ? updatedFolio : f)));
       }
-    } catch(e) { console.error("Erreur API updateFolio", e); }
+    } catch(e) { 
+      console.error("Erreur API updateFolio", e);
+      alert(e.response?.data?.error || "Erreur de modification");
+      setFolios((p) => p.map((f) => (f.id === id ? originalFolio : f)));
+    }
   };
   const openFolio = (id) => setOpenFolioId(id);
   const openFacture = (id) => setOpenFactureId(id);
   const createResa = async (partial) => {
     try {
       const f = { ...partial, number: "TMP", id: 0 };
-      const createdFolio = await apiServices.createReservation(f);
+      const createdFolio = await apiServices.createFolio(f);
       setFolios((p) => [createdFolio, ...p]);
       setOpenFolioId(createdFolio.id);
       return createdFolio;
     } catch(e) {
       console.error("Erreur de création réservation API", e);
-      alert("Erreur de communication avec le serveur backend.");
+      alert(e.response?.data?.error || "Erreur de communication avec le serveur backend.");
     }
   };
   const factureSnapshot = (folio, recipient) => {
@@ -1472,19 +1561,33 @@ export default function JuweiratPMS() {
   };
   const printFacture = (fac, force) => { const dup = force !== undefined ? force : ((fac.printCount || 0) >= 1); downloadText(fac.number + ".html", buildFactureHTML(fac, config, dup)); setFactures((p) => p.map((x) => x.id === fac.id ? { ...x, printCount: (x.printCount || 0) + 1 } : x)); };
   const emitFacture = async (folio, recipient = "client") => {
-    let fac = factures.find((x) => x.id === folio.factureId && x.status !== "annulée");
-    if (!fac) {
+    try {
+      const fac = await apiServices.emitFacture(folio.id, recipient);
+      setFactures((p) => [fac, ...p.filter(x => x.id !== fac.id)]);
       updateFolio(folio.id, { factureId: fac.id });
+      printFacture(fac, false);
+      return fac;
+    } catch (e) {
+      console.error(e);
+      alert("Erreur: " + (e.response?.data?.error || "Impossible d'émettre la facture"));
     }
-    printFacture(fac);
-    return fac;
   };
 
-  const cancelFacture = (fac) => { updateFacture(fac.id, { status: "annulée" }); const f = folios.find((y) => y.id === fac.folioId); if (f && f.factureId === fac.id) updateFolio(f.id, { factureId: null }); };
+  const cancelFacture = async (fac) => {
+    try {
+      await apiServices.cancelFacture(fac.id);
+      setFactures((p) => p.map((x) => x.id === fac.id ? { ...x, status: "annulée" } : x));
+      const f = folios.find((y) => y.id === fac.folioId);
+      if (f && f.factureId === fac.id) updateFolio(f.id, { factureId: null });
+    } catch (e) {
+      console.error(e);
+      alert("Erreur lors de l'annulation de la facture.");
+    }
+  };
   const applyPlan = () => { if (window.confirm("Charger le plan réel de l'immeuble Juweirat (étages 2, 4, 5 et 6 — 19 logements) ? La liste des logements sera remplacée ; les réservations liées aux anciens logements devront être réaffectées.")) setUnits(genUnits()); };
-  const transferDebiteur = (folio) => {
+  const transferDebiteur = async (folio) => {
     const c = folioCalc(folio); if (c.solde <= 0.5) return;
-    setDebtors((p) => [{ id: Date.now(), client: folio.societe || folio.guest || "", label: "Solde folio " + folio.number, dueDate: addDays(config.dateHotel, 30), amount: c.solde, paid: 0 }, ...p]);
+    await saveDebtor({ client: folio.societe || folio.guest || "", label: "Solde folio " + folio.number, dueDate: addDays(config.dateHotel, 30), amount: c.solde, paid: 0 });
     updateFolio(folio.id, { paid: num(folio.paid) + c.solde, transferredDebiteur: true });
     window.alert("Solde transféré en débiteur. Le folio est soldé, le check-out est désormais possible.");
   };
@@ -1520,16 +1623,16 @@ export default function JuweiratPMS() {
         </header>
         <main style={{ flex: 1, padding: "26px clamp(16px,3vw,34px)", overflow: "auto", minWidth: 0 }}>
           <Bandeau config={config} units={units} folios={folios} monthly={monthly} tickets={tickets} />
-          {tab === "journee" && <Journee {...{ units, setUnits, folios, setFolios, monthly, setMonthly, config, setTab }} />}
-          {tab === "planning" && <Planning {...{ units, folios, updateFolio, config }} />}
-          {tab === "resa" && <Reservations {...{ units, setUnits, folios, setFolios, updateFolio, config, createResa }} />}
-          {tab === "folios" && <Folios {...{ units, setUnits, folios, setFolios, updateFolio, config, createResa }} />}
-          {tab === "gouvernante" && <Gouvernante {...{ units, setUnits, folios, monthly, config, applyPlan }} />}
-          {tab === "maintenance" && <Maintenance {...{ tickets, setTickets, units, setUnits, config }} />}
+          {tab === "journee" && <Journee {...{ units, setUnits, folios, setFolios, monthly, setMonthly, config, setTab, updateHousekeeping }} />}
+          {tab === "planning" && <Planning {...{ units, folios, updateFolio, config, updateHousekeeping }} />}
+          {tab === "resa" && <Reservations {...{ units, setUnits, folios, setFolios, updateFolio, config, createResa, updateHousekeeping }} />}
+          {tab === "folios" && <Folios {...{ units, setUnits, folios, setFolios, updateFolio, config, createResa, updateHousekeeping }} />}
+          {tab === "gouvernante" && <Gouvernante {...{ units, setUnits, folios, monthly, config, applyPlan, updateHousekeeping }} />}
+          {tab === "maintenance" && <Maintenance {...{ tickets, saveMaintenanceTicket, deleteMaintenanceTicket, updateHousekeeping, units, config }} />}
           {tab === "stats" && <Stats {...{ units, folios, monthly }} />}
           {tab === "edition" && <Edition {...{ units, folios, tickets, config }} />}
-          {tab === "debiteurs" && <Debiteurs {...{ units, monthly, debtors, setDebtors, updateMonthly }} />}
-          {tab === "cloture" && <Cloture {...{ config, setConfig, units, setUnits, folios, setFolios, updateFolio, monthly, postings, setPostings, clotures, setClotures }} />}
+          {tab === "debiteurs" && <Debiteurs {...{ units, monthly, debtors, saveDebtor, deleteDebtor, updateMonthly }} />}
+          {tab === "cloture" && <Cloture {...{ config, setConfig, units, setUnits, folios, setFolios, updateFolio, monthly, postings, setPostings, clotures, setClotures, updateHousekeeping }} />}
           {tab === "factures" && <FacturesTab {...{ factures, folios, config, openFacture, cancelFacture, printFacture }} />}
           {tab === "config" && <Params {...{ config, setConfig, units }} />}
         </main>

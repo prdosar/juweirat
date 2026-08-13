@@ -1,38 +1,38 @@
-using Juweirat.Domain.Entities;
-using Juweirat.Infrastructure.Data;
+using Juweirat.Infrastructure.Services;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class FacturesController(AppDbContext db) : ControllerBase
+public class FacturesController(FactureService factureService) : ControllerBase
 {
     [HttpGet]
-    public async Task<IActionResult> GetAll() => Ok(await db.Set<Facture>().ToListAsync());
+    public async Task<IActionResult> GetAll()
+    {
+        return Ok(await factureService.GetAllAsync());
+    }
 
     [HttpGet("{id:long}")]
     public async Task<IActionResult> GetById(long id)
     {
-        var item = await db.Set<Facture>().FindAsync(id);
+        var item = await factureService.GetByIdAsync(id);
         return item is null ? NotFound() : Ok(item);
     }
 
-    [HttpPost]
-    public async Task<IActionResult> Create([FromBody] Facture req)
+    [HttpPost("Emit/{folioId:long}")]
+    public async Task<IActionResult> Emit(long folioId, [FromQuery] string recipient = "client")
     {
-        db.Set<Facture>().Add(req);
-        await db.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetById), new { id = req.Id }, req);
+        var (facture, error) = await factureService.EmitFactureAsync(folioId, recipient);
+        if (error != null) return BadRequest(new { error });
+        return Ok(facture);
     }
 
-    [HttpPut("{id:long}")]
-    public async Task<IActionResult> Update(long id, [FromBody] Facture req)
+    [HttpPost("{id:long}/Cancel")]
+    public async Task<IActionResult> Cancel(long id)
     {
-        if (id != req.Id) return BadRequest();
-        db.Entry(req).State = EntityState.Modified;
-        await db.SaveChangesAsync();
-        return Ok(req);
+        var (facture, error) = await factureService.CancelFactureAsync(id);
+        if (error != null) return BadRequest(new { error });
+        return Ok(facture);
     }
 }

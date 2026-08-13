@@ -92,4 +92,11 @@ public class RoomsController(RoomService roomService, IWebHostEnvironment env) :
         var ok = await roomService.SetCoverAsync(id, imageId);
         return ok ? NoContent() : NotFound();
     }
+    // [Authorize]
+    [HttpPatch("{id:long}/housekeeping")]
+    public async Task<IActionResult> UpdateHousekeeping(long id, [FromQuery] string status)
+    {
+        var room = await roomService.UpdateHousekeepingAsync(id, status);
+        return room is null ? NotFound() : Ok(room);
+    }
 }

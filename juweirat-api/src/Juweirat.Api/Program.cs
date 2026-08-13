@@ -21,6 +21,9 @@ builder.Services.AddScoped<AmenityService>();
 builder.Services.AddScoped<ClientService>();
 builder.Services.AddScoped<ReservationService>();
 builder.Services.AddScoped<PaymentService>();
+builder.Services.AddScoped<FolioService>();
+builder.Services.AddScoped<NightAuditService>();
+builder.Services.AddScoped<FactureService>();
 
 // ─── Authentication / JWT ────────────────────────────────────────────────────
 var jwtSection = builder.Configuration.GetSection("Jwt");
