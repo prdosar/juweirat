@@ -28,11 +28,13 @@ function UnitCard({ unit, onUpdate }: { unit: UnitDto; onUpdate: () => void }) {
   }
 
   const propre = unit.statutMenage === 'Propre';
+  const occupe = !!unit.currentFolioNumber;
+
   const bg = unit.horsService
     ? 'bg-charcoal/8 border-charcoal/20'
-    : propre
-      ? 'bg-green/6 border-green/20'
-      : 'bg-red-50 border-red-200';
+    : occupe
+      ? (propre ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200')
+      : (propre ? 'bg-green/6 border-green/20' : 'bg-red-50 border-red-200');
 
   return (
     <div className={`rounded-xl border p-3.5 space-y-2.5 ${bg}`}>
@@ -49,7 +51,7 @@ function UnitCard({ unit, onUpdate }: { unit: UnitDto; onUpdate: () => void }) {
       </div>
 
       {unit.currentFolioNumber && (
-        <p className="text-[11px] text-green-dark font-mono bg-green/10 px-2 py-0.5 rounded">
+        <p className={`text-[11px] font-mono px-2 py-0.5 rounded w-fit ${propre ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'}`}>
           Occupé · {unit.currentFolioNumber}
         </p>
       )}
@@ -99,10 +101,11 @@ export default function GouvernantePage() {
             {/* KPI */}
             <div className="flex gap-3 flex-wrap">
               {[
-                { label: 'Propres', value: units.filter(u => u.statutMenage === 'Propre' && !u.horsService).length, cls: 'bg-green/10 border-green/20 text-green-dark' },
-                { label: 'À nettoyer', value: toClean, cls: toClean > 0 ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-gray-100' },
+                { label: 'Propres (Dispo)', value: units.filter(u => u.statutMenage === 'Propre' && !u.horsService && !u.currentFolioNumber).length, cls: 'bg-green/10 border-green/20 text-green-dark' },
+                { label: 'À nettoyer (Dispo)', value: units.filter(u => u.statutMenage === 'Sale' && !u.horsService && !u.currentFolioNumber).length, cls: units.filter(u => u.statutMenage === 'Sale' && !u.horsService && !u.currentFolioNumber).length > 0 ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-gray-100' },
+                { label: 'Occupés (Recouche)', value: units.filter(u => u.currentFolioNumber && u.statutMenage === 'Sale').length, cls: units.filter(u => u.currentFolioNumber && u.statutMenage === 'Sale').length > 0 ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-white border-gray-100' },
+                { label: 'Occupés (Propre)', value: units.filter(u => u.currentFolioNumber && u.statutMenage === 'Propre').length, cls: units.filter(u => u.currentFolioNumber && u.statutMenage === 'Propre').length > 0 ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-100' },
                 { label: 'Hors service', value: hs, cls: hs > 0 ? 'bg-charcoal/8 border-charcoal/20 text-charcoal/60' : 'bg-white border-gray-100' },
-                { label: 'Occupés', value: units.filter(u => u.currentFolioNumber).length, cls: 'bg-white border-gray-100' },
               ].map(({ label, value, cls }) => (
                 <div key={label} className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border text-sm ${cls}`}>
                   <span className="opacity-60">{label}</span>

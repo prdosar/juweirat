@@ -61,8 +61,8 @@ export default function ClientFormPage() {
         notes: form.notes || null,
       };
       if (isNew) {
-        const created = await clients.create(body);
-        router.push(`/clients/${created.id}`);
+        await clients.create(body);
+        router.push('/clients');
       } else {
         await clients.update(Number(id), body);
         router.push('/clients');
