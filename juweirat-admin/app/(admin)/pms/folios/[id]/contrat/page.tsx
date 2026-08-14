@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Printer, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Printer, AlertTriangle, FileText } from 'lucide-react';
 import { pmsFolios } from '@/lib/pms';
 import type { ContractDataDto } from '@/lib/pmsTypes';
 
@@ -59,7 +59,7 @@ function numberToWords(n: number): string {
 }
 
 function fmt(n: number): string {
-  return new Intl.NumberFormat('fr-FR').format(n);
+  return new Intl.NumberFormat('fr-FR').format(Math.round(n));
 }
 
 function capitalize(s: string): string {
@@ -69,12 +69,14 @@ function capitalize(s: string): string {
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatDateFr(iso: string): string {
+  if (!iso) return '………………………………';
   return new Date(iso).toLocaleDateString('fr-FR', {
     day: 'numeric', month: 'long', year: 'numeric',
   });
 }
 
 function formatDateOrdinal(iso: string): string {
+  if (!iso) return '………………………………';
   const d = new Date(iso);
   const day = d.getDate();
   const months = [
@@ -89,20 +91,21 @@ function floorLabel(f: number): string {
   const ordinals = ['','premier (1ᵉʳ)','deuxième (2ᵉ)','troisième (3ᵉ)',
     'quatrième (4ᵉ)','cinquième (5ᵉ)','sixième (6ᵉ)','septième (7ᵉ)',
     'huitième (8ᵉ)','neuvième (9ᵉ)','dixième (10ᵉ)'];
-  return ordinals[f] ?? `${f}ᵉ`;
+  return ordinals[f] ? `${ordinals[f]} étage` : `${f}ᵉ étage`;
 }
 
 function compositionLabel(pmsType: string | null): string {
   switch (pmsType?.toUpperCase()) {
-    case 'T1': return 'un (01) studio comprenant un séjour-chambre, une kitchenette, ainsi que les pièces d\'eau et sanitaires qui y sont attachés';
-    case 'T2': return 'deux (02) chambres, d\'un salon, d\'une cuisine, ainsi que des pièces d\'eau et sanitaires qui y sont attachés';
-    case 'T3': return 'trois (03) chambres, d\'un salon, d\'une salle à manger, d\'une cuisine, ainsi que des pièces d\'eau et sanitaires';
-    case 'T4': return 'quatre (04) chambres, d\'un grand salon, d\'une salle à manger, d\'une cuisine, ainsi que des pièces d\'eau, sanitaires et d\'une terrasse';
-    default:   return 'un appartement meublé';
+    case 'T1': return 'un (01) studio comprenant un séjour-chambre, une kitchenette, ainsi que les pièces d’eau et sanitaires qui y sont attachés';
+    case 'T2': return 'deux (02) chambres, d’un salon, d’une cuisine, ainsi que des pièces d’eau, sanitaires qui y sont attachées';
+    case 'T3': return 'trois (03) chambres, d’un salon, d’une salle à manger, d’une cuisine, ainsi que des pièces d’eau et sanitaires qui y sont attachées';
+    case 'T4': return 'quatre (04) chambres, d’un grand salon, d’une salle à manger, d’une cuisine, ainsi que des pièces d’eau, sanitaires et d’une terrasse';
+    default:   return 'deux (02) chambres, d’un salon, d’une cuisine, ainsi que des pièces d’eau, sanitaires qui y sont attachées';
   }
 }
 
 function durationLabel(nights: number): string {
+  if (nights >= 360) return 'un (01) an';
   const months = Math.floor(nights / 30);
   const days = nights % 30;
   const monthWord = (n: number) => n === 1
@@ -111,366 +114,471 @@ function durationLabel(nights: number): string {
   const dayWord = (n: number) => n === 1
     ? 'un (01) jour'
     : `${numberToWords(n)} (${n}) jours`;
-  if (days === 0) return monthWord(months);
+  if (days === 0 && months > 0) return monthWord(months);
   if (months === 0) return dayWord(days);
   return `${monthWord(months)} et ${dayWord(days)}`;
 }
 
-// ── Contract HTML component ──────────────────────────────────────────────────
+// Inline filled value helper
+function FieldVal({ val, placeholder }: { val?: string | null; placeholder?: string }) {
+  if (val && val.trim()) {
+    return <span className="font-semibold text-black underline decoration-gray-400 decoration-1 underline-offset-2">{val}</span>;
+  }
+  return <span className="text-gray-400 select-all font-mono text-[9pt]">{placeholder || '………………………………………………'}</span>;
+}
 
-function BailContract({ d }: { d: ContractDataDto }) {
-  const monthly   = d.monthlyLoyer;
+// ── Main Contract View ───────────────────────────────────────────────────────
+
+function ContractDocument({ d }: { d: ContractDataDto }) {
+  const monthly   = d.monthlyLoyer || 650000;
   const quarterly = monthly * 3;
   const annual    = monthly * 12;
 
   const isCompany = !!d.societe;
 
   return (
-    <div id="contract-body" style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: '10pt', lineHeight: '1.6', color: '#1a1a1a' }}>
-
-      {/* Title */}
-      <div style={{ textAlign: 'center', marginBottom: '20pt', paddingBottom: '12pt', borderBottom: '2px solid #333' }}>
-        <p style={{ fontSize: '14pt', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1pt', marginBottom: '4pt' }}>
-          Contrat de bail à usage d&apos;habitation
+    <div className="contract-body text-black bg-white font-serif text-[10pt] leading-[1.65] text-justify max-w-[210mm] mx-auto p-0 print:max-w-none">
+      
+      {/* ── Entête / Titre ── */}
+      <div className="text-center mb-6 pb-4 border-b-2 border-black">
+        <h1 className="text-[14pt] font-extrabold uppercase tracking-wide mb-1 font-serif">
+          Contrat de bail à usage d’habitation
+        </h1>
+        <p className="text-[10.5pt] italic text-gray-800 mb-1">
+          Location meublée — Immeuble « JUWEIRAT », quartier GBOSSIME - 08BP: 80859, Lomé (Togo)
         </p>
-        <p style={{ fontSize: '11pt', fontStyle: 'italic', marginBottom: '4pt' }}>
-          Location meublée — Immeuble « JUWEIRAT »
-        </p>
-        <p style={{ fontSize: '9pt', color: '#555' }}>
-          Quartier GBOSSIME — 08BP : 80859, Lomé (Togo) · Réf. folio {d.folioNumber}
+        <p className="text-[8.5pt] text-gray-500 font-sans tracking-wider uppercase">
+          Réf. Folio : {d.folioNumber}
         </p>
       </div>
 
-      {/* Legal basis */}
-      <p style={{ fontSize: '9pt', fontStyle: 'italic', textAlign: 'center', marginBottom: '14pt', color: '#555' }}>
-        Le présent contrat est régi par le Décret n°2022-001/PR du 5 janvier 2022 portant réglementation de la caution,
-        de la garantie de loyer et du bail d&apos;habitation au Togo, ainsi que par les dispositions du Code civil togolais
-        relatives au contrat de louage (articles 1708 et suivants).
+      {/* ── Visa légal ── */}
+      <p className="text-[9pt] italic text-center mb-6 text-gray-700 px-4">
+        Le présent contrat est régi par le <strong>Décret n°2022-001/PR du 5 janvier 2022</strong> portant réglementation de la caution, de la garantie de loyer et du bail d’habitation au Togo, ainsi que par les dispositions du Code civil togolais relatives au contrat de louage (articles 1708 et suivants).
       </p>
 
-      <p style={{ marginBottom: '10pt', fontWeight: 'bold' }}>Entre les soussignés :</p>
+      {/* ── Parties ── */}
+      <div className="mb-6 space-y-4">
+        <p className="font-bold text-[10.5pt] uppercase tracking-wide">Entre les soussignés</p>
 
-      {/* Bailleur */}
-      <div style={{ marginBottom: '10pt', paddingLeft: '12pt', borderLeft: '3px solid #333' }}>
-        <p><strong>Le Bailleur :</strong> Société Civile Immobilière &laquo; JUWEIRAT &raquo;, représentée par son gérant,
-        M. TIDJANI Sakariyaou,</p>
-        <p style={{ fontStyle: 'italic' }}>ci-après dénommé &laquo; le Bailleur &raquo;,</p>
-        <p style={{ fontWeight: 'bold' }}>D&apos;UNE PART,</p>
-      </div>
-
-      {/* Preneur */}
-      <div style={{ marginBottom: '14pt', paddingLeft: '12pt', borderLeft: '3px solid #333' }}>
-        <p><strong>Et le Preneur</strong> <em>(personne physique ou morale — ne conserver que la mention applicable ci-dessous) :</em></p>
-        {isCompany ? (
-          <p style={{ marginTop: '4pt' }}>
-            <strong>■ Personne morale :</strong> la société <strong>{d.societe}</strong>, ………………………… (forme juridique : SA / SARL / SAS / autre), 
-            au capital de ……………………………… francs CFA, immatriculée au Registre du commerce et du crédit mobilier (RCCM) sous le n° ………………………………, 
-            dont le siège social est à {d.adresse ?? '………………………………'}, représentée par {d.prenomNom ?? '………………………………'} agissant en qualité 
-            de ……………………………… dûment habilité(e) à l&apos;effet des présentes,
+        <div className="pl-4 border-l-2 border-black space-y-1">
+          <p>
+            <strong>Le Bailleur : Société Civile Immobilière “JUWEIRAT”,</strong> représenté par son gérant, <strong>M. TIDJANI Sakariyaou.</strong>
           </p>
-        ) : (
-          <p style={{ marginTop: '4pt' }}>
-            <strong>■ Personne physique :</strong> M. / Mme <strong>{d.prenomNom ?? '…………………………………………………'}</strong>, 
-            né(e) le ……………………… à ………………………, 
-            de nationalité {d.nationalite ?? '………………………'}, 
-            exerçant la profession de ………………………, 
-            titulaire de la pièce d&apos;identité n° {d.pieceIdentite ?? '………………………'}, 
-            demeurant à {d.adresse ?? '………………………'} ;
+          <p className="italic text-[9pt] text-gray-700">ci-après dénommé « <strong>le Bailleur</strong> »,</p>
+          <p className="font-bold text-[9pt] tracking-wider uppercase pt-1">D’UNE PART,</p>
+        </div>
+
+        <div className="pl-4 border-l-2 border-black space-y-2">
+          <p>
+            <strong>Et le Preneur</strong> <span className="italic text-gray-600 text-[9pt]">(personne physique ou morale — ne conserver que la mention applicable ci-dessous) :</span>
           </p>
-        )}
-        <p style={{ fontStyle: 'italic', marginTop: '6pt' }}>ci-après dénommé &laquo; le Preneur &raquo; ou &laquo; le Locataire &raquo;,</p>
-        <p style={{ fontWeight: 'bold' }}>D&apos;AUTRE PART.</p>
-      </div>
 
-      <p style={{ marginBottom: '14pt' }}>Il a été préalablement exposé puis convenu et arrêté ce qui suit.</p>
+          <div className="space-y-2 text-[9.5pt]">
+            <p className={!isCompany ? 'font-medium' : 'text-gray-600'}>
+              <strong>• Personne physique :</strong> M./Mme <FieldVal val={!isCompany ? d.prenomNom : null} placeholder="………………………………………………" />, né(e) le <FieldVal placeholder="……………………" /> à <FieldVal placeholder="………………………………" />, de nationalité <FieldVal val={!isCompany ? d.nationalite : null} placeholder="…………………………" />, exerçant la profession de <FieldVal placeholder="………………………………" />, titulaire de la pièce d’identité n° <FieldVal val={!isCompany ? d.pieceIdentite : null} placeholder="………………………………" />, demeurant à <FieldVal val={!isCompany ? d.adresse : null} placeholder="………………………………………………" /> ;
+            </p>
 
-      {/* ── Article 1 ── */}
-      <Article n={1} title="Objet et désignation des lieux loués">
-        <p>Le Bailleur donne à bail à usage d&apos;habitation au Preneur, qui accepte, un appartement à usage exclusif
-        d&apos;habitation situé dans l&apos;immeuble &laquo; JUWEIRAT &raquo;, quartier GBOSSIME — 08BP : 80859, sis à Lomé (Togo).</p>
-        <p style={{ marginTop: '6pt' }}>L&apos;appartement, portant le numéro <strong>{d.aptNo ?? '…'}</strong>,
-        est situé au <strong>{floorLabel(d.floor)}</strong> de l&apos;immeuble. Il se compose de {compositionLabel(d.pmsType)}. 
-        {(d.pmsType === 'T2' || d.pmsType === 'T3' || d.pmsType === 'T4') && " La chambre 2 et la cuisine disposent chacune d'un balcon."}
+            <p className={isCompany ? 'font-medium' : 'text-gray-600'}>
+              <strong>• Personne morale :</strong> la société <FieldVal val={d.societe} placeholder="…………………………………………" />, <FieldVal placeholder="………………" /> (forme juridique : SA / SARL / SAS / autre), au capital de <FieldVal placeholder="…………………………" /> francs CFA, immatriculée au Registre du commerce et du crédit mobilier (RCCM) sous le n° <FieldVal placeholder="………………………………" />, dont le siège social est à <FieldVal val={d.adresse} placeholder="…………………………………………" />, représentée par <FieldVal val={isCompany ? d.prenomNom : null} placeholder="……………………………………" /> agissant en qualité de <FieldVal placeholder="………………………………" /> dûment habilité(e) à l’effet des présentes,
+            </p>
+          </div>
+
+          <p className="italic text-[9pt] text-gray-700">ci-après dénommé « <strong>le Preneur</strong> » ou « <strong>le Locataire</strong> »,</p>
+          <p className="font-bold text-[9pt] tracking-wider uppercase pt-1">D’AUTRE PART.</p>
+        </div>
+
+        <p className="italic text-center text-[9.5pt] my-3">
+          Il a été préalablement exposé puis convenu et arrêté ce qui suit.
         </p>
-        <p style={{ marginTop: '6pt' }}>L&apos;appartement est donné entièrement meublé et équipé, conformément à
-        l&apos;inventaire détaillé du mobilier figurant en Annexe 1, laquelle fait partie intégrante du présent contrat.</p>
-      </Article>
+      </div>
 
-      {/* ── Article 2 ── */}
-      <Article n={2} title="Destination des lieux">
-        <p>Les lieux loués sont destinés exclusivement à l&apos;usage d&apos;habitation du Preneur ou, lorsque le Preneur est
-        une personne morale, des personnes physiques qu&apos;il désigne pour y résider. Le Preneur s&apos;interdit d&apos;y
-        exercer toute activité commerciale, artisanale, industrielle ou professionnelle, et de faire des lieux le siège social
-        ou un établissement de son activité. Toute transformation ou modification des lieux est interdite sans l&apos;accord
-        écrit et préalable du Bailleur.</p>
-      </Article>
+      {/* ── Articles ── */}
+      <div className="space-y-4">
+        
+        {/* Article 1 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 1 — Objet et désignation des lieux loués</h2>
+          <p>
+            Le Bailleur donne à bail à usage d’habitation au Preneur, qui accepte, un appartement à usage exclusif d’habitation situé dans l’immeuble « JUWEIRAT » quartier GBOSSIME - 08BP: 80859, sis à Lomé (Togo).
+          </p>
+          <p className="mt-1.5">
+            L’appartement, portant le <strong>numéro {d.aptNo || '54'}</strong>, est situé au <strong>{floorLabel(d.floor)}</strong> de l’immeuble. Il se compose de <strong>{compositionLabel(d.pmsType)}</strong>. <strong>La chambre 2 et la cuisine disposent chacune d’un balcon.</strong>
+          </p>
+          <p className="mt-1.5">
+            L’appartement est donné <strong>entièrement meublé et équipé</strong>, conformément à l’inventaire détaillé du mobilier figurant en Annexe 1, laquelle fait partie intégrante du présent contrat.
+          </p>
+        </section>
 
-      {/* ── Article 3 ── */}
-      <Article n={3} title="État des lieux et inventaire du mobilier">
-        <p>Un état des lieux contradictoire, accompagné de l&apos;inventaire du mobilier, est établi conjointement par les
-        parties à l&apos;entrée du Preneur, puis à sa sortie, à frais partagés par moitié, et annexé au présent contrat.
-        À défaut d&apos;état des lieux d&apos;entrée, le Preneur est présumé avoir reçu les lieux et le mobilier en bon état
-        de réparations locatives et devra, sauf preuve contraire, les restituer dans le même état à la fin du bail.</p>
-      </Article>
+        {/* Article 2 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 2 — Destination des lieux</h2>
+          <p>
+            Les lieux loués sont destinés exclusivement à l’usage d’habitation du Preneur ou, lorsque le Preneur est une personne morale, des personnes physiques qu’il désigne pour y résider. Le Preneur s’interdit d’y exercer toute activité commerciale, artisanale, industrielle ou professionnelle, et de faire des lieux le siège social ou un établissement de son activité. Toute transformation ou modification des lieux est interdite sans l’accord écrit et préalable du Bailleur.
+          </p>
+        </section>
 
-      {/* ── Article 4 ── */}
-      <Article n={4} title="Durée">
-        <p>Le présent bail est conclu pour une durée déterminée
-        de <strong>{durationLabel(d.nights)}</strong>, prenant
-        effet le <strong>{formatDateOrdinal(d.arrival)}</strong> pour
-        se terminer le <strong>{formatDateOrdinal(d.departure)}</strong>.
-        {d.nights >= 30
-          ? " À son terme, il se renouvelle par tacite reconduction pour des périodes successives d'égale durée, sauf congé régulièrement notifié par l'une des parties dans les conditions prévues à l'article 13 ci-après."
-          : " À son terme, il prend fin de plein droit, sauf accord écrit des parties pour son renouvellement."
-        }</p>
-      </Article>
+        {/* Article 3 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 3 — État des lieux et inventaire du mobilier</h2>
+          <p>
+            Un état des lieux contradictoire, accompagné de l’inventaire du mobilier, est établi conjointement par les parties à l’entrée du Preneur, puis à sa sortie, à frais partagés par moitié, et annexé au présent contrat. À défaut d’état des lieux d’entrée, le Preneur est présumé avoir reçu les lieux et le mobilier en bon état de réparations locatives et devra, sauf preuve contraire, les restituer dans le même état à la fin du bail.
+          </p>
+        </section>
 
-      {/* ── Article 5 ── */}
-      <Article n={5} title="Loyer">
-        <p>Le loyer est fixé, d&apos;un commun accord entre les parties conformément à la loi de l&apos;offre et de la demande,
-        à la somme de <strong>{capitalize(numberToWords(monthly))} ({fmt(monthly)}) francs CFA par mois</strong>,
-        soit <strong>{capitalize(numberToWords(quarterly))} ({fmt(quarterly)}) francs CFA par trimestre</strong> et{' '}
-        <strong>{capitalize(numberToWords(annual))} ({fmt(annual)}) francs CFA par an</strong>. Ce loyer s&apos;entend hors TVA.</p>
-        <p style={{ marginTop: '6pt' }}>Le loyer est payable trimestriellement et d&apos;avance, au plus tard le premier jour
-        de chaque trimestre, à raison de trois (03) mois de loyer par terme. Le premier terme est exigible à la prise
-        d&apos;effet du bail.</p>
-      </Article>
+        {/* Article 4 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 4 — Durée</h2>
+          <p>
+            Le présent bail est conclu pour une durée déterminée d’<strong>{durationLabel(d.nights)}</strong>, prenant effet le <strong>{formatDateOrdinal(d.arrival)}</strong> pour se terminer le <strong>{formatDateOrdinal(d.departure)}</strong>. À son terme, il se renouvelle <strong>par tacite reconduction</strong> pour des périodes successives d’égale durée, sauf congé régulièrement notifié par l’une des parties dans les conditions prévues à l’article 13 ci-après.
+          </p>
+        </section>
 
-      {/* ── Article 6 ── */}
-      <Article n={6} title="Modalités de paiement et quittance">
-        <p>Le loyer est payable au domicile du Bailleur ou par tout moyen légal (virement bancaire, mobile money, espèces,
-        chèque), contre quittance valable remise par le Bailleur. Le Preneur demeure tenu au paiement du loyer même pendant
-        la période de préavis ou de congé.</p>
-      </Article>
+        {/* Article 5 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 5 — Loyer</h2>
+          <p>
+            Le loyer est fixé, d’un commun accord entre les parties conformément à la loi de l’offre et de la demande, à la somme de <strong>{numberToWords(monthly)} ({fmt(monthly)}) francs CFA par mois</strong>, soit {numberToWords(quarterly)} ({fmt(quarterly)}) francs CFA par trimestre et {numberToWords(annual)} ({fmt(annual)}) francs CFA par an. <strong>Ce loyer s’entend hors TVA.</strong>
+          </p>
+          <p className="mt-1.5">
+            Le loyer est <strong>payable trimestriellement et d’avance</strong>, au plus tard le premier jour de chaque trimestre, à raison de trois (03) mois de loyer par terme. Le premier terme est exigible à la prise d’effet du bail.
+          </p>
+        </section>
 
-      {/* ── Article 7 ── */}
-      <Article n={7} title="Charges et consommations">
-        {d.elecIncluded ? (
-          <p>La consommation d&apos;électricité est incluse dans le loyer pour la durée du présent bail. Les autres charges
-          et consommations, notamment l&apos;eau, demeurent à la charge du Bailleur.</p>
-        ) : (
-          <p>La consommation d&apos;électricité est à la charge du Preneur, qui en rembourse le Bailleur sur la base du
-          tarif CEET en vigueur (230 FCFA/kWh), sur relevé de compteur mensuel. Les autres charges et consommations,
-          notamment l&apos;eau, demeurent à la charge du Bailleur.</p>
-        )}
-      </Article>
+        {/* Article 6 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 6 — Modalités de paiement et quittance</h2>
+          <p>
+            Le loyer est payable au domicile du Bailleur ou par tout moyen légal (virement bancaire, mobile money, espèce, chèque), contre quittance valable remise par le Bailleur. Le Preneur demeure tenu au paiement du loyer même pendant la période de préavis ou de congé.
+          </p>
+        </section>
 
-      {/* ── Article 8 ── */}
-      <Article n={8} title="Obligations du Preneur">
-        <ul style={{ paddingLeft: '16pt', marginTop: '4pt' }}>
-          {[
-            'Payer le loyer et les charges aux termes et conditions convenus ;',
-            'User paisiblement des lieux et du mobilier, en bon père de famille, dans le respect de la sécurité, la propreté, et la tranquillité ;',
-            'Entretenir les lieux et le mobilier et effectuer les réparations locatives ;',
-            'Ne pas sous-louer ni céder le bail sans l\'accord écrit du Bailleur (article 11) ;',
-            'Laisser exécuter les grosses réparations, même urgentes, incombant au Bailleur ;',
-            'Restituer les lieux et le mobilier en bon état à la fin du bail ;',
-            'Respecter le règlement intérieur de l\'immeuble et la tranquillité du voisinage.',
-          ].map((item, i) => <li key={i} style={{ marginBottom: '2pt' }}>{item}</li>)}
-        </ul>
-      </Article>
+        {/* Article 7 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 7 — Charges et consommations</h2>
+          <p>
+            La consommation d’électricité est à la charge du Preneur, qui en rembourse le Bailleur sur justificatifs. Les autres charges et consommations, notamment l’eau, demeurent à la charge du Bailleur.
+          </p>
+        </section>
 
-      {/* ── Article 9 ── */}
-      <Article n={9} title="Obligations du Bailleur">
-        <ul style={{ paddingLeft: '16pt', marginTop: '4pt' }}>
-          {[
-            'Délivrer un logement décent, propre, sécurisé et en bon état d\'usage, aux installations fonctionnelles ;',
-            'Assurer au Preneur la jouissance paisible des lieux loués pendant toute la durée du bail ;',
-            'Effectuer les grosses réparations qui lui incombent ;',
-            'Remettre au Preneur quittance des sommes régulièrement versées.',
-          ].map((item, i) => <li key={i} style={{ marginBottom: '2pt' }}>{item}</li>)}
-        </ul>
-      </Article>
+        {/* Article 8 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 8 — Obligations du Preneur</h2>
+          <ul className="list-disc pl-5 space-y-1 mt-1">
+            <li>Payer le loyer et les charges aux termes et conditions convenus ;</li>
+            <li>User paisiblement des lieux et du mobilier, en bon père de famille, dans le respect de la sécurité, la propreté, et la tranquillité ;</li>
+            <li>Entretenir les lieux et le mobilier et effectuer les réparations locatives ;</li>
+            <li>Ne pas sous-louer ni céder le bail sans l’accord écrit du Bailleur (article 11) ;</li>
+            <li>Laisser exécuter les grosses réparations, même urgentes, incombant au Bailleur ;</li>
+            <li>Restituer les lieux et le mobilier en bon état à la fin du bail ;</li>
+            <li>Respecter le règlement intérieur de l’immeuble et la tranquillité du voisinage.</li>
+          </ul>
+        </section>
 
-      {/* ── Article 10 ── */}
-      <Article n={10} title="Réparations et entretien">
-        <p>Les réparations locatives et l&apos;entretien courant sont à la charge du Bailleur, notamment : le maintien en
-        état de propreté des intérieurs, le remplacement des serrures, le graissage des gonds des portes et fenêtres,
-        l&apos;entretien courant des canalisations et des équipements à usage privatif, ainsi que les menues réparations
-        du mobilier.</p>
-        <p style={{ marginTop: '6pt' }}>Les grosses réparations (gros œuvre, éléments porteurs concourant à la stabilité
-        et à la solidité de l&apos;édifice, clos et couvert) demeurent également à la charge dudit Bailleur. Le Preneur
-        doit l&apos;aviser sans délai de toute dégradation nécessitant une grosse réparation.</p>
-      </Article>
+        {/* Article 9 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 9 — Obligations du Bailleur</h2>
+          <ul className="list-disc pl-5 space-y-1 mt-1">
+            <li>Délivrer un logement décent, propre, sécurisé et en bon état d’usage, aux installations fonctionnelles ;</li>
+            <li>Assurer au Preneur la jouissance paisible des lieux loués pendant toute la durée du bail ;</li>
+            <li>Effectuer les grosses réparations qui lui incombent ;</li>
+            <li>Remettre au Preneur quittance des sommes régulièrement versées.</li>
+          </ul>
+        </section>
 
-      {/* ── Article 11 ── */}
-      <Article n={11} title="Sous-location et cession">
-        <p>Le Preneur ne peut sous-louer tout ou partie des lieux, ni céder son droit au présent bail, sans
-        l&apos;accord écrit et préalable du Bailleur.</p>
-      </Article>
+        {/* Article 10 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 10 — Réparations et entretien</h2>
+          <p>
+            Les réparations locatives et l’entretien courant sont à la charge du Bailleur, notamment : le maintien en état de propreté des intérieurs, le remplacement des serrures, le graissage des gonds des portes et fenêtres, l’entretien courant des canalisations et des équipements à usage privatif, ainsi que les menues réparations du mobilier.
+          </p>
+          <p className="mt-1.5">
+            Les grosses réparations (gros œuvre, éléments porteurs concourant à la stabilité et à la solidité de l’édifice, clos et couvert) demeurent également à la charge dudit Bailleur. Le Preneur doit l’aviser sans délai de toute dégradation nécessitant une grosse réparation.
+          </p>
+        </section>
 
-      {/* ── Article 12 ── */}
-      <Article n={12} title="Assurance">
-        <p>Le Preneur s&apos;oblige à assurer les lieux loués et le mobilier contre les risques locatifs (incendie,
-        dégâts des eaux et risques assimilés) auprès d&apos;une compagnie d&apos;assurance dûment agréée.</p>
-        <p style={{ marginTop: '6pt' }}>Le Preneur s&apos;oblige à souscrire à une responsabilité civile, couvrant
-        les dommages lui incombant (incendie, dégât eaux et risques assimilés), auprès d&apos;une compagnie
-        d&apos;assurance dûment agréée, et à en justifier au Bailleur à première demande, puis à chaque échéance annuelle.</p>
-      </Article>
+        {/* Article 11 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 11 — Sous-location et cession</h2>
+          <p>
+            Le Preneur ne peut sous-louer tout ou partie des lieux, ni céder son droit au présent bail, sans l’accord écrit et préalable du Bailleur.
+          </p>
+        </section>
 
-      {/* ── Article 13 ── */}
-      <Article n={13} title="Congé et résiliation">
-        <p>À l&apos;échéance du terme, la partie qui ne souhaite pas le renouvellement du bail doit en aviser l&apos;autre
-        par un congé écrit notifié au moins deux (02) mois avant ladite échéance. À défaut, le bail est reconduit
-        tacitement. En cours de reconduction, chaque partie peut résilier le bail moyennant un préavis de deux (02) mois,
-        conformément à l&apos;article 26 du Décret n°2022-001/PR.</p>
-        <p style={{ marginTop: '6pt' }}>Le congé est signifié par tout moyen laissant une trace écrite. Le Preneur
-        reste redevable du loyer pendant toute la durée du préavis.</p>
-      </Article>
+        {/* Article 12 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 12 — Assurance</h2>
+          <p>
+            Le Preneur s’oblige à assurer les lieux loués et le mobilier contre les risques locatifs (incendie, dégâts des eaux et risques assimilés) auprès d’une compagnie d’assurance dûment agréée.
+          </p>
+          <p className="mt-1.5">
+            Le Preneur s’oblige à souscrire à une responsabilité civile, couvrant les dommages lui incombant (incendie, dégât eaux et risques assimilés), auprès d’une compagnie d’assurance dûment agréée, et à en justifier au Bailleur à première demande, puis à chaque échéance annuelle.
+          </p>
+        </section>
 
-      {/* ── Article 14 ── */}
-      <Article n={14} title="Clause résolutoire">
-        <p>En cas de non-paiement du loyer ou des charges à l&apos;échéance, ou d&apos;inexécution de toute autre
-        obligation du présent bail, celui-ci pourra être résilié après mise en demeure adressée au Preneur et demeurée
-        infructueuse pendant un délai d&apos;un (01) mois.</p>
-      </Article>
+        {/* Article 13 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 13 — Congé et résiliation</h2>
+          <p>
+            À l’échéance du terme, la partie qui ne souhaite pas le renouvellement du bail doit en aviser l’autre par un <strong>congé écrit notifié au moins deux (02) mois avant ladite échéance</strong>. À défaut, le bail est reconduit tacitement. En cours de reconduction, chaque partie peut résilier le bail moyennant un <strong>préavis de deux (02) mois</strong>, conformément à l’article 26 du Décret n°2022-001/PR.
+          </p>
+          <p className="mt-1.5">
+            Le congé est signifié par tout moyen laissant une trace écrite. Le Preneur reste redevable du loyer pendant toute la durée du préavis.
+          </p>
+        </section>
 
-      {/* ── Article 15 ── */}
-      <Article n={15} title="Continuité du bail">
-        <p>Conformément aux articles 27 et 28 du Décret n°2022-001/PR, le bail ne prend fin ni par la cession des
-        droits du Bailleur sur les locaux — le nouvel acquéreur étant substitué de plein droit dans les obligations
-        de l&apos;ancien bailleur — ni par le décès de l&apos;une ou l&apos;autre des parties.</p>
-      </Article>
+        {/* Article 14 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 14 — Clause résolutoire</h2>
+          <p>
+            En cas de non-paiement du loyer ou des charges à l’échéance, ou d’inexécution de toute autre obligation du présent bail, celui-ci pourra être résilié après mise en demeure adressée au Preneur et demeurée infructueuse pendant un délai d’un (01) mois.
+          </p>
+        </section>
 
-      {/* ── Article 16 ── */}
-      <Article n={16} title="Enregistrement">
-        <p>Le présent contrat, établi sous seing privé, est soumis aux formalités d&apos;enregistrement auprès de
-        l&apos;administration fiscale, conformément au Code général des impôts (article 11 du décret). Les frais
-        d&apos;enregistrement sont supportés par ………………………………</p>
-      </Article>
+        {/* Article 15 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 15 — Continuité du bail</h2>
+          <p>
+            Conformément aux articles 27 et 28 du Décret n°2022-001/PR, le bail ne prend fin ni par la cession des droits du Bailleur sur les locaux — le nouvel acquéreur étant substitué de plein droit dans les obligations de l’ancien bailleur — ni par le décès de l’une ou l’autre des parties.
+          </p>
+        </section>
 
-      {/* ── Article 17 ── */}
-      <Article n={17} title="Élection de domicile et règlement des litiges">
-        <p>Pour l&apos;exécution des présentes, les parties élisent domicile en leurs adresses respectives ci-dessus
-        indiquées. Tout différend relatif à l&apos;interprétation ou à l&apos;exécution du présent contrat sera
-        recherché à l&apos;amiable ; à défaut d&apos;accord, il sera soumis aux juridictions compétentes de Lomé.</p>
-      </Article>
+        {/* Article 16 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 16 — Enregistrement</h2>
+          <p>
+            Le présent contrat, établi sous seing privé, est soumis aux <strong>formalités d’enregistrement</strong> auprès de l’administration fiscale, conformément au Code général des impôts (article 11 du décret). Les frais d’enregistrement sont supportés par <FieldVal placeholder="………………………………" />
+          </p>
+        </section>
 
-      {/* ── Article 18 ── */}
-      <Article n={18} title="Annexes">
-        <p>Sont annexés au présent contrat et en font partie intégrante : (1) l&apos;état des lieux d&apos;entrée
-        (Annexe 1) ; (2) la copie des pièces d&apos;identité de la personne hébergée.</p>
-      </Article>
+        {/* Article 17 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 17 — Élection de domicile et règlement des litiges</h2>
+          <p>
+            Pour l’exécution des présentes, les parties élisent domicile en leurs adresses respectives ci-dessus indiquées. Tout différend relatif à l’interprétation ou à l’exécution du présent contrat sera recherché à l’amiable ; à défaut d’accord, il sera soumis aux juridictions compétentes de Lomé.
+          </p>
+        </section>
+
+        {/* Article 18 */}
+        <section className="page-break-avoid">
+          <h2 className="font-bold text-[10pt] mb-1">Article 18 — Annexes</h2>
+          <p>
+            Sont annexés au présent contrat et en font partie intégrante : (1) l’état des lieux d’entrée (Annexe 1) ; (2) la copie des pièces d’identité de la personne hébergée.
+          </p>
+        </section>
+      </div>
 
       {/* ── Signatures ── */}
-      <div style={{ marginTop: '24pt', paddingTop: '12pt', borderTop: '1px solid #aaa' }}>
-        <p style={{ marginBottom: '16pt' }}>
-          Fait à Lomé, le <strong>{formatDateOrdinal(d.today)}</strong>, en trois (03) exemplaires originaux,
-          dont un remis à chacune des parties et un destiné à l&apos;enregistrement.
+      <div className="mt-8 pt-4 border-t border-gray-300 page-break-avoid">
+        <p className="mb-4">
+          Fait à Lomé, le <strong>{formatDateOrdinal(d.today)}</strong>, en <strong>trois (03) exemplaires originaux</strong>, dont un remis à chacune des parties et un destiné à l’enregistrement.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20pt', marginTop: '20pt' }}>
-          <SignatureBlock role="LE BAILLEUR" nom="TIDJANI Sakariyaou" />
-          <SignatureBlock role="LE PRENEUR" nom={d.prenomNom ?? '…………………………………………'} />
-        </div>
+
+        <table className="w-full border-collapse border border-gray-400 mt-4 text-[9.5pt]">
+          <thead>
+            <tr>
+              <th className="border border-gray-400 p-3 w-1/2 text-center font-bold bg-gray-50">LE BAILLEUR</th>
+              <th className="border border-gray-400 p-3 w-1/2 text-center font-bold bg-gray-50">LE PRENEUR</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td className="border border-gray-400 p-3 align-top h-36">
+                <p className="italic text-[8.5pt] text-center text-gray-600 mb-2">(précédé de la mention manuscrite « Lu et approuvé »)</p>
+                <p className="mb-1"><strong>Nom :</strong> TIDJANI Sakariyaou</p>
+                <p className="mb-1"><strong>En qualité de :</strong> Gérant</p>
+                <p className="text-[8.5pt] text-gray-500 mt-4">Signature :</p>
+              </td>
+              <td className="border border-gray-400 p-3 align-top h-36">
+                <p className="italic text-[8.5pt] text-center text-gray-600 mb-2">(précédé de la mention manuscrite « Lu et approuvé »)</p>
+                <p className="mb-1"><strong>Nom :</strong> <FieldVal val={d.prenomNom} placeholder="………………………………………………" /></p>
+                <p className="mb-1"><strong>En qualité de :</strong> <FieldVal val={d.societe ? 'Représentant légal' : null} placeholder="………………………………" /></p>
+                <p className="text-[8.5pt] text-gray-500 mt-4">Signature :</p>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
-      {/* ── État des lieux annex ── */}
-      <div style={{ marginTop: '32pt', pageBreakBefore: 'always' }}>
-        <p style={{ fontSize: '13pt', fontWeight: 'bold', textAlign: 'center', textTransform: 'uppercase', marginBottom: '4pt' }}>
-          Annexe 1 — État des lieux
-        </p>
-        <p style={{ textAlign: 'center', marginBottom: '12pt', fontSize: '9pt' }}>
-          Appartement n°{d.aptNo} — {floorLabel(d.floor)} — Immeuble « JUWEIRAT »
-        </p>
-        <p style={{ marginBottom: '8pt', fontSize: '9pt' }}>
-          Le présent état des lieux est dressé contradictoirement entre le Bailleur et le Preneur, lors de la remise
-          des clés à l&apos;entrée, puis à la restitution des lieux à la sortie. Il fait partie intégrante du contrat
-          de bail. À défaut d&apos;état des lieux d&apos;entrée, le Preneur est présumé avoir reçu les lieux et le
-          mobilier en bon état de réparations locatives.
-        </p>
-
-        <div style={{ marginBottom: '10pt', fontSize: '9pt' }}>
-          <span>Type d&apos;état des lieux :&nbsp;</span>
-          <span>☐ Entrée&nbsp;&nbsp;&nbsp;☐ Sortie</span>
-          <span style={{ marginLeft: '24pt' }}>Date : ………………………</span>
+      {/* ── ANNEXE : ÉTAT DES LIEUX ── */}
+      <div className="page-break-before mt-12 pt-6">
+        <div className="text-center mb-6 pb-3 border-b-2 border-black">
+          <h2 className="text-[13pt] font-extrabold uppercase tracking-wide mb-1 font-serif">
+            Annexe — État des lieux
+          </h2>
+          <p className="text-[10pt] italic text-gray-800">
+            Appartement n°{d.aptNo || '54'} — {floorLabel(d.floor)} — Immeuble « JUWEIRAT »
+          </p>
         </div>
 
-        <p style={{ fontSize: '9pt', marginBottom: '6pt', fontStyle: 'italic' }}>
-          Barème d&apos;appréciation : <strong>N</strong> = Neuf · <strong>TB</strong> = Très bon ·{' '}
-          <strong>B</strong> = Bon · <strong>M</strong> = Moyen · <strong>MV</strong> = Mauvais / à remplacer
+        <p className="text-[9.5pt] text-justify mb-4">
+          Le présent état des lieux est dressé contradictoirement entre le Bailleur et le Preneur, lors de la remise des clés à l’entrée, puis à la restitution des lieux à la sortie. Il complète l’inventaire du mobilier (Annexe 1) et fait partie intégrante du contrat de bail. À défaut d’état des lieux d’entrée, le Preneur est présumé avoir reçu les lieux et le mobilier en bon état de réparations locatives.
         </p>
 
-        <EdlTable title="Relevé des compteurs et des clés" rows={[
-          ['Compteur d\'électricité (CEET)', '', ''],
-          ['Clés remises', '', ''],
-        ]} headers={['Élément', 'À l\'entrée', 'À la sortie']} />
-
-        {getPieces(d.pmsType).map((piece, i) => (
-          <EdlSection key={i} title={piece.title} rows={piece.rows} />
-        ))}
-
-        <div style={{ marginTop: '12pt', fontSize: '9pt' }}>
-          <p><strong>Observations générales :</strong></p>
-          <div style={{ border: '1px solid #aaa', height: '60pt', marginTop: '4pt', padding: '4pt' }} />
+        <div className="flex items-center justify-between text-[9.5pt] mb-4 bg-gray-50 p-2.5 border border-gray-300">
+          <div>
+            <strong>Type d’état des lieux :</strong> &nbsp;
+            <span>☐ Entrée</span> &nbsp;&nbsp;&nbsp; <span>☐ Sortie</span>
+          </div>
+          <div>
+            <strong>Date :</strong> {formatDateFr(d.arrival)}
+          </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20pt', marginTop: '24pt' }}>
-          <SignatureBlock role="LE BAILLEUR" nom="TIDJANI Sakariyaou" />
-          <SignatureBlock role="LE PRENEUR" nom={d.prenomNom ?? '…………………………………………'} />
+        <p className="text-[8.5pt] italic text-gray-600 mb-3">
+          <strong>Barème d’appréciation :</strong> N = neuf · TB = très bon · B = bon · M = moyen · MV = mauvais / à remplacer
+        </p>
+
+        {/* Relevé compteurs */}
+        <div className="mb-4">
+          <h3 className="font-bold text-[9.5pt] mb-1.5 uppercase tracking-wide">Relevé des compteurs et des clés</h3>
+          <table className="w-full border-collapse border border-gray-400 text-[8.5pt]">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="border border-gray-400 p-2 text-left w-1/2">Élément</th>
+                <th className="border border-gray-400 p-2 text-center w-1/4">Index / Nombre à l’entrée</th>
+                <th className="border border-gray-400 p-2 text-center w-1/4">Index / Nombre à la sortie</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="border border-gray-400 p-2 font-medium">Compteur d’électricité (CEET)</td>
+                <td className="border border-gray-400 p-2 text-center"></td>
+                <td className="border border-gray-400 p-2 text-center"></td>
+              </tr>
+              <tr>
+                <td className="border border-gray-400 p-2 font-medium">Clés remises</td>
+                <td className="border border-gray-400 p-2 text-center"></td>
+                <td className="border border-gray-400 p-2 text-center"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* État détaillé par pièce */}
+        <div className="space-y-4">
+          <h3 className="font-bold text-[9.5pt] mb-1 uppercase tracking-wide">État détaillé par pièce</h3>
+
+          <RoomEdlSection title="SALON" items={[
+            'Sols',
+            'Murs et plafond',
+            'Portes et fenêtres',
+            'Électricité et éclairage',
+            'Mobilier et équipements (cf. Annexe 1)'
+          ]} />
+
+          <RoomEdlSection title="CHAMBRE 1 (+ salle d’eau)" items={[
+            'Sols',
+            'Murs et plafond',
+            'Portes et fenêtres',
+            'Électricité et éclairage',
+            'Plomberie et sanitaires',
+            'Mobilier et équipements (cf. Annexe 1)'
+          ]} />
+
+          <RoomEdlSection title="CHAMBRE 2 (+ salle d’eau + balcon)" items={[
+            'Sols',
+            'Murs et plafond',
+            'Portes et fenêtres',
+            'Électricité et éclairage',
+            'Plomberie et sanitaires',
+            'Mobilier et équipements (cf. Annexe 1)',
+            'Balcon'
+          ]} />
+
+          <RoomEdlSection title="CUISINE (+ balcon)" items={[
+            'Sols',
+            'Murs et plafond',
+            'Portes et fenêtres',
+            'Électricité et éclairage',
+            'Plomberie et sanitaires',
+            'Mobilier et équipements (cf. Annexe 1)',
+            'Balcon'
+          ]} />
+
+          <RoomEdlSection title="WC VISITEUR" items={[
+            'Sols',
+            'Murs et plafond',
+            'Portes et fenêtres',
+            'Électricité et éclairage',
+            'Plomberie et sanitaires',
+            'Mobilier et équipements (cf. Annexe 1)'
+          ]} />
+
+          <RoomEdlSection title="HALL / COULOIR" items={[
+            'Sols',
+            'Murs et plafond',
+            'Portes et fenêtres',
+            'Électricité et éclairage',
+            'Mobilier et équipements (cf. Annexe 1)'
+          ]} />
+        </div>
+
+        {/* Observations */}
+        <div className="mt-6 page-break-avoid">
+          <p className="font-bold text-[9pt] mb-2">Observations générales (fissures, taches, éléments manquants ou défectueux, etc.) :</p>
+          <div className="space-y-3 pt-1">
+            <div className="border-b border-dotted border-gray-400 h-5"></div>
+            <div className="border-b border-dotted border-gray-400 h-5"></div>
+            <div className="border-b border-dotted border-gray-400 h-5"></div>
+          </div>
+        </div>
+
+        {/* Signatures État des lieux */}
+        <div className="mt-6 pt-4 border-t border-gray-300 page-break-avoid">
+          <p className="mb-4 text-[9.5pt]">
+            Fait à Lomé, le <strong>{formatDateOrdinal(d.today)}</strong>, en deux (02) exemplaires, dont un remis à chaque partie.
+          </p>
+
+          <table className="w-full border-collapse border border-gray-400 text-[9.5pt]">
+            <thead>
+              <tr>
+                <th className="border border-gray-400 p-2.5 w-1/2 text-center font-bold bg-gray-50">LE BAILLEUR</th>
+                <th className="border border-gray-400 p-2.5 w-1/2 text-center font-bold bg-gray-50">LE PRENEUR</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="border border-gray-400 p-3 align-top h-32">
+                  <p className="italic text-[8.5pt] text-center text-gray-600 mb-2">(précédé de la mention manuscrite « Lu et approuvé »)</p>
+                  <p className="mb-1"><strong>Nom :</strong> TIDJANI Sakariyaou</p>
+                  <p className="mb-1"><strong>En qualité de :</strong> Gérant</p>
+                  <p className="text-[8.5pt] text-gray-500 mt-3">Signature :</p>
+                </td>
+                <td className="border border-gray-400 p-3 align-top h-32">
+                  <p className="italic text-[8.5pt] text-center text-gray-600 mb-2">(précédé de la mention manuscrite « Lu et approuvé »)</p>
+                  <p className="mb-1"><strong>Nom :</strong> <FieldVal val={d.prenomNom} placeholder="………………………………………………" /></p>
+                  <p className="mb-1"><strong>En qualité de :</strong> <FieldVal val={d.societe ? 'Représentant légal' : null} placeholder="………………………………" /></p>
+                  <p className="text-[8.5pt] text-gray-500 mt-3">Signature :</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
   );
 }
 
-function Article({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+function RoomEdlSection({ title, items }: { title: string; items: string[] }) {
   return (
-    <div style={{ marginBottom: '10pt', pageBreakInside: 'avoid' }}>
-      <p style={{ fontWeight: 'bold', marginBottom: '3pt' }}>
-        Article {n} — {title}
-      </p>
-      <div style={{ textAlign: 'justify' }}>{children}</div>
-    </div>
-  );
-}
-
-function SignatureBlock({ role, nom }: { role: string; nom: string }) {
-  return (
-    <div>
-      <p style={{ fontWeight: 'bold', textAlign: 'center', marginBottom: '6pt' }}>{role}</p>
-      <p style={{ fontSize: '9pt', fontStyle: 'italic', textAlign: 'center', marginBottom: '8pt' }}>
-        (précédé de la mention manuscrite &laquo; Lu et approuvé &raquo;)
-      </p>
-      <p style={{ fontSize: '9pt', marginBottom: '4pt' }}>Nom : <strong>{nom}</strong></p>
-      <p style={{ fontSize: '9pt', marginBottom: '4pt' }}>En qualité de (le cas échéant) : ………………………</p>
-      <p style={{ fontSize: '9pt' }}>Signature :</p>
-      <div style={{ height: '50pt', border: '1px solid #ccc', marginTop: '4pt' }} />
-    </div>
-  );
-}
-
-function EdlTable({ title, headers, rows }: {
-  title?: string; headers: string[]; rows: string[][];
-}) {
-  return (
-    <div style={{ marginBottom: '8pt' }}>
-      {title && <p style={{ fontWeight: 'bold', fontSize: '9pt', marginBottom: '3pt' }}>{title}</p>}
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '8.5pt' }}>
+    <div className="page-break-avoid">
+      <table className="w-full border-collapse border border-gray-400 text-[8.5pt]">
         <thead>
-          <tr>
-            {headers.map((h, i) => {
-              let w = 'auto';
-              if (headers.length === 3) {
-                 w = i === 0 ? '50%' : '25%';
-              } else if (headers.length === 4) {
-                 w = i === 0 ? '30%' : (i === 3 ? '30%' : '20%');
-              }
-              return (
-                <th key={i} style={{
-                  border: '1px solid #aaa', padding: '3pt 5pt',
-                  background: '#f0f0f0', textAlign: 'left',
-                  width: w,
-                }}>{h}</th>
-              );
-            })}
+          <tr className="bg-gray-100">
+            <th className="border border-gray-400 p-1.5 text-left font-bold text-black w-[35%]">{title}</th>
+            <th className="border border-gray-400 p-1.5 text-center font-medium w-[18%]">État à l’entrée</th>
+            <th className="border border-gray-400 p-1.5 text-center font-medium w-[18%]">État à la sortie</th>
+            <th className="border border-gray-400 p-1.5 text-left font-medium w-[29%]">Observations</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, ri) => (
-            <tr key={ri}>
-              {row.map((cell, ci) => (
-                <td key={ci} style={{ border: '1px solid #aaa', padding: '3pt 5pt', height: '16pt' }}>{cell}</td>
-              ))}
+          {items.map((it, idx) => (
+            <tr key={idx} className="h-6">
+              <td className="border border-gray-400 px-2 py-1 text-gray-800">{it}</td>
+              <td className="border border-gray-400 px-2 py-1 text-center"></td>
+              <td className="border border-gray-400 px-2 py-1 text-center"></td>
+              <td className="border border-gray-400 px-2 py-1"></td>
             </tr>
           ))}
         </tbody>
@@ -479,46 +587,13 @@ function EdlTable({ title, headers, rows }: {
   );
 }
 
-function EdlSection({ title, rows }: { title: string; rows: string[] }) {
-  return (
-    <EdlTable
-      title={title}
-      headers={['Élément', 'État à l\'entrée', 'État à la sortie', 'Observations']}
-      rows={rows.map(r => [r, '', '', ''])}
-    />
-  );
-}
-
-function getPieces(pmsType: string | null) {
-  const common = ['Sols', 'Murs et plafond', 'Portes et fenêtres', 'Électricité et éclairage', 'Mobilier et équipements'];
-  const withWater = [...common, 'Plomberie et sanitaires'];
-
-  const pieces = [
-    { title: 'SALON', rows: common },
-    { title: 'CHAMBRE 1 (+ salle d\'eau)', rows: withWater },
-  ];
-
-  if (pmsType === 'T2' || pmsType === 'T3' || pmsType === 'T4')
-    pieces.push({ title: 'CHAMBRE 2 (+ salle d\'eau + balcon)', rows: [...withWater, 'Balcon'] });
-  if (pmsType === 'T3' || pmsType === 'T4')
-    pieces.push({ title: 'CHAMBRE 3', rows: withWater });
-  if (pmsType === 'T4')
-    pieces.push({ title: 'CHAMBRE 4', rows: withWater });
-
-  pieces.push({ title: 'CUISINE (+ balcon)', rows: [...withWater, 'Balcon'] });
-  pieces.push({ title: 'WC VISITEUR', rows: withWater });
-  pieces.push({ title: 'HALL / COULOIR', rows: common });
-
-  return pieces;
-}
-
-// ── Page ────────────────────────────────────────────────────────────────────
+// ── Page Component ───────────────────────────────────────────────────────────
 
 export default function ContratPage() {
-  const { id }                        = useParams<{ id: string }>();
-  const [data,    setData]            = useState<ContractDataDto | null>(null);
-  const [loading, setLoading]         = useState(true);
-  const [error,   setError]           = useState('');
+  const { id }                = useParams<{ id: string }>();
+  const [data,    setData]    = useState<ContractDataDto | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState('');
 
   useEffect(() => {
     pmsFolios.getContractData(Number(id))
@@ -528,61 +603,88 @@ export default function ContratPage() {
   }, [id]);
 
   if (loading) return (
-    <div className="flex items-center justify-center h-screen">
+    <div className="flex items-center justify-center min-h-[60vh]">
       <div className="w-8 h-8 border-2 border-green/30 border-t-green rounded-full animate-spin" />
     </div>
   );
 
   if (error || !data) return (
-    <div className="flex items-center justify-center h-screen text-red-600">{error || 'Folio introuvable.'}</div>
+    <div className="p-8 text-center text-red-600 font-medium">{error || 'Folio introuvable.'}</div>
   );
 
   const isLongStay = data.nights >= 30;
 
   return (
-    <>
+    <div className="min-h-screen bg-gray-100 print:bg-white">
       {/* Print styles */}
       <style>{`
-        @page { size: A4; margin: 2cm; }
+        @page {
+          size: A4;
+          margin: 15mm 20mm;
+        }
         @media print {
-          .no-print { display: none !important; }
-          body { background: white !important; }
-          #contract-wrapper { box-shadow: none !important; margin: 0 !important; padding: 0 !important; }
+          body {
+            background: white !important;
+            color: black !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+          #contract-sheet {
+            box-shadow: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            max-width: 100% !important;
+          }
         }
       `}</style>
 
-      {/* Toolbar — hidden on print */}
-      <div className="no-print bg-white border-b border-gray-100 px-6 py-3 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-        <Link href={`/pms/folios/${id}`} className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-charcoal">
-          <ArrowLeft size={16} /> Retour au folio
-        </Link>
+      {/* Screen Toolbar */}
+      <header className="no-print bg-white border-b border-gray-200 px-6 py-3.5 sticky top-0 z-20 shadow-sm flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link
+            href={`/pms/folios/${id}`}
+            className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-charcoal transition-colors font-medium"
+          >
+            <ArrowLeft size={16} /> Retour au folio
+          </Link>
+          <div className="h-4 w-px bg-gray-200" />
+          <div className="flex items-center gap-2 text-sm text-gray-700">
+            <FileText size={16} className="text-gold" />
+            <span className="font-semibold">Contrat de bail — Folio {data.folioNumber}</span>
+          </div>
+        </div>
+
         <div className="flex items-center gap-3">
-          {isLongStay && (
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-full">
+          {isLongStay ? (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-full">
               <AlertTriangle size={13} />
-              Long séjour — Contrat obligatoire ({data.nights} nuits)
+              Bail d’habitation ({data.nights} nuits)
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 bg-gray-100 border border-gray-200 px-3 py-1.5 rounded-full">
+              Séjour de {data.nights} nuits
             </span>
           )}
+          
           <button
             onClick={() => window.print()}
-            className="inline-flex items-center gap-2 bg-green text-charcoal text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90"
+            className="inline-flex items-center gap-2 bg-charcoal text-white hover:bg-black px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition-all"
           >
-            <Printer size={15} /> Imprimer / Télécharger PDF
+            <Printer size={15} /> Imprimer le contrat
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* Contract paper */}
-      <div className="no-print min-h-screen bg-gray-100 py-8 px-4">
-        <div id="contract-wrapper" className="max-w-[210mm] mx-auto bg-white shadow-xl p-[2cm]">
-          <BailContract d={data} />
+      {/* Screen Paper Preview */}
+      <main className="py-8 px-4 print:p-0">
+        <div
+          id="contract-sheet"
+          className="max-w-[210mm] mx-auto bg-white shadow-xl rounded-sm p-[18mm] border border-gray-200 print:border-none print:shadow-none print:p-0"
+        >
+          <ContractDocument d={data} />
         </div>
-      </div>
-
-      {/* Print-only version (no wrapper) */}
-      <div className="hidden print:block">
-        <BailContract d={data} />
-      </div>
-    </>
+      </main>
+    </div>
   );
 }

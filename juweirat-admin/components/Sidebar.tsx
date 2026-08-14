@@ -42,7 +42,7 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-60 h-full bg-charcoal flex flex-col shrink-0">
+    <aside className="w-60 h-full bg-charcoal flex flex-col shrink-0 print:hidden" data-no-print>
       {/* Logo */}
       <div className="px-5 py-6 border-b border-white/8">
         <Image
