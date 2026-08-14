@@ -168,7 +168,7 @@ export default function EditionPage() {
   const pmGlobal = agg.nights ? agg.heb / agg.nights : 0;
   const losGlobal = agg.stays ? agg.losTot / agg.stays : 0;
 
-  const unitLabel = (id: number) => { const u = units.find((x) => x.id === id); return u ? u.label + " · " + u.type : null; };
+  const unitLabel = (id: number) => { const u = units.find((x) => x.id === id); return u ? u.nameFr + " · " + u.pmsType : null; };
   const byUnit = unitsView.map((u) => ({ u, evs: events.filter((e) => e.unitId === u.id).sort((a, b) => (a.start < b.start ? -1 : 1)) }));
   const communs = fRoom === "tous" ? events.filter((e) => e.kind === "maint" && (!e.unitId || e.zone === "commun")).sort((a, b) => (a.start < b.start ? -1 : 1)) : [];
 
@@ -190,7 +190,7 @@ export default function EditionPage() {
       ["Chambre", "Séjours", "Nuits", "Durée moy. (nuits)", "Prix moyen", "Hébergement", "PDJ", "Extras", "CA total"], 
       ...unitsView.filter((u) => caByUnit[u.id] && (caByUnit[u.id].total > 0 || caByUnit[u.id].stays > 0)).map((u) => { 
         const x = caByUnit[u.id]; 
-        return [u.label + " · " + u.type, x.stays, x.nights, x.los.toFixed(1).replace(".", ","), Math.round(x.pm), Math.round(x.heb), Math.round(x.pdj), Math.round(x.extra), Math.round(x.total)]; 
+        return [u.nameFr + " · " + u.pmsType, x.stays, x.nights, x.los.toFixed(1).replace(".", ","), Math.round(x.pm), Math.round(x.heb), Math.round(x.pdj), Math.round(x.extra), Math.round(x.total)]; 
       }), 
       ["TOTAL", agg.stays, agg.nights, losGlobal.toFixed(1).replace(".", ","), Math.round(pmGlobal), "", "", "", Math.round(caTotal)]
     ]);
@@ -235,7 +235,7 @@ export default function EditionPage() {
             <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Chambre</label>
             <select value={fRoom} onChange={e => setFRoom(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
               <option value="tous">Toutes les chambres</option>
-              {units.map(u => <option key={u.id} value={u.id}>{u.label} · {u.type}</option>)}
+              {units.map(u => <option key={u.id} value={u.id}>{u.nameFr} · {u.pmsType}</option>)}
             </select>
           </div>
           <div className={`ml-auto text-sm pb-2 ${validPeriod ? 'text-gray-400 font-medium' : 'text-red-500 font-bold'}`}>
@@ -286,8 +286,8 @@ export default function EditionPage() {
               {byUnit.map(({ u, evs }, ri) => (
                 <div key={u.id} className={`flex border-b border-gray-100 h-12 ${ri % 2 ? 'bg-gray-50' : 'bg-white'}`}>
                   <div style={{ width: labelW }} className="shrink-0 px-3 py-1 flex flex-col justify-center border-r border-gray-100 bg-inherit z-10">
-                    <div className="text-xs font-bold">{u.label}</div>
-                    <div className="text-[10px] text-gray-400">{u.type}{u.horsService ? " · HS" : ""}</div>
+                    <div className="text-xs font-bold">{u.nameFr}</div>
+                    <div className="text-[10px] text-gray-400">{u.pmsType}{u.horsService ? " · HS" : ""}</div>
                     {caByUnit[u.id] && caByUnit[u.id].total > 0 && <div className="text-[9px] text-green-dark font-bold">CA {money(caByUnit[u.id].total)}</div>}
                   </div>
                   <div className="relative shrink-0" style={{ width: list.length * dayW }}>
