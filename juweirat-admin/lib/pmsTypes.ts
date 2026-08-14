@@ -173,6 +173,26 @@ export interface MaintenanceTicketDto {
   updatedAt: string;
 }
 
+export interface ContractDataDto {
+  prenomNom:     string | null;
+  nationalite:   string | null;
+  pieceIdentite: string | null;
+  adresse:       string | null;
+  societe:       string | null;
+  aptNo:         string | null;
+  floor:         number;
+  pmsType:       string | null;
+  arrival:       string;
+  departure:     string;
+  nights:        number;
+  rate:          number;
+  monthlyLoyer:  number;
+  elecIncluded:  boolean;
+  tarifTier:     string;
+  folioNumber:   string;
+  today:         string;
+}
+
 export interface DebiteurDto {
   id: number;
   client: string;

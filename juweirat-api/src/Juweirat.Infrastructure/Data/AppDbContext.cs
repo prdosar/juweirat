@@ -7,14 +7,15 @@ namespace Juweirat.Infrastructure.Data;
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
     // ── Existant (site public) ───────────────────────────────────────────────
-    public DbSet<User>        Users        { get; set; }
-    public DbSet<Room>        Rooms        { get; set; }
-    public DbSet<RoomImage>   RoomImages   { get; set; }
-    public DbSet<Amenity>     Amenities    { get; set; }
-    public DbSet<Client>      Clients      { get; set; }
-    public DbSet<Reservation> Reservations { get; set; }
-    public DbSet<Payment>     Payments     { get; set; }
-    public DbSet<RoomBlock>   RoomBlocks   { get; set; }
+    public DbSet<User>         Users          { get; set; }
+    public DbSet<Room>         Rooms          { get; set; }
+    public DbSet<RoomCategory> RoomCategories { get; set; }
+    public DbSet<RoomImage>    RoomImages     { get; set; }
+    public DbSet<Amenity>      Amenities      { get; set; }
+    public DbSet<Client>       Clients        { get; set; }
+    public DbSet<Reservation>  Reservations   { get; set; }
+    public DbSet<Payment>      Payments       { get; set; }
+    public DbSet<RoomBlock>    RoomBlocks     { get; set; }
 
     // ── PMS ──────────────────────────────────────────────────────────────────
     public DbSet<HotelConfig>      HotelConfig      { get; set; }
@@ -35,6 +36,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(u => u.Email).IsUnique();
             e.Property(u => u.Role).HasDefaultValue("staff");
             e.Property(u => u.IsActive).HasDefaultValue(true);
+        });
+
+        // ── roomCategories ────────────────────────────────────────
+        modelBuilder.Entity<RoomCategory>(e =>
+        {
+            e.HasIndex(c => c.Slug).IsUnique();
         });
 
         // ── rooms ────────────────────────────────────────────────
@@ -86,9 +93,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(r => r.PricePerNightSnapshot).HasPrecision(10, 2);
             e.Property(r => r.TotalPrice).HasPrecision(10, 2);
 
+            e.HasOne(r => r.Category)
+             .WithMany()
+             .HasForeignKey(r => r.CategoryId)
+             .OnDelete(DeleteBehavior.Restrict);
+
             e.HasOne(r => r.Room)
              .WithMany(rm => rm.Reservations)
              .HasForeignKey(r => r.RoomId)
+             .IsRequired(false)
              .OnDelete(DeleteBehavior.Restrict);
 
             e.HasOne(r => r.Client)

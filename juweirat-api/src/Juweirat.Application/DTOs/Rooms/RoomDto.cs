@@ -18,6 +18,10 @@ public record RoomDto(
     decimal? PricePerMonth,
     string Status,
     bool IsFeatured,
+    long? CategoryId,
+    string? CategorySlug,
+    string? PmsType,
+    string? PmsGamme,
     List<RoomImageDto> Images,
     List<AmenityDto> Amenities
 );

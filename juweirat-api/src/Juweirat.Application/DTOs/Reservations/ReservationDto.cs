@@ -5,10 +5,14 @@ namespace Juweirat.Application.DTOs.Reservations;
 public record ReservationDto(
     long Id,
     string Reference,
-    long RoomId,
-    string RoomNumber,
-    string RoomNameFr,
-    string RoomNameEn,
+    long? RoomId,
+    string? RoomNumber,
+    string? RoomNameFr,
+    string? RoomNameEn,
+    long CategoryId,
+    string CategorySlug,
+    string CategoryNameFr,
+    string CategoryNameEn,
     long ClientId,
     string ClientFullName,
     string? ClientEmail,
@@ -33,10 +37,11 @@ public record ReservationDto(
 );
 
 public record CreateReservationRequest(
-    [Required] long RoomId,
+    [Required] long CategoryId,
     [Required] long ClientId,
     [Required] DateOnly CheckInDate,
     [Required] DateOnly CheckOutDate,
+    long? RoomId = null,
     [Range(1, 20)] int Adults = 1,
     [Range(0, 10)] int Children = 0,
     string Currency = "XOF",

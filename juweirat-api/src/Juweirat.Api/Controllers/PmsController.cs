@@ -71,6 +71,13 @@ public class PmsController(PmsService pms, ClotureService cloture, FactureServic
         return dto is null ? NotFound() : Ok(dto);
     }
 
+    [HttpGet("folios/{id:long}/contract-data")]
+    public async Task<IActionResult> GetContractData(long id)
+    {
+        var dto = await pms.GetContractDataAsync(id);
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
     [HttpPost("folios")]
     public async Task<IActionResult> CreateFolio([FromBody] CreateFolioRequest req)
     {

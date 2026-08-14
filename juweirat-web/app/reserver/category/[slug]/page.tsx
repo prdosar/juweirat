@@ -1,22 +1,21 @@
 import type { Metadata } from 'next'
-import Image from 'next/image'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { CalendarDays, Users, ArrowLeft, MapPin } from 'lucide-react'
+import { CalendarDays, Users, ArrowLeft } from 'lucide-react'
 import { getLang } from '@/lib/lang'
-import { getRoomById } from '@/lib/api'
-import BookingForm from '@/components/BookingForm'
+import { getCategoryBySlug } from '@/lib/api'
+import CategoryBookingForm from '@/components/CategoryBookingForm'
 
 interface Props {
-  params:      Promise<{ id: string }>
+  params:      Promise<{ slug: string }>
   searchParams: Promise<{ checkIn?: string; checkOut?: string; adults?: string; children?: string }>
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { id } = await params
-  const room = await getRoomById(id)
-  if (!room) return { title: 'Réservation — Résidence Juweirat' }
-  return { title: `Réserver ${room.nameFr} — Résidence Juweirat` }
+  const { slug } = await params
+  const cat = await getCategoryBySlug(slug)
+  if (!cat) return { title: 'Réservation — Résidence Juweirat' }
+  return { title: `Réserver ${cat.nameFr} — Résidence Juweirat` }
 }
 
 function nightsBetween(a: string, b: string) {
@@ -24,19 +23,17 @@ function nightsBetween(a: string, b: string) {
   return Math.max(0, Math.round(diff / 86400000))
 }
 
-function calcPrice(room: Awaited<ReturnType<typeof getRoomById>>, nights: number) {
-  if (!room || nights <= 0) return { total: 0, savings: 0, rateLabel: '' }
-  if (nights >= 30 && room.pricePerMonth) {
-    const total   = room.pricePerMonth * nights
-    const savings = nights * room.pricePerNight - total
-    return { total, savings, rateLabel: 'forfait mensuel' }
+function calcPrice(tarifNuit: number, tarifN15: number, tarifN30: number, nights: number) {
+  if (nights <= 0) return { total: 0, savings: 0, rateLabel: '' }
+  if (nights >= 30) {
+    const total = tarifN30 * nights
+    return { total, savings: nights * tarifNuit - total, rateLabel: 'forfait mensuel' }
   }
-  if (nights >= 15 && room.pricePerWeek) {
-    const total   = room.pricePerWeek * nights
-    const savings = nights * room.pricePerNight - total
-    return { total, savings, rateLabel: 'forfait 15 jours' }
+  if (nights >= 15) {
+    const total = tarifN15 * nights
+    return { total, savings: nights * tarifNuit - total, rateLabel: 'forfait 15 jours' }
   }
-  return { total: nights * room.pricePerNight, savings: 0, rateLabel: `${nights} nuit${nights > 1 ? 's' : ''}` }
+  return { total: nights * tarifNuit, savings: 0, rateLabel: `${nights} nuit${nights > 1 ? 's' : ''}` }
 }
 
 function formatFCFA(n: number) {
@@ -49,32 +46,33 @@ function formatDate(d: string, lang: 'fr' | 'en') {
   })
 }
 
-export default async function ReserverPage({ params, searchParams }: Props) {
-  const { id }                               = await params
-  const { checkIn = '', checkOut = '', adults = '1', children = '0' } = await searchParams
-  const [lang, room]                         = await Promise.all([getLang(), getRoomById(id)])
+export default async function CategoryBookingPage({ params, searchParams }: Props) {
+  const { slug }                                                               = await params
+  const { checkIn = '', checkOut = '', adults = '1', children = '0' }         = await searchParams
+  const [lang, cat]                                                            = await Promise.all([getLang(), getCategoryBySlug(slug)])
 
-  if (!room) notFound()
+  if (!cat) notFound()
+
+  const fr = lang === 'fr'
+
   if (!checkIn || !checkOut) {
     return (
       <div className="pt-20 min-h-screen bg-[#FAFAFA] flex items-center justify-center">
         <div className="text-center px-6">
           <p className="text-charcoal/40 text-sm font-light mb-6">
-            {lang === 'fr' ? 'Aucune date sélectionnée.' : 'No dates selected.'}
+            {fr ? 'Aucune date sélectionnée.' : 'No dates selected.'}
           </p>
-          <Link href={`/appartements/${id}`} className="text-green text-xs tracking-widest uppercase border border-green px-6 py-3 hover:bg-green hover:text-charcoal transition-colors">
-            {lang === 'fr' ? '← Retour à l\'appartement' : '← Back to apartment'}
+          <Link href={`/categories/${slug}`} className="text-green text-xs tracking-widest uppercase border border-green px-6 py-3 hover:bg-green hover:text-charcoal transition-colors">
+            {fr ? '← Retour à la catégorie' : '← Back to category'}
           </Link>
         </div>
       </div>
     )
   }
 
-  const nights          = nightsBetween(checkIn, checkOut)
-  const { total, savings, rateLabel } = calcPrice(room, nights)
-  const name            = lang === 'en' ? room.nameEn : room.nameFr
-  const cover           = room.images.find(i => i.isCover)?.filePath ?? room.images[0]?.filePath ?? '/images/IMG_5101.jpg'
-  const fr              = lang === 'fr'
+  const nights                               = nightsBetween(checkIn, checkOut)
+  const { total, savings, rateLabel }        = calcPrice(cat.tarifNuit, cat.tarifN15, cat.tarifN30, nights)
+  const name                                 = fr ? cat.nameFr : cat.nameEn
 
   return (
     <div className="pt-20 bg-[#FAFAFA] min-h-screen">
@@ -82,11 +80,11 @@ export default async function ReserverPage({ params, searchParams }: Props) {
       {/* Back */}
       <div className="max-w-6xl mx-auto px-6 lg:px-10 pt-8 pb-4">
         <Link
-          href={`/appartements/${id}`}
+          href={`/categories/${slug}`}
           className="inline-flex items-center gap-2 text-charcoal/40 hover:text-green text-sm font-light tracking-widest uppercase transition-colors duration-300"
         >
           <ArrowLeft size={14} />
-          {fr ? 'Retour à l\'appartement' : 'Back to apartment'}
+          {fr ? 'Retour à la catégorie' : 'Back to category'}
         </Link>
       </div>
 
@@ -100,8 +98,9 @@ export default async function ReserverPage({ params, searchParams }: Props) {
               <span className="italic text-green">{fr ? 'réservation' : 'booking'}</span>
             </h1>
 
-            <BookingForm
-              room={room}
+            <CategoryBookingForm
+              categoryId={cat.id}
+              categorySlug={slug}
               lang={lang}
               checkIn={checkIn}
               checkOut={checkOut}
@@ -111,36 +110,32 @@ export default async function ReserverPage({ params, searchParams }: Props) {
               totalFcfa={total}
               savings={savings}
               rateLabel={rateLabel}
+              tarifNuit={cat.tarifNuit}
+              tarifN15={cat.tarifN15}
+              tarifN30={cat.tarifN30}
             />
           </div>
 
-          {/* ── RIGHT: Booking summary ── */}
+          {/* ── RIGHT: Summary ── */}
           <div className="lg:col-span-2">
             <div className="sticky top-28 space-y-4">
 
-              {/* Room card */}
-              <div className="bg-white border border-charcoal/10 overflow-hidden">
-                <div className="relative h-44">
-                  <Image
-                    src={cover}
-                    alt={name}
-                    fill
-                    className="object-cover"
-                    sizes="(max-width: 1024px) 100vw, 40vw"
-                  />
-                  <div className="absolute inset-0 bg-charcoal/20" />
-                  {room.floor === 6 && (
-                    <span className="absolute top-3 left-3 text-[10px] tracking-widest uppercase bg-green text-charcoal px-2.5 py-1 font-semibold">
-                      Prestige
-                    </span>
-                  )}
-                </div>
-                <div className="p-5">
-                  <h2 className="text-charcoal font-display text-xl font-light mb-1">{name}</h2>
-                  <p className="text-charcoal/30 text-xs font-light flex items-center gap-1">
-                    <MapPin size={11} /> Résidence Juweirat · Lomé, Togo
+              {/* Category card */}
+              <div className="bg-white border border-charcoal/10 p-5 space-y-3">
+                <p className="text-green text-[10px] tracking-widest uppercase font-light">
+                  {fr ? 'Votre catégorie' : 'Your category'}
+                </p>
+                <div>
+                  <h2 className="text-charcoal font-display text-xl font-light">{name}</h2>
+                  <p className="text-charcoal/30 text-xs font-light mt-1">
+                    {cat.pmsType} · {cat.pmsGamme} · Résidence Juweirat, Lomé
                   </p>
                 </div>
+                <p className="text-charcoal/40 text-xs font-light">
+                  {fr
+                    ? 'Une unité disponible vous sera assignée à votre arrivée.'
+                    : 'An available unit will be assigned to you at check-in.'}
+                </p>
               </div>
 
               {/* Stay details */}
@@ -176,9 +171,9 @@ export default async function ReserverPage({ params, searchParams }: Props) {
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span className="text-charcoal/50 font-light">
-                      {formatFCFA(room.pricePerNight)} × {nights} {fr ? (nights > 1 ? 'nuits' : 'nuit') : (nights > 1 ? 'nights' : 'night')}
+                      {formatFCFA(cat.tarifNuit)} × {nights} {fr ? (nights > 1 ? 'nuits' : 'nuit') : (nights > 1 ? 'nights' : 'night')}
                     </span>
-                    <span className="text-charcoal/70">{formatFCFA(nights * room.pricePerNight)}</span>
+                    <span className="text-charcoal/70">{formatFCFA(nights * cat.tarifNuit)}</span>
                   </div>
                   {savings > 0 && (
                     <div className="flex justify-between text-sm">
@@ -188,13 +183,12 @@ export default async function ReserverPage({ params, searchParams }: Props) {
                   )}
                   <div className="h-px bg-charcoal/5 my-1" />
                   <div className="flex justify-between items-baseline">
-                    <span className="text-charcoal text-sm font-medium">{fr ? 'Total' : 'Total'}</span>
+                    <span className="text-charcoal text-sm font-medium">Total</span>
                     <span className="text-green text-xl font-semibold">{formatFCFA(total)}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Help */}
               <p className="text-charcoal/25 text-xs font-light text-center leading-relaxed">
                 {fr
                   ? 'Des questions ? Contactez-nous sur WhatsApp au +228 90 00 00 00'

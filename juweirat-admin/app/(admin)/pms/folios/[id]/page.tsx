@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import { pmsFolios } from '@/lib/pms';
 import type { FolioDto } from '@/lib/pmsTypes';
-import { ArrowLeft, LogIn, LogOut, Banknote, MoveRight, FileText } from 'lucide-react';
+import { ArrowLeft, LogIn, LogOut, Banknote, MoveRight, FileText, ScrollText } from 'lucide-react';
 
 const TIER_LABELS: Record<string, string> = {
   Nuitee: 'Nuitée', N15Nuits: 'Forfait 15 nuits', N30Nuits: 'Forfait 30 nuits',
@@ -152,6 +152,19 @@ export default function FolioDetailPage() {
                 {f.factureId && (
                   <p className="text-xs text-center text-green-dark">Facture émise ✓</p>
                 )}
+                <Link
+                  href={`/pms/folios/${f.id}/contrat`}
+                  target="_blank"
+                  className={`flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-lg transition-colors ${
+                    f.nights >= 30
+                      ? 'bg-amber-50 border border-amber-300 text-amber-800 hover:bg-amber-100'
+                      : 'border border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <ScrollText size={15} />
+                  Contrat de bail
+                  {f.nights >= 30 && <span className="ml-auto text-[10px] font-bold text-amber-700">OBLIGATOIRE</span>}
+                </Link>
               </div>
             )}
           </div>

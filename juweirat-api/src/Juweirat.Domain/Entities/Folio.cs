@@ -38,6 +38,7 @@ public class Folio
     // Prestations supplémentaires
     public int PdjParJour { get; set; }
     public int PdjPrix { get; set; }
+    public int Kwh { get; set; }           // kWh consommés (facturation élec hors forfait, séjours ≥ 15 nuits à 230 FCFA/kWh)
     public int Debiteur { get; set; }
     public int Dependances { get; set; }
 

@@ -1,7 +1,7 @@
 import type {
   HotelConfigDto, UnitDto, FolioDto,
   CloturePreviewDto, ClotureDto, PostingDto,
-  FactureDto,
+  FactureDto, ContractDataDto,
   MaintenanceTicketDto, DebiteurDto,
 } from './pmsTypes';
 
@@ -65,7 +65,8 @@ export const pmsFolios = {
     if (params?.status) qs.set('status', params.status);
     return pmsReq<FolioDto[]>(`/api/pms/folios?${qs}`);
   },
-  getById:  (id: number) => pmsReq<FolioDto>(`/api/pms/folios/${id}`),
+  getById:       (id: number) => pmsReq<FolioDto>(`/api/pms/folios/${id}`),
+  getContractData: (id: number) => pmsReq<ContractDataDto>(`/api/pms/folios/${id}/contract-data`),
   create:   (body: Record<string, unknown>) =>
     pmsReq<FolioDto>('/api/pms/folios', { method: 'POST', body: JSON.stringify(body) }),
   update:   (id: number, body: Record<string, unknown>) =>

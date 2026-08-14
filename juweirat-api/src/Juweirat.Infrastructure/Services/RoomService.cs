@@ -14,6 +14,7 @@ public class RoomService(AppDbContext db)
         var query = db.Rooms
             .Include(r => r.Images.OrderBy(i => i.SortOrder))
             .Include(r => r.Amenities)
+            .Include(r => r.Category)
             .AsQueryable();
 
         if (status is not null && Enum.TryParse<RoomStatus>(status, true, out var s))
@@ -31,6 +32,7 @@ public class RoomService(AppDbContext db)
         var room = await db.Rooms
             .Include(r => r.Images.OrderBy(i => i.SortOrder))
             .Include(r => r.Amenities)
+            .Include(r => r.Category)
             .FirstOrDefaultAsync(r => r.Id == id);
         return room is null ? null : ToDto(room);
     }
@@ -190,9 +192,10 @@ public class RoomService(AppDbContext db)
             .Where(r =>
                 r.Status != ReservationStatus.Cancelled &&
                 r.Status != ReservationStatus.NoShow &&
+                r.RoomId != null &&
                 r.CheckInDate  < checkOut &&
                 r.CheckOutDate > checkIn)
-            .Select(r => r.RoomId)
+            .Select(r => r.RoomId!.Value)
             .ToListAsync();
 
         // Blocages manuels
@@ -220,6 +223,7 @@ public class RoomService(AppDbContext db)
         var rooms = await db.Rooms
             .Include(r => r.Images.OrderBy(i => i.SortOrder))
             .Include(r => r.Amenities)
+            .Include(r => r.Category)
             .Where(r =>
                 r.Status == RoomStatus.Available &&
                 r.CapacityAdults >= adults &&
@@ -237,6 +241,7 @@ public class RoomService(AppDbContext db)
         r.PricePerNight, r.PricePerWeek, r.PricePerMonth,
         r.Status.ToString(),
         r.IsFeatured,
+        r.CategoryId, r.Category?.Slug, r.PmsType, r.PmsGamme,
         r.Images.Select(i => new RoomImageDto(i.Id, i.FilePath, i.AltTextFr, i.AltTextEn, i.SortOrder, i.IsCover)).ToList(),
         r.Amenities.Select(a => new AmenityDto(a.Id, a.NameFr, a.NameEn, a.Icon)).ToList()
     );

@@ -16,6 +16,23 @@ export interface RoomAmenity {
   icon: string | null
 }
 
+export interface RoomCategory {
+  id: number
+  slug: string
+  pmsType: string
+  pmsGamme: string
+  nameFr: string
+  nameEn: string
+  descriptionFr: string | null
+  descriptionEn: string | null
+  capacityAdults: number
+  capacityChildren: number
+  tarifNuit: number
+  tarifN15: number
+  tarifN30: number
+  roomCount: number
+}
+
 export interface Room {
   id: number
   roomNumber: string
@@ -32,8 +49,43 @@ export interface Room {
   pricePerMonth: number | null
   status: string
   isFeatured: boolean
+  categoryId: number | null
+  categorySlug: string | null
+  pmsType: string | null
+  pmsGamme: string | null
   images: RoomImage[]
   amenities: RoomAmenity[]
+}
+
+export async function getCategories(): Promise<RoomCategory[]> {
+  try {
+    const res = await fetch(`${API}/api/room-categories`, { next: { revalidate: 3600, tags: ['categories'] } })
+    if (!res.ok) return []
+    return res.json()
+  } catch {
+    return []
+  }
+}
+
+export async function getAvailableCategories(checkIn: string, checkOut: string, adults: number): Promise<RoomCategory[]> {
+  try {
+    const qs = `checkIn=${checkIn}&checkOut=${checkOut}&adults=${adults}`
+    const res = await fetch(`${API}/api/room-categories/available?${qs}`, { cache: 'no-store' })
+    if (!res.ok) return []
+    return res.json()
+  } catch {
+    return []
+  }
+}
+
+export async function getCategoryBySlug(slug: string): Promise<RoomCategory | null> {
+  try {
+    const res = await fetch(`${API}/api/room-categories/${slug}`, { next: { revalidate: 3600, tags: ['categories', `cat-${slug}`] } })
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
+  }
 }
 
 export async function getRooms(): Promise<Room[]> {

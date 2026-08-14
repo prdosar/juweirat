@@ -13,6 +13,7 @@ public class ReservationService(AppDbContext db)
     {
         var query = db.Reservations
             .Include(r => r.Room)
+            .Include(r => r.Category)
             .Include(r => r.Client)
             .Include(r => r.Payments)
             .AsQueryable();
@@ -28,6 +29,7 @@ public class ReservationService(AppDbContext db)
     {
         var r = await db.Reservations
             .Include(r => r.Room)
+            .Include(r => r.Category)
             .Include(r => r.Client)
             .Include(r => r.Payments)
             .FirstOrDefaultAsync(r => r.Id == id);
@@ -39,45 +41,62 @@ public class ReservationService(AppDbContext db)
         if (req.CheckOutDate <= req.CheckInDate)
             return (null, "checkOutDate must be after checkInDate");
 
-        var room = await db.Rooms.FindAsync(req.RoomId);
-        if (room is null) return (null, "Room not found");
-        if (room.Status != RoomStatus.Available) return (null, "Room is not available");
-
-        var overlap = await db.Reservations.AnyAsync(r =>
-            r.RoomId == req.RoomId &&
-            r.Status != ReservationStatus.Cancelled &&
-            r.Status != ReservationStatus.NoShow &&
-            r.CheckInDate  < req.CheckOutDate &&
-            r.CheckOutDate > req.CheckInDate);
-
-        if (overlap) return (null, "Room is already reserved for these dates");
-
-        var blockOverlap = await db.RoomBlocks.AnyAsync(b =>
-            b.RoomId == req.RoomId &&
-            b.StartDate < req.CheckOutDate &&
-            b.EndDate   > req.CheckInDate);
-
-        if (blockOverlap) return (null, "Room is blocked for these dates");
+        var category = await db.RoomCategories.FindAsync(req.CategoryId);
+        if (category is null) return (null, "Category not found");
 
         var nights = req.CheckOutDate.DayNumber - req.CheckInDate.DayNumber;
-        var total  = room.PricePerNight * nights;
+
+        Room? room = null;
+        if (req.RoomId is not null)
+        {
+            room = await db.Rooms.FindAsync(req.RoomId.Value);
+            if (room is null) return (null, "Room not found");
+            if (room.CategoryId != req.CategoryId) return (null, "Room does not belong to the requested category");
+            if (room.Status != RoomStatus.Available) return (null, "Room is not available");
+
+            var overlap = await CheckOverlapAsync(req.RoomId.Value, req.CheckInDate, req.CheckOutDate);
+            if (overlap) return (null, "Room is already reserved for these dates");
+        }
+        else
+        {
+            // Auto-assign: find first available room in the category
+            var candidateIds = await db.Rooms
+                .Where(r => r.CategoryId == req.CategoryId && r.Status == RoomStatus.Available)
+                .Select(r => r.Id)
+                .ToListAsync();
+
+            foreach (var candidateId in candidateIds)
+            {
+                if (!await CheckOverlapAsync(candidateId, req.CheckInDate, req.CheckOutDate))
+                {
+                    room = await db.Rooms.FindAsync(candidateId);
+                    break;
+                }
+            }
+        }
+
+        // Tarification selon le palier
+        var tarifResult = TarifEngine.ForStay(
+            category.TarifNuit, category.TarifN15, category.TarifN30, nights);
+        var total = (decimal)tarifResult.PerNight * nights;
 
         var reservation = new Reservation
         {
-            Reference              = await GenerateReferenceAsync(),
-            RoomId                 = req.RoomId,
-            ClientId               = req.ClientId,
-            CheckInDate            = req.CheckInDate,
-            CheckOutDate           = req.CheckOutDate,
-            Nights                 = nights,
-            Adults                 = req.Adults,
-            Children               = req.Children,
-            PricePerNightSnapshot  = room.PricePerNight,
-            TotalPrice             = total,
-            Currency               = req.Currency,
-            Source                 = req.Source,
-            SpecialRequests        = req.SpecialRequests,
-            InternalNotes          = req.InternalNotes,
+            Reference             = await GenerateReferenceAsync(),
+            CategoryId            = req.CategoryId,
+            RoomId                = room?.Id,
+            ClientId              = req.ClientId,
+            CheckInDate           = req.CheckInDate,
+            CheckOutDate          = req.CheckOutDate,
+            Nights                = nights,
+            Adults                = req.Adults,
+            Children              = req.Children,
+            PricePerNightSnapshot = tarifResult.PerNight,
+            TotalPrice            = total,
+            Currency              = req.Currency,
+            Source                = req.Source,
+            SpecialRequests       = req.SpecialRequests,
+            InternalNotes         = req.InternalNotes,
         };
 
         db.Reservations.Add(reservation);
@@ -85,6 +104,7 @@ public class ReservationService(AppDbContext db)
 
         var created = await db.Reservations
             .Include(r => r.Room)
+            .Include(r => r.Category)
             .Include(r => r.Client)
             .Include(r => r.Payments)
             .FirstAsync(r => r.Id == reservation.Id);
@@ -96,6 +116,7 @@ public class ReservationService(AppDbContext db)
     {
         var r = await db.Reservations
             .Include(r => r.Room)
+            .Include(r => r.Category)
             .Include(r => r.Client)
             .Include(r => r.Payments)
             .FirstOrDefaultAsync(r => r.Id == id);
@@ -112,13 +133,12 @@ public class ReservationService(AppDbContext db)
         {
             case ReservationStatus.Confirmed:
                 r.ConfirmedAt = DateTime.UtcNow;
-                // Auto-create a PMS folio if none exists yet
                 if (r.Folio is null)
                     await CreateFolioFromReservationAsync(r);
                 break;
             case ReservationStatus.Cancelled:
-                r.CancelledAt         = DateTime.UtcNow;
-                r.CancellationReason  = req.CancellationReason;
+                r.CancelledAt        = DateTime.UtcNow;
+                r.CancellationReason = req.CancellationReason;
                 break;
         }
 
@@ -126,14 +146,38 @@ public class ReservationService(AppDbContext db)
         return (ToDto(r), null);
     }
 
+    private async Task<bool> CheckOverlapAsync(long roomId, DateOnly checkIn, DateOnly checkOut)
+    {
+        var resaOverlap = await db.Reservations.AnyAsync(r =>
+            r.RoomId == roomId &&
+            r.Status != ReservationStatus.Cancelled &&
+            r.Status != ReservationStatus.NoShow &&
+            r.CheckInDate  < checkOut &&
+            r.CheckOutDate > checkIn);
+
+        if (resaOverlap) return true;
+
+        var blockOverlap = await db.RoomBlocks.AnyAsync(b =>
+            b.RoomId == roomId &&
+            b.StartDate < checkOut &&
+            b.EndDate   > checkIn);
+
+        return blockOverlap;
+    }
+
     private async Task CreateFolioFromReservationAsync(Reservation r)
     {
         var config = await db.HotelConfig.FindAsync(1);
-        if (config is null) return; // PMS not seeded yet — skip silently
+        if (config is null) return;
 
         var nights = r.CheckOutDate.DayNumber - r.CheckInDate.DayNumber;
-        var unit   = r.Room;
-        var tarif  = Services.TarifEngine.ForStay(unit.TarifNuit, unit.TarifN15, unit.TarifN30, nights);
+        var unit   = r.Room ?? await db.Rooms
+            .Where(rm => rm.CategoryId == r.CategoryId && rm.Status == RoomStatus.Available)
+            .FirstOrDefaultAsync();
+
+        if (unit is null) return;
+
+        var tarif = TarifEngine.ForStay(unit.TarifNuit, unit.TarifN15, unit.TarifN30, nights);
 
         config.ResaSeq++;
         var number = $"FL-{config.DateHotel.Year}-{config.ResaSeq:D4}";
@@ -141,7 +185,7 @@ public class ReservationService(AppDbContext db)
         var folio = new Folio
         {
             Number        = number,
-            UnitId        = r.RoomId,
+            UnitId        = unit.Id,
             Nom           = r.Client.LastName,
             Prenom        = r.Client.FirstName,
             Guest         = r.Client.FullName,
@@ -158,7 +202,6 @@ public class ReservationService(AppDbContext db)
         };
 
         db.Folios.Add(folio);
-        // SaveChangesAsync is called by the caller after this method returns
     }
 
     private async Task<string> GenerateReferenceAsync()
@@ -170,7 +213,8 @@ public class ReservationService(AppDbContext db)
 
     private static ReservationDto ToDto(Reservation r) => new(
         r.Id, r.Reference,
-        r.RoomId, r.Room.RoomNumber, r.Room.NameFr, r.Room.NameEn,
+        r.RoomId, r.Room?.RoomNumber, r.Room?.NameFr, r.Room?.NameEn,
+        r.CategoryId, r.Category.Slug, r.Category.NameFr, r.Category.NameEn,
         r.ClientId, r.Client.FullName, r.Client.Email, r.Client.Phone,
         r.CheckInDate, r.CheckOutDate, r.Nights, r.Adults, r.Children,
         r.PricePerNightSnapshot, r.TotalPrice, r.Currency,

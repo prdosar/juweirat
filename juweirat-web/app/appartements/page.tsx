@@ -3,17 +3,17 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { ArrowRight } from 'lucide-react'
 import { getLang } from '@/lib/lang'
-import { getRooms } from '@/lib/api'
+import { getCategories } from '@/lib/api'
 import { t } from '@/lib/i18n'
-import ApartmentsList from '@/components/ApartmentsList'
+import CategoriesList from '@/components/CategoriesList'
 
 export const metadata: Metadata = {
   title: 'Appartements — Résidence Juweirat Lomé',
-  description: '18 appartements meublés répartis sur 4 niveaux à Lomé, Togo. Découvrez nos espaces de vie confortables et élégants.',
+  description: '9 catégories d\'appartements meublés à Lomé, Togo. Du studio au penthouse, découvrez nos espaces de vie confortables et élégants.',
 }
 
 export default async function AppartementsPage() {
-  const [lang, rooms] = await Promise.all([getLang(), getRooms()])
+  const [lang, categories] = await Promise.all([getLang(), getCategories()])
 
   const includedAmenities = lang === 'en'
     ? ['High-Speed Wi-Fi', 'Air Conditioning', 'Television', 'Equipped Kitchen', 'Hot Water', 'Secure Parking']
@@ -53,10 +53,10 @@ export default async function AppartementsPage() {
         </div>
       </section>
 
-      {/* Room grid with filters */}
+      {/* Category grid with filters */}
       <section className="bg-[#FAFAFA] py-16 px-6">
         <div className="max-w-7xl mx-auto">
-          <ApartmentsList rooms={rooms} lang={lang} />
+          <CategoriesList categories={categories} lang={lang} />
         </div>
       </section>
 

@@ -115,6 +115,151 @@ VALUES
      4, 2, 130, 130000, 780000, 2600000, 'Available', true, NOW(), NOW())
 ON CONFLICT DO NOTHING;
 
+-- ============================================================
+-- Catégories de chambres (9 catégories T1-T4 × standard/supérieure/privilège/suite)
+-- ============================================================
+
+INSERT INTO "roomCategories"
+    ("slug","pmsType","pmsGamme","nameFr","nameEn",
+     "descriptionFr","descriptionEn",
+     "capacityAdults","capacityChildren",
+     "tarifNuit","tarifN15","tarifN30","createdAt","updatedAt")
+VALUES
+    ('t1-standard',   'T1','standard',   'Studio Standard',        'Standard Studio',
+     'Studio fonctionnel idéal pour un voyageur solo ou en couple.',
+     'Functional studio ideal for solo or couple travelers.',
+     2,0,30000,13000,10000,NOW(),NOW()),
+    ('t2-standard',   'T2','standard',   'Appartement T2 Standard','Standard T2 Apartment',
+     'Appartement 2 pièces confortable pour les séjours standards.',
+     'Comfortable 2-room apartment for standard stays.',
+     3,1,40000,20000,15000,NOW(),NOW()),
+    ('t3-standard',   'T3','standard',   'Appartement T3 Standard','Standard T3 Apartment',
+     'Grand appartement 3 pièces pour les familles ou groupes.',
+     'Large 3-room apartment for families or groups.',
+     4,2,65000,30000,25000,NOW(),NOW()),
+    ('t1-superieure', 'T1','supérieure', 'Studio Supérieur',       'Superior Studio',
+     'Studio supérieur avec finitions de qualité.',
+     'Superior studio with quality finishes.',
+     2,0,35000,16000,13333,NOW(),NOW()),
+    ('t2-superieure', 'T2','supérieure', 'Appartement T2 Supérieur','Superior T2 Apartment',
+     'Appartement 2 pièces supérieur avec équipements haut de gamme.',
+     'Superior 2-room apartment with high-end amenities.',
+     3,1,45000,20000,16667,NOW(),NOW()),
+    ('t3-superieure', 'T3','supérieure', 'Appartement T3 Supérieur','Superior T3 Apartment',
+     'Grand appartement 3 pièces supérieur, idéal pour familles exigeantes.',
+     'Large superior 3-room apartment, ideal for discerning families.',
+     4,2,80000,34000,30000,NOW(),NOW()),
+    ('t1-privilege',  'T1','privilège',  'Studio Privilège',       'Privilege Studio',
+     'Studio privilège avec services exclusifs.',
+     'Privilege studio with exclusive services.',
+     2,0,40000,20000,15000,NOW(),NOW()),
+    ('t2-privilege',  'T2','privilège',  'Appartement T2 Privilège','Privilege T2 Apartment',
+     'Appartement 2 pièces haut de gamme avec prestations privilège.',
+     'High-end 2-room apartment with privilege services.',
+     3,1,55000,25000,23333,NOW(),NOW()),
+    ('t4-suite',      'T4','suite',      'Suite',                  'Suite',
+     'Suite d''exception au sommet de la résidence, vue panoramique.',
+     'Exceptional suite at the top of the residence, panoramic view.',
+     4,2,95000,54000,50000,NOW(),NOW())
+ON CONFLICT DO NOTHING;
+
+-- ============================================================
+-- Grille tarifaire officielle Juweirat (août 2026)
+-- tarifN15 / pricePerWeek  = tarif/nuit pour séjours 15–29 nuits (hors élec)
+-- tarifN30 / pricePerMonth = tarif/nuit pour séjours ≥ 30 nuits  (hors élec)
+-- ============================================================
+
+-- Étage 2
+UPDATE rooms SET "pmsRoomNo"='22',"pmsType"='T2',"pmsGamme"='supérieure',
+    "tarifNuit"=45000,"tarifN15"=22000,"tarifN30"=20000,
+    "pricePerNight"=45000,"pricePerWeek"=22000,"pricePerMonth"=20000,
+    "planRow"=0,"planCol"=0 WHERE "roomNumber"='201';
+UPDATE rooms SET "pmsRoomNo"='23',"pmsType"='T3',"pmsGamme"='supérieure',
+    "tarifNuit"=80000,"tarifN15"=34000,"tarifN30"=30000,
+    "pricePerNight"=80000,"pricePerWeek"=34000,"pricePerMonth"=30000,
+    "planRow"=0,"planCol"=1 WHERE "roomNumber"='202';
+UPDATE rooms SET "pmsRoomNo"='24',"pmsType"='T3',"pmsGamme"='supérieure',
+    "tarifNuit"=80000,"tarifN15"=34000,"tarifN30"=30000,
+    "pricePerNight"=80000,"pricePerWeek"=34000,"pricePerMonth"=30000,
+    "planRow"=1,"planCol"=0 WHERE "roomNumber"='203';
+UPDATE rooms SET "pmsRoomNo"='25',"pmsType"='T2',"pmsGamme"='privilège',
+    "tarifNuit"=55000,"tarifN15"=25000,"tarifN30"=23333,
+    "pricePerNight"=55000,"pricePerWeek"=25000,"pricePerMonth"=23333,
+    "planRow"=1,"planCol"=1 WHERE "roomNumber"='204';
+
+-- Étage 4
+UPDATE rooms SET "pmsRoomNo"='41',"pmsType"='T1',"pmsGamme"='standard',
+    "tarifNuit"=30000,"tarifN15"=13000,"tarifN30"=10000,
+    "pricePerNight"=30000,"pricePerWeek"=13000,"pricePerMonth"=10000,
+    "planRow"=0,"planCol"=0 WHERE "roomNumber"='401';
+UPDATE rooms SET "pmsRoomNo"='42',"pmsType"='T2',"pmsGamme"='standard',
+    "tarifNuit"=40000,"tarifN15"=20000,"tarifN30"=15000,
+    "pricePerNight"=40000,"pricePerWeek"=20000,"pricePerMonth"=15000,
+    "planRow"=0,"planCol"=1 WHERE "roomNumber"='402';
+UPDATE rooms SET "pmsRoomNo"='43',"pmsType"='T3',"pmsGamme"='standard',
+    "tarifNuit"=65000,"tarifN15"=30000,"tarifN30"=25000,
+    "pricePerNight"=65000,"pricePerWeek"=30000,"pricePerMonth"=25000,
+    "planRow"=1,"planCol"=0 WHERE "roomNumber"='403';
+UPDATE rooms SET "pmsRoomNo"='44',"pmsType"='T3',"pmsGamme"='standard',
+    "tarifNuit"=65000,"tarifN15"=30000,"tarifN30"=25000,
+    "pricePerNight"=65000,"pricePerWeek"=30000,"pricePerMonth"=25000,
+    "planRow"=1,"planCol"=1 WHERE "roomNumber"='404';
+UPDATE rooms SET "pmsRoomNo"='45',"pmsType"='T2',"pmsGamme"='supérieure',
+    "tarifNuit"=45000,"tarifN15"=20000,"tarifN30"=16667,
+    "pricePerNight"=45000,"pricePerWeek"=20000,"pricePerMonth"=16667,
+    "planRow"=2,"planCol"=0 WHERE "roomNumber"='405';
+UPDATE rooms SET "pmsRoomNo"='46',"pmsType"='T1',"pmsGamme"='supérieure',
+    "tarifNuit"=35000,"tarifN15"=16000,"tarifN30"=13333,
+    "pricePerNight"=35000,"pricePerWeek"=16000,"pricePerMonth"=13333,
+    "planRow"=2,"planCol"=1 WHERE "roomNumber"='406';
+
+-- Étage 5
+UPDATE rooms SET "pmsRoomNo"='51',"pmsType"='T1',"pmsGamme"='standard',
+    "tarifNuit"=30000,"tarifN15"=14000,"tarifN30"=10000,
+    "pricePerNight"=30000,"pricePerWeek"=14000,"pricePerMonth"=10000,
+    "planRow"=0,"planCol"=0 WHERE "roomNumber"='501';
+UPDATE rooms SET "pmsRoomNo"='52',"pmsType"='T2',"pmsGamme"='standard',
+    "tarifNuit"=40000,"tarifN15"=20000,"tarifN30"=15000,
+    "pricePerNight"=40000,"pricePerWeek"=20000,"pricePerMonth"=15000,
+    "planRow"=0,"planCol"=1 WHERE "roomNumber"='502';
+UPDATE rooms SET "pmsRoomNo"='53',"pmsType"='T3',"pmsGamme"='standard',
+    "tarifNuit"=65000,"tarifN15"=30000,"tarifN30"=25000,
+    "pricePerNight"=65000,"pricePerWeek"=30000,"pricePerMonth"=25000,
+    "planRow"=1,"planCol"=0 WHERE "roomNumber"='503';
+UPDATE rooms SET "pmsRoomNo"='54',"pmsType"='T3',"pmsGamme"='standard',
+    "tarifNuit"=65000,"tarifN15"=30000,"tarifN30"=25000,
+    "pricePerNight"=65000,"pricePerWeek"=30000,"pricePerMonth"=25000,
+    "planRow"=1,"planCol"=1 WHERE "roomNumber"='504';
+UPDATE rooms SET "pmsRoomNo"='55',"pmsType"='T2',"pmsGamme"='supérieure',
+    "tarifNuit"=45000,"tarifN15"=20000,"tarifN30"=16667,
+    "pricePerNight"=45000,"pricePerWeek"=20000,"pricePerMonth"=16667,
+    "planRow"=2,"planCol"=0 WHERE "roomNumber"='505';
+UPDATE rooms SET "pmsRoomNo"='56',"pmsType"='T1',"pmsGamme"='supérieure',
+    "tarifNuit"=35000,"tarifN15"=16000,"tarifN30"=13333,
+    "pricePerNight"=35000,"pricePerWeek"=16000,"pricePerMonth"=13333,
+    "planRow"=2,"planCol"=1 WHERE "roomNumber"='506';
+
+-- Étage 6
+UPDATE rooms SET "pmsRoomNo"='61',"pmsType"='T1',"pmsGamme"='privilège',
+    "tarifNuit"=40000,"tarifN15"=20000,"tarifN30"=15000,
+    "pricePerNight"=40000,"pricePerWeek"=20000,"pricePerMonth"=15000,
+    "planRow"=0,"planCol"=0 WHERE "roomNumber"='601';
+UPDATE rooms SET "pmsRoomNo"='67',"pmsType"='T4',"pmsGamme"='suite',
+    "tarifNuit"=95000,"tarifN15"=54000,"tarifN30"=50000,
+    "pricePerNight"=95000,"pricePerWeek"=54000,"pricePerMonth"=50000,
+    "planRow"=0,"planCol"=1 WHERE "roomNumber"='602';
+
+-- Assigner les catégories aux chambres
+UPDATE "rooms" SET "categoryId" = (SELECT id FROM "roomCategories" WHERE slug = 't1-standard')   WHERE "pmsType" = 'T1' AND "pmsGamme" = 'standard';
+UPDATE "rooms" SET "categoryId" = (SELECT id FROM "roomCategories" WHERE slug = 't2-standard')   WHERE "pmsType" = 'T2' AND "pmsGamme" = 'standard';
+UPDATE "rooms" SET "categoryId" = (SELECT id FROM "roomCategories" WHERE slug = 't3-standard')   WHERE "pmsType" = 'T3' AND "pmsGamme" = 'standard';
+UPDATE "rooms" SET "categoryId" = (SELECT id FROM "roomCategories" WHERE slug = 't1-superieure') WHERE "pmsType" = 'T1' AND "pmsGamme" = 'supérieure';
+UPDATE "rooms" SET "categoryId" = (SELECT id FROM "roomCategories" WHERE slug = 't2-superieure') WHERE "pmsType" = 'T2' AND "pmsGamme" = 'supérieure';
+UPDATE "rooms" SET "categoryId" = (SELECT id FROM "roomCategories" WHERE slug = 't3-superieure') WHERE "pmsType" = 'T3' AND "pmsGamme" = 'supérieure';
+UPDATE "rooms" SET "categoryId" = (SELECT id FROM "roomCategories" WHERE slug = 't1-privilege')  WHERE "pmsType" = 'T1' AND "pmsGamme" = 'privilège';
+UPDATE "rooms" SET "categoryId" = (SELECT id FROM "roomCategories" WHERE slug = 't2-privilege')  WHERE "pmsType" = 'T2' AND "pmsGamme" = 'privilège';
+UPDATE "rooms" SET "categoryId" = (SELECT id FROM "roomCategories" WHERE slug = 't4-suite')      WHERE "pmsType" = 'T4' AND "pmsGamme" = 'suite';
+
 -- Link all rooms with base amenities (Wifi, AC, TV, Kitchen, Parking, Security, HotWater)
 -- We use a subquery to get amenity IDs by name
 DO $$

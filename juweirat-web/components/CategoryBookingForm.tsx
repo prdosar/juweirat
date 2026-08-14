@@ -1,20 +1,23 @@
 'use client'
 import { useState, useRef } from 'react'
-import { CheckCircle, User, Mail, Phone, Globe, CreditCard, Smartphone, Lock, ChevronRight, CalendarDays } from 'lucide-react'
-import type { Room } from '@/lib/api'
+import { CheckCircle, User, Mail, Phone, Globe, CreditCard, Smartphone, Lock, ChevronRight, CalendarDays, ScrollText } from 'lucide-react'
 import type { Lang } from '@/lib/i18n'
 
 interface Props {
-  room: Room
-  lang: Lang
-  checkIn: string
-  checkOut: string
-  adults: number
-  children: number
-  nights: number
-  totalFcfa: number
-  savings: number
-  rateLabel: string
+  categoryId:   number
+  categorySlug: string
+  lang:         Lang
+  checkIn:      string
+  checkOut:     string
+  adults:       number
+  children:     number
+  nights:       number
+  totalFcfa:    number
+  savings:      number
+  rateLabel:    string
+  tarifNuit:    number
+  tarifN15:     number
+  tarifN30:     number
 }
 
 type PayMethod = 'fedapay' | 'stripe' | null
@@ -37,30 +40,33 @@ function nightsBetween(a: string, b: string) {
   return Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000))
 }
 
-function calcPrice(room: Room, nights: number) {
+function calcPrice(tarifNuit: number, tarifN15: number, tarifN30: number, nights: number) {
   if (nights <= 0) return { total: 0, savings: 0, rateLabel: '' }
-  if (nights >= 30 && room.pricePerMonth) {
-    const total = room.pricePerMonth * nights
-    return { total, savings: nights * room.pricePerNight - total, rateLabel: 'forfait mensuel' }
+  if (nights >= 30) {
+    const total = tarifN30 * nights
+    return { total, savings: nights * tarifNuit - total, rateLabel: 'forfait mensuel' }
   }
-  if (nights >= 15 && room.pricePerWeek) {
-    const total = room.pricePerWeek * nights
-    return { total, savings: nights * room.pricePerNight - total, rateLabel: 'forfait 15 jours' }
+  if (nights >= 15) {
+    const total = tarifN15 * nights
+    return { total, savings: nights * tarifNuit - total, rateLabel: 'forfait 15 jours' }
   }
-  return { total: nights * room.pricePerNight, savings: 0, rateLabel: `${nights} nuit${nights > 1 ? 's' : ''}` }
+  return { total: nights * tarifNuit, savings: 0, rateLabel: `${nights} nuit${nights > 1 ? 's' : ''}` }
 }
 
 function openPicker(ref: React.RefObject<HTMLInputElement | null>) {
   try { ref.current?.showPicker() } catch { ref.current?.focus() }
 }
 
-export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut: initCheckOut, adults, children, nights: initNights, totalFcfa: initTotal, savings: initSavings, rateLabel: initRateLabel }: Props) {
+export default function CategoryBookingForm({
+  lang, checkIn: initCheckIn, checkOut: initCheckOut, adults, children,
+  nights: initNights, totalFcfa: initTotal, savings: initSavings, rateLabel: initRateLabel,
+  tarifNuit, tarifN15, tarifN30,
+}: Props) {
   const [step,      setStep]      = useState<1 | 2 | 3>(1)
   const [payMethod, setPayMethod] = useState<PayMethod>(null)
   const [form,      setForm]      = useState({ firstName: '', lastName: '', email: '', phone: '', nationality: '', notes: '' })
   const [agreed,    setAgreed]    = useState(false)
 
-  /* Editable dates — initialized from URL params */
   const [localCheckIn,  setLocalCheckIn]  = useState(initCheckIn)
   const [localCheckOut, setLocalCheckOut] = useState(initCheckOut)
   const checkInRef  = useRef<HTMLInputElement>(null)
@@ -70,14 +76,12 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
     ? toDateStr(new Date(new Date(localCheckIn).getTime() + 86400000))
     : todayStr()
 
-  /* Recalculate price whenever dates change */
   const localNights = nightsBetween(localCheckIn, localCheckOut)
   const pricing     = localNights > 0
-    ? calcPrice(room, localNights)
+    ? calcPrice(tarifNuit, tarifN15, tarifN30, localNights)
     : { total: initTotal, savings: initSavings, rateLabel: initRateLabel }
 
-  const fr   = lang === 'fr'
-  const name = fr ? room.nameFr : room.nameEn
+  const fr = lang === 'fr'
 
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
 
@@ -89,7 +93,6 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
   const step1Valid = form.firstName.trim() && form.lastName.trim() && form.email.includes('@') && form.phone.trim() && localCheckIn && localCheckOut && localNights > 0
   const step2Valid = payMethod !== null
 
-  /* ── Confirmed screen ── */
   if (step === 3) {
     return (
       <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
@@ -101,13 +104,13 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
         </h2>
         <p className="text-charcoal/50 font-light max-w-md mb-2">
           {fr
-            ? `Votre demande pour ${name} du ${formatDate(localCheckIn, lang)} au ${formatDate(localCheckOut, lang)} a bien été enregistrée.`
-            : `Your request for ${name} from ${formatDate(localCheckIn, lang)} to ${formatDate(localCheckOut, lang)} has been recorded.`}
+            ? `Votre demande du ${formatDate(localCheckIn, lang)} au ${formatDate(localCheckOut, lang)} a bien été enregistrée.`
+            : `Your request from ${formatDate(localCheckIn, lang)} to ${formatDate(localCheckOut, lang)} has been recorded.`}
         </p>
         <p className="text-charcoal/30 text-sm font-light max-w-md mb-8">
           {fr
-            ? "Notre équipe vous contactera dans les prochaines heures pour confirmer et finaliser le paiement."
-            : "Our team will contact you within a few hours to confirm and finalize payment."}
+            ? "Notre équipe vous contactera dans les prochaines heures pour confirmer et vous assigner une unité disponible."
+            : "Our team will contact you within a few hours to confirm and assign you an available unit."}
         </p>
         <div className="bg-surface border border-charcoal/10 p-5 text-left w-full max-w-sm space-y-2">
           <p className="text-charcoal/60 text-sm font-light">{form.firstName} {form.lastName}</p>
@@ -117,6 +120,22 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
           <p className="text-charcoal text-sm font-medium">{formatFCFA(pricing.total)}</p>
           <p className="text-charcoal/40 text-xs font-light">{localNights} {fr ? (localNights > 1 ? 'nuits' : 'nuit') : (localNights > 1 ? 'nights' : 'night')}</p>
         </div>
+
+        {localNights >= 30 && (
+          <div className="w-full max-w-sm border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+            <ScrollText size={16} className="text-amber-700 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-amber-800 text-xs font-semibold tracking-wide uppercase mb-1">
+                {fr ? 'Contrat de bail requis' : 'Lease contract required'}
+              </p>
+              <p className="text-amber-700 text-xs font-light leading-relaxed">
+                {fr
+                  ? 'Votre séjour étant de 30 nuits ou plus, un contrat de bail à usage d\'habitation est obligatoire. Notre équipe vous le fera signer avant votre arrivée.'
+                  : 'Your stay being 30 nights or more, a residential lease agreement is required. Our team will have you sign it before check-in.'}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -144,33 +163,25 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
         ))}
       </div>
 
-      {/* ── STEP 1 : Guest info + dates ── */}
+      {/* ── STEP 1 ── */}
       {step === 1 && (
         <div className="space-y-5">
           <h3 className="font-display text-2xl font-light text-charcoal">
             {fr ? 'Vos informations' : 'Your information'}
           </h3>
 
-          {/* Dates (editable) */}
+          {/* Dates */}
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-charcoal/40 text-[10px] tracking-widest uppercase font-light mb-1.5">
                 {fr ? 'Arrivée *' : 'Check-in *'}
               </label>
-              <div
-                className="relative cursor-pointer"
-                onClick={() => openPicker(checkInRef)}
-              >
+              <div className="relative cursor-pointer" onClick={() => openPicker(checkInRef)}>
                 <CalendarDays size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-green/60 pointer-events-none z-10" />
                 <input
-                  ref={checkInRef}
-                  type="date"
-                  min={todayStr()}
-                  value={localCheckIn}
+                  ref={checkInRef} type="date" min={todayStr()} value={localCheckIn}
                   onChange={e => handleCheckInChange(e.target.value)}
-                  className="w-full bg-surface border border-charcoal/10 text-charcoal text-sm pl-9 pr-3 py-2.5
-                             focus:outline-none focus:border-green transition-colors duration-200
-                             [color-scheme:light] cursor-pointer font-light"
+                  className="w-full bg-surface border border-charcoal/10 text-charcoal text-sm pl-9 pr-3 py-2.5 focus:outline-none focus:border-green transition-colors duration-200 [color-scheme:light] cursor-pointer font-light"
                 />
               </div>
             </div>
@@ -178,27 +189,17 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
               <label className="block text-charcoal/40 text-[10px] tracking-widest uppercase font-light mb-1.5">
                 {fr ? 'Départ *' : 'Check-out *'}
               </label>
-              <div
-                className={`relative ${localCheckIn ? 'cursor-pointer' : 'cursor-not-allowed'}`}
-                onClick={() => localCheckIn && openPicker(checkOutRef)}
-              >
+              <div className={`relative ${localCheckIn ? 'cursor-pointer' : 'cursor-not-allowed'}`} onClick={() => localCheckIn && openPicker(checkOutRef)}>
                 <CalendarDays size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-green/60 pointer-events-none z-10" />
                 <input
-                  ref={checkOutRef}
-                  type="date"
-                  min={minCheckOut}
-                  value={localCheckOut}
-                  onChange={e => setLocalCheckOut(e.target.value)}
-                  disabled={!localCheckIn}
-                  className="w-full bg-surface border border-charcoal/10 text-charcoal text-sm pl-9 pr-3 py-2.5
-                             focus:outline-none focus:border-green transition-colors duration-200
-                             [color-scheme:light] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed font-light"
+                  ref={checkOutRef} type="date" min={minCheckOut} value={localCheckOut}
+                  onChange={e => setLocalCheckOut(e.target.value)} disabled={!localCheckIn}
+                  className="w-full bg-surface border border-charcoal/10 text-charcoal text-sm pl-9 pr-3 py-2.5 focus:outline-none focus:border-green transition-colors duration-200 [color-scheme:light] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed font-light"
                 />
               </div>
             </div>
           </div>
 
-          {/* Live price recap when dates are set */}
           {localNights > 0 && (
             <div className="bg-green/5 border border-green/20 px-4 py-3 flex items-center justify-between">
               <span className="text-charcoal/50 text-xs font-light">
@@ -212,21 +213,15 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
           {/* Name fields */}
           <div className="grid sm:grid-cols-2 gap-4">
             {[
-              { k: 'firstName', label: fr ? 'Prénom *' : 'First name *', ph: fr ? 'Jean' : 'John',    icon: User },
-              { k: 'lastName',  label: fr ? 'Nom *'    : 'Last name *',  ph: fr ? 'Dupont' : 'Doe',  icon: User },
+              { k: 'firstName', label: fr ? 'Prénom *' : 'First name *', ph: fr ? 'Jean' : 'John', icon: User },
+              { k: 'lastName',  label: fr ? 'Nom *'    : 'Last name *',  ph: fr ? 'Dupont' : 'Doe', icon: User },
             ].map(({ k, label, ph, icon: Icon }) => (
               <div key={k}>
                 <label className="block text-charcoal/40 text-[10px] tracking-widest uppercase font-light mb-1.5">{label}</label>
                 <div className="relative">
                   <Icon size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-charcoal/20 pointer-events-none" />
-                  <input
-                    required
-                    value={form[k as keyof typeof form]}
-                    onChange={e => set(k, e.target.value)}
-                    placeholder={ph}
-                    className="w-full bg-surface border border-charcoal/10 text-charcoal pl-9 pr-4 py-2.5 text-sm font-light
-                               focus:outline-none focus:border-green transition-colors placeholder:text-charcoal/15"
-                  />
+                  <input required value={form[k as keyof typeof form]} onChange={e => set(k, e.target.value)} placeholder={ph}
+                    className="w-full bg-surface border border-charcoal/10 text-charcoal pl-9 pr-4 py-2.5 text-sm font-light focus:outline-none focus:border-green transition-colors placeholder:text-charcoal/15" />
                 </div>
               </div>
             ))}
@@ -237,15 +232,8 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
             <label className="block text-charcoal/40 text-[10px] tracking-widest uppercase font-light mb-1.5">Email *</label>
             <div className="relative">
               <Mail size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-charcoal/20 pointer-events-none" />
-              <input
-                type="email"
-                required
-                value={form.email}
-                onChange={e => set('email', e.target.value)}
-                placeholder="vous@exemple.com"
-                className="w-full bg-surface border border-charcoal/10 text-charcoal pl-9 pr-4 py-2.5 text-sm font-light
-                           focus:outline-none focus:border-green transition-colors placeholder:text-charcoal/15"
-              />
+              <input type="email" required value={form.email} onChange={e => set('email', e.target.value)} placeholder="vous@exemple.com"
+                className="w-full bg-surface border border-charcoal/10 text-charcoal pl-9 pr-4 py-2.5 text-sm font-light focus:outline-none focus:border-green transition-colors placeholder:text-charcoal/15" />
             </div>
           </div>
 
@@ -257,15 +245,8 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
               </label>
               <div className="relative">
                 <Phone size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-charcoal/20 pointer-events-none" />
-                <input
-                  type="tel"
-                  required
-                  value={form.phone}
-                  onChange={e => set('phone', e.target.value)}
-                  placeholder="+228 90 00 00 00"
-                  className="w-full bg-surface border border-charcoal/10 text-charcoal pl-9 pr-4 py-2.5 text-sm font-light
-                             focus:outline-none focus:border-green transition-colors placeholder:text-charcoal/15"
-                />
+                <input type="tel" required value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+228 90 00 00 00"
+                  className="w-full bg-surface border border-charcoal/10 text-charcoal pl-9 pr-4 py-2.5 text-sm font-light focus:outline-none focus:border-green transition-colors placeholder:text-charcoal/15" />
               </div>
             </div>
             <div>
@@ -274,13 +255,8 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
               </label>
               <div className="relative">
                 <Globe size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-charcoal/20 pointer-events-none" />
-                <input
-                  value={form.nationality}
-                  onChange={e => set('nationality', e.target.value)}
-                  placeholder={fr ? 'Ex: Togolaise' : 'E.g. French'}
-                  className="w-full bg-surface border border-charcoal/10 text-charcoal pl-9 pr-4 py-2.5 text-sm font-light
-                             focus:outline-none focus:border-green transition-colors placeholder:text-charcoal/15"
-                />
+                <input value={form.nationality} onChange={e => set('nationality', e.target.value)} placeholder={fr ? 'Ex: Togolaise' : 'E.g. French'}
+                  className="w-full bg-surface border border-charcoal/10 text-charcoal pl-9 pr-4 py-2.5 text-sm font-light focus:outline-none focus:border-green transition-colors placeholder:text-charcoal/15" />
               </div>
             </div>
           </div>
@@ -290,36 +266,24 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
             <label className="block text-charcoal/40 text-[10px] tracking-widest uppercase font-light mb-1.5">
               {fr ? 'Remarques / Demandes spéciales' : 'Notes / Special requests'}
             </label>
-            <textarea
-              rows={3}
-              value={form.notes}
-              onChange={e => set('notes', e.target.value)}
+            <textarea rows={3} value={form.notes} onChange={e => set('notes', e.target.value)}
               placeholder={fr ? "Heure d'arrivée, besoins particuliers…" : "Arrival time, special needs…"}
-              className="w-full bg-surface border border-charcoal/10 text-charcoal px-4 py-2.5 text-sm font-light
-                         focus:outline-none focus:border-green transition-colors resize-none placeholder:text-charcoal/15"
-            />
+              className="w-full bg-surface border border-charcoal/10 text-charcoal px-4 py-2.5 text-sm font-light focus:outline-none focus:border-green transition-colors resize-none placeholder:text-charcoal/15" />
           </div>
 
-          <button
-            onClick={() => setStep(2)}
-            disabled={!step1Valid}
-            className="w-full flex items-center justify-center gap-2 py-3.5 bg-green text-charcoal text-xs tracking-widest uppercase font-semibold
-                       hover:bg-green-light transition-colors duration-300 disabled:opacity-30 disabled:cursor-not-allowed group"
-          >
+          <button onClick={() => setStep(2)} disabled={!step1Valid}
+            className="w-full flex items-center justify-center gap-2 py-3.5 bg-green text-charcoal text-xs tracking-widest uppercase font-semibold hover:bg-green-light transition-colors duration-300 disabled:opacity-30 disabled:cursor-not-allowed group">
             {fr ? 'Continuer' : 'Continue'}
             <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
           </button>
         </div>
       )}
 
-      {/* ── STEP 2 : Payment method ── */}
+      {/* ── STEP 2 ── */}
       {step === 2 && (
         <div className="space-y-5">
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setStep(1)}
-              className="text-charcoal/30 hover:text-charcoal/70 text-xs tracking-widest uppercase font-light transition-colors"
-            >
+            <button onClick={() => setStep(1)} className="text-charcoal/30 hover:text-charcoal/70 text-xs tracking-widest uppercase font-light transition-colors">
               ← {fr ? 'Retour' : 'Back'}
             </button>
             <h3 className="font-display text-2xl font-light text-charcoal">
@@ -327,22 +291,10 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
             </h3>
           </div>
 
-          <p className="text-charcoal/40 text-sm font-light">
-            {fr
-              ? 'Choisissez votre mode de paiement préféré. Les paiements sont sécurisés et cryptés.'
-              : 'Choose your preferred payment method. All payments are secure and encrypted.'}
-          </p>
-
           {/* FedaPay */}
-          <button
-            onClick={() => setPayMethod('fedapay')}
-            className={`w-full flex items-center gap-4 p-5 border transition-all duration-200 text-left ${
-              payMethod === 'fedapay' ? 'border-green bg-green/5' : 'border-charcoal/10 hover:border-charcoal/30 bg-surface'
-            }`}
-          >
-            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-              payMethod === 'fedapay' ? 'border-green' : 'border-charcoal/20'
-            }`}>
+          <button onClick={() => setPayMethod('fedapay')}
+            className={`w-full flex items-center gap-4 p-5 border transition-all duration-200 text-left ${payMethod === 'fedapay' ? 'border-green bg-green/5' : 'border-charcoal/10 hover:border-charcoal/30 bg-surface'}`}>
+            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${payMethod === 'fedapay' ? 'border-green' : 'border-charcoal/20'}`}>
               {payMethod === 'fedapay' && <span className="w-2.5 h-2.5 rounded-full bg-green" />}
             </div>
             <div className="flex-1">
@@ -353,53 +305,35 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
                   {fr ? 'Recommandé' : 'Recommended'}
                 </span>
               </div>
-              <p className="text-charcoal/40 text-xs font-light pl-7">
-                Flooz · T-Money · Moov Money — {fr ? 'Paiement instantané depuis votre téléphone' : 'Instant payment from your phone'}
-              </p>
+              <p className="text-charcoal/40 text-xs font-light pl-7">Flooz · T-Money · Moov Money</p>
             </div>
           </button>
 
           {/* Stripe */}
-          <button
-            onClick={() => setPayMethod('stripe')}
-            className={`w-full flex items-center gap-4 p-5 border transition-all duration-200 text-left ${
-              payMethod === 'stripe' ? 'border-green bg-green/5' : 'border-charcoal/10 hover:border-charcoal/30 bg-surface'
-            }`}
-          >
-            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-              payMethod === 'stripe' ? 'border-green' : 'border-charcoal/20'
-            }`}>
+          <button onClick={() => setPayMethod('stripe')}
+            className={`w-full flex items-center gap-4 p-5 border transition-all duration-200 text-left ${payMethod === 'stripe' ? 'border-green bg-green/5' : 'border-charcoal/10 hover:border-charcoal/30 bg-surface'}`}>
+            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${payMethod === 'stripe' ? 'border-green' : 'border-charcoal/20'}`}>
               {payMethod === 'stripe' && <span className="w-2.5 h-2.5 rounded-full bg-green" />}
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-1">
                 <CreditCard size={16} className="text-green shrink-0" />
-                <span className="text-charcoal text-sm font-medium">
-                  {fr ? 'Carte bancaire (Stripe)' : 'Credit / Debit card (Stripe)'}
-                </span>
+                <span className="text-charcoal text-sm font-medium">{fr ? 'Carte bancaire (Stripe)' : 'Credit / Debit card (Stripe)'}</span>
               </div>
               <p className="text-charcoal/40 text-xs font-light pl-7">Visa · Mastercard · American Express</p>
             </div>
           </button>
 
-          {/* Security notice */}
           <div className="flex items-start gap-3 p-4 bg-charcoal/3 border border-charcoal/5">
             <Lock size={14} className="text-green/60 shrink-0 mt-0.5" />
             <p className="text-charcoal/30 text-xs font-light leading-relaxed">
-              {fr
-                ? 'Vos données de paiement sont chiffrées et sécurisées. Nous ne stockons jamais vos informations bancaires.'
-                : 'Your payment data is encrypted and secure. We never store your banking information.'}
+              {fr ? 'Vos données de paiement sont chiffrées et sécurisées.' : 'Your payment data is encrypted and secure.'}
             </p>
           </div>
 
-          {/* Agree */}
           <label className="flex items-start gap-3 cursor-pointer group">
-            <div
-              onClick={() => setAgreed(v => !v)}
-              className={`w-4 h-4 border mt-0.5 shrink-0 flex items-center justify-center transition-colors ${
-                agreed ? 'bg-green border-green' : 'border-charcoal/30 group-hover:border-green/50'
-              }`}
-            >
+            <div onClick={() => setAgreed(v => !v)}
+              className={`w-4 h-4 border mt-0.5 shrink-0 flex items-center justify-center transition-colors ${agreed ? 'bg-green border-green' : 'border-charcoal/30 group-hover:border-green/50'}`}>
               {agreed && <span className="text-charcoal text-[10px] font-bold">✓</span>}
             </div>
             <span className="text-charcoal/40 text-xs font-light leading-relaxed">
@@ -409,20 +343,14 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
             </span>
           </label>
 
-          <button
-            onClick={() => setStep(3)}
-            disabled={!step2Valid || !agreed}
-            className="w-full flex items-center justify-center gap-2 py-3.5 bg-green text-charcoal text-xs tracking-widest uppercase font-semibold
-                       hover:bg-green-light transition-colors duration-300 disabled:opacity-30 disabled:cursor-not-allowed group"
-          >
+          <button onClick={() => setStep(3)} disabled={!step2Valid || !agreed}
+            className="w-full flex items-center justify-center gap-2 py-3.5 bg-green text-charcoal text-xs tracking-widest uppercase font-semibold hover:bg-green-light transition-colors duration-300 disabled:opacity-30 disabled:cursor-not-allowed group">
             <Lock size={13} />
             {fr ? 'Confirmer la réservation' : 'Confirm booking'} — {formatFCFA(pricing.total)}
           </button>
 
           <p className="text-center text-charcoal/20 text-[10px] font-light">
-            {fr
-              ? 'Intégration paiement en cours — votre demande sera confirmée par notre équipe.'
-              : 'Payment integration in progress — your request will be confirmed by our team.'}
+            {fr ? 'Intégration paiement en cours — votre demande sera confirmée par notre équipe.' : 'Payment integration in progress — your request will be confirmed by our team.'}
           </p>
         </div>
       )}

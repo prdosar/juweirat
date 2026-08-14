@@ -22,6 +22,23 @@ export interface AmenityDto {
   icon: string | null;
 }
 
+export interface RoomCategoryDto {
+  id: number;
+  slug: string;
+  pmsType: string;
+  pmsGamme: string;
+  nameFr: string;
+  nameEn: string;
+  descriptionFr: string | null;
+  descriptionEn: string | null;
+  capacityAdults: number;
+  capacityChildren: number;
+  tarifNuit: number;
+  tarifN15: number;
+  tarifN30: number;
+  roomCount: number;
+}
+
 export interface RoomDto {
   id: number;
   roomNumber: string;
@@ -38,6 +55,10 @@ export interface RoomDto {
   pricePerMonth: number | null;
   status: string;
   isFeatured: boolean;
+  categoryId: number | null;
+  categorySlug: string | null;
+  pmsType: string | null;
+  pmsGamme: string | null;
   images: RoomImageDto[];
   amenities: AmenityDto[];
 }
@@ -62,10 +83,14 @@ export interface ClientDto {
 export interface ReservationDto {
   id: number;
   reference: string;
-  roomId: number;
-  roomNumber: string;
-  roomNameFr: string;
-  roomNameEn: string;
+  roomId: number | null;
+  roomNumber: string | null;
+  roomNameFr: string | null;
+  roomNameEn: string | null;
+  categoryId: number;
+  categorySlug: string;
+  categoryNameFr: string;
+  categoryNameEn: string;
   clientId: number;
   clientFullName: string;
   clientEmail: string | null;

@@ -126,6 +126,58 @@ public class PmsService(AppDbContext db)
         return folio is null ? null : ToFolioDto(folio);
     }
 
+    public async Task<ContractDataDto?> GetContractDataAsync(long folioId)
+    {
+        var folio = await db.Folios
+            .Include(f => f.Unit)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Client)
+            .FirstOrDefaultAsync(f => f.Id == folioId);
+        if (folio is null) return null;
+
+        var client = folio.Reservation?.Client;
+
+        var prenomNom = (folio.Prenom is not null || folio.Nom is not null)
+            ? $"{folio.Prenom ?? ""} {folio.Nom ?? ""}".Trim()
+            : folio.Guest
+              ?? (client is not null ? $"{client.FirstName} {client.LastName}".Trim() : null);
+
+        var pieceId = (client?.DocumentType is not null && client.DocumentNumber is not null)
+            ? $"{FormatDocType(client.DocumentType)} n° {client.DocumentNumber}"
+            : null;
+
+        var adresse = string.Join(", ", new[] { client?.City, client?.Country }.Where(x => x is not null));
+
+        var nights = folio.Departure.DayNumber - folio.Arrival.DayNumber;
+
+        return new ContractDataDto(
+            PrenomNom:     prenomNom,
+            Nationalite:   client?.Nationality,
+            PieceIdentite: pieceId,
+            Adresse:       string.IsNullOrEmpty(adresse) ? null : adresse,
+            Societe:       folio.Societe,
+            AptNo:         folio.Unit.PmsRoomNo ?? folio.Unit.RoomNumber,
+            Floor:         folio.Unit.Floor,
+            PmsType:       folio.Unit.PmsType,
+            Arrival:       folio.Arrival.ToString("yyyy-MM-dd"),
+            Departure:     folio.Departure.ToString("yyyy-MM-dd"),
+            Nights:        nights,
+            Rate:          folio.Rate,
+            MonthlyLoyer:  folio.Rate * 30,
+            ElecIncluded:  folio.ElecIncluded,
+            TarifTier:     folio.TarifTier.ToString(),
+            FolioNumber:   folio.Number,
+            Today:         DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd")
+        );
+    }
+
+    private static string FormatDocType(string t) => t switch
+    {
+        "passport"        => "Passeport",
+        "idCard"          => "Carte Nationale d'Identité",
+        "residencePermit" => "Titre de séjour",
+        _                 => t,
+    };
+
     public async Task<(FolioDto? dto, string? error)> CreateFolioAsync(CreateFolioRequest req)
     {
         var unit = await db.Rooms.FindAsync(req.UnitId);

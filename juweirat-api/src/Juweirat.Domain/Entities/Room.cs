@@ -28,14 +28,18 @@ public class Room
     public string? PmsRoomNo { get; set; }
     public string? PmsType { get; set; }   // T1 | T2 | T3 | T4
     public string? PmsGamme { get; set; }  // standard | supérieure | privilège | suite
-    public int TarifNuit { get; set; }     // FCFA — nuitée (électricité incluse)
-    public int TarifN15 { get; set; }      // FCFA — forfait 15 nuits (hors élec)
-    public int TarifN30 { get; set; }      // FCFA — forfait 30 nuits (hors élec)
+    public int TarifNuit { get; set; }     // FCFA — tarif/nuit, élec incluse (valable < 15 nuits)
+    public int TarifN15 { get; set; }      // FCFA — tarif/nuit pour séjours 15–29 nuits (hors élec, 230 FCFA/kWh)
+    public int TarifN30 { get; set; }      // FCFA — tarif/nuit pour séjours ≥ 30 nuits  (hors élec, 230 FCFA/kWh)
     public MenageStatus StatutMenage { get; set; } = MenageStatus.Propre;
     public DateOnly? LastCleaned { get; set; }
     public bool HorsService { get; set; } = false;
     public int PlanCol { get; set; }       // 0 = gauche, 1 = droite
     public int PlanRow { get; set; }
+
+    // Catégorie (T1/T2/T3/T4 × gamme)
+    public long? CategoryId { get; set; }
+    public RoomCategory? Category { get; set; }
 
     // Navigation
     public ICollection<RoomImage>          Images       { get; set; } = [];

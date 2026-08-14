@@ -408,6 +408,10 @@ namespace Juweirat.Infrastructure.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("heb");
 
+                    b.Property<int>("Kwh")
+                        .HasColumnType("integer")
+                        .HasColumnName("kwh");
+
                     b.Property<string>("Nom")
                         .HasColumnType("text")
                         .HasColumnName("nom");
@@ -821,7 +825,11 @@ namespace Juweirat.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("reference");
 
-                    b.Property<long>("RoomId")
+                    b.Property<long>("CategoryId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("categoryId");
+
+                    b.Property<long?>("RoomId")
                         .HasColumnType("bigint")
                         .HasColumnName("roomId");
 
@@ -850,6 +858,9 @@ namespace Juweirat.Infrastructure.Migrations
                         .HasColumnName("updatedAt");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CategoryId")
+                        .HasDatabaseName("IX_reservations_categoryId");
 
                     b.HasIndex("ClientId")
                         .HasDatabaseName("iX_reservations_clientId");
@@ -999,6 +1010,13 @@ namespace Juweirat.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.Property<long?>("CategoryId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("categoryId");
+
+                    b.HasIndex("CategoryId")
+                        .HasDatabaseName("IX_rooms_categoryId");
+
                     b.HasIndex("PmsRoomNo")
                         .IsUnique()
                         .HasDatabaseName("iX_rooms_pmsRoomNo")
@@ -1009,6 +1027,85 @@ namespace Juweirat.Infrastructure.Migrations
                         .HasDatabaseName("iX_rooms_roomNumber");
 
                     b.ToTable("rooms");
+                });
+
+            modelBuilder.Entity("Juweirat.Domain.Entities.RoomCategory", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("CapacityAdults")
+                        .HasColumnType("integer")
+                        .HasColumnName("capacityAdults");
+
+                    b.Property<int>("CapacityChildren")
+                        .HasColumnType("integer")
+                        .HasColumnName("capacityChildren");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("createdAt");
+
+                    b.Property<string>("DescriptionEn")
+                        .HasColumnType("text")
+                        .HasColumnName("descriptionEn");
+
+                    b.Property<string>("DescriptionFr")
+                        .HasColumnType("text")
+                        .HasColumnName("descriptionFr");
+
+                    b.Property<string>("NameEn")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("nameEn");
+
+                    b.Property<string>("NameFr")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("nameFr");
+
+                    b.Property<string>("PmsGamme")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("pmsGamme");
+
+                    b.Property<string>("PmsType")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("pmsType");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("slug");
+
+                    b.Property<int>("TarifN15")
+                        .HasColumnType("integer")
+                        .HasColumnName("tarifN15");
+
+                    b.Property<int>("TarifN30")
+                        .HasColumnType("integer")
+                        .HasColumnName("tarifN30");
+
+                    b.Property<int>("TarifNuit")
+                        .HasColumnType("integer")
+                        .HasColumnName("tarifNuit");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updatedAt");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Slug")
+                        .IsUnique()
+                        .HasDatabaseName("IX_roomCategories_slug");
+
+                    b.ToTable("roomCategories");
                 });
 
             modelBuilder.Entity("Juweirat.Domain.Entities.RoomBlock", b =>
@@ -1336,6 +1433,13 @@ namespace Juweirat.Infrastructure.Migrations
 
             modelBuilder.Entity("Juweirat.Domain.Entities.Reservation", b =>
                 {
+                    b.HasOne("Juweirat.Domain.Entities.RoomCategory", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_reservations_roomCategories_categoryId");
+
                     b.HasOne("Juweirat.Domain.Entities.Client", "Client")
                         .WithMany("Reservations")
                         .HasForeignKey("ClientId")
@@ -1347,12 +1451,24 @@ namespace Juweirat.Infrastructure.Migrations
                         .WithMany("Reservations")
                         .HasForeignKey("RoomId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
                         .HasConstraintName("fK_reservations_Rooms_roomId");
+
+                    b.Navigation("Category");
 
                     b.Navigation("Client");
 
                     b.Navigation("Room");
+                });
+
+            modelBuilder.Entity("Juweirat.Domain.Entities.Room", b =>
+                {
+                    b.HasOne("Juweirat.Domain.Entities.RoomCategory", "Category")
+                        .WithMany("Rooms")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_rooms_roomCategories_categoryId");
+
+                    b.Navigation("Category");
                 });
 
             modelBuilder.Entity("Juweirat.Domain.Entities.RoomBlock", b =>
@@ -1411,6 +1527,11 @@ namespace Juweirat.Infrastructure.Migrations
                     b.Navigation("Reservations");
 
                     b.Navigation("Tickets");
+                });
+
+            modelBuilder.Entity("Juweirat.Domain.Entities.RoomCategory", b =>
+                {
+                    b.Navigation("Rooms");
                 });
 #pragma warning restore 612, 618
         }

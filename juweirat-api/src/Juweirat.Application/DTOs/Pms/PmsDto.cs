@@ -146,3 +146,28 @@ public record UpdateFolioRequest(
 
 public record EncaisserRequest([Required, Range(1, int.MaxValue)] int Montant, string? PayMode = null);
 public record TransfertDebiteurRequest(string? Label = null);
+
+public record ContractDataDto(
+    // Preneur
+    string? PrenomNom,
+    string? Nationalite,
+    string? PieceIdentite,
+    string? Adresse,
+    string? Societe,
+    // Logement
+    string? AptNo,
+    int Floor,
+    string? PmsType,
+    // Séjour
+    string Arrival,
+    string Departure,
+    int Nights,
+    // Tarif
+    int Rate,
+    int MonthlyLoyer,
+    bool ElecIncluded,
+    string TarifTier,
+    // Meta
+    string FolioNumber,
+    string Today
+);

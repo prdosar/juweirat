@@ -17,6 +17,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // ─── Application Services ────────────────────────────────────────────────────
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<RoomService>();
+builder.Services.AddScoped<RoomCategoryService>();
 builder.Services.AddScoped<AmenityService>();
 builder.Services.AddScoped<ClientService>();
 builder.Services.AddScoped<ReservationService>();

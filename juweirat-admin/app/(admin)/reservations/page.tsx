@@ -88,7 +88,10 @@ export default function ReservationsPage() {
                       >
                         <td className="px-5 py-3.5 font-mono text-xs text-green-dark font-bold">{r.reference}</td>
                         <td className="px-5 py-3.5 font-medium text-charcoal">{r.clientFullName}</td>
-                        <td className="px-5 py-3.5 text-gray-500">{r.roomNumber}</td>
+                        <td className="px-5 py-3.5 text-gray-500">
+                          <span className="font-medium text-charcoal">{r.categoryNameFr}</span>
+                          {r.roomNumber && <span className="text-xs text-gray-400 ml-1">· Apt {r.roomNumber}</span>}
+                        </td>
                         <td className="px-5 py-3.5 text-gray-500">{r.checkInDate}</td>
                         <td className="px-5 py-3.5 text-gray-500">{r.checkOutDate}</td>
                         <td className="px-5 py-3.5">

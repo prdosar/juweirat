@@ -45,6 +45,16 @@ export const auth = {
     ),
 };
 
+// ── Room Categories ────────────────────────────────────────────────────────────
+export const categories = {
+  getAll: () => request<import('./types').RoomCategoryDto[]>('/api/room-categories'),
+  getAvailable: (checkIn: string, checkOut: string, adults: number) =>
+    request<import('./types').RoomCategoryDto[]>(
+      `/api/room-categories/available?checkIn=${checkIn}&checkOut=${checkOut}&adults=${adults}`
+    ),
+  getById: (id: number) => request<import('./types').RoomCategoryDto>(`/api/room-categories/${id}`),
+};
+
 // ── Rooms ─────────────────────────────────────────────────────────────────────
 export const rooms = {
   getAll:  (params?: { status?: string; floor?: number }) => {
