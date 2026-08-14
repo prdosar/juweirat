@@ -169,6 +169,11 @@ namespace Juweirat.Infrastructure.Migrations
                 FROM ""rooms"" rm
                 WHERE r.""roomId"" = rm.""id""
                   AND rm.""categoryId"" IS NOT NULL;
+
+                -- Assign any remaining 0s (reservations without a room or unmatched) to the first category
+                UPDATE ""reservations""
+                SET ""categoryId"" = (SELECT MIN(id) FROM ""roomCategories"")
+                WHERE ""categoryId"" = 0;
             ");
 
             migrationBuilder.AddForeignKey(
