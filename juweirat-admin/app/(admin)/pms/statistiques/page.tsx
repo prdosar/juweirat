@@ -62,10 +62,10 @@ function monthStat(units: UnitDto[], folios: FolioDto[], m: string) {
     if (on > 0) { 
       const pn = c.nights ? c.heb / c.nights : 0; 
       courtHeb += pn * on; 
-      courtPdj += num((f as any).pdjParJour) * num((f as any).pdjPrix) * on; 
+      courtPdj += num(f.pdjParJour) * num(f.pdjPrix) * on; 
       nightsSold += on; 
-      guestNights += num((f as any).pax || f.guestsCount) * on; 
-      pdjCount += num((f as any).pdjParJour) * on; 
+      guestNights += num(f.pax) * on; 
+      pdjCount += num(f.pdjParJour) * on; 
     } 
     if (f.arrival >= d0 && f.arrival < d1) {
       extras += c.deb + c.dep; 
