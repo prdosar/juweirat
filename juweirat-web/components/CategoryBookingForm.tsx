@@ -58,7 +58,7 @@ function openPicker(ref: React.RefObject<HTMLInputElement | null>) {
 }
 
 export default function CategoryBookingForm({
-  lang, checkIn: initCheckIn, checkOut: initCheckOut, adults, children,
+  categoryId, lang, checkIn: initCheckIn, checkOut: initCheckOut, adults, children,
   nights: initNights, totalFcfa: initTotal, savings: initSavings, rateLabel: initRateLabel,
   tarifNuit, tarifN15, tarifN30,
 }: Props) {
@@ -347,11 +347,11 @@ export default function CategoryBookingForm({
             const { submitBooking } = await import('@/lib/api')
             const ok = await submitBooking({
               ...form,
-              categoryId: category.id,
+              categoryId: categoryId,
               checkInDate: localCheckIn,
               checkOutDate: localCheckOut,
-              adults: category.capacityAdults,
-              children: category.capacityChildren,
+              adults: adults,
+              children: children,
             })
             if (ok) setStep(3)
             else alert(fr ? 'Erreur lors de la réservation' : 'Booking error')

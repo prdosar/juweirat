@@ -53,7 +53,7 @@ const overlapNights = (a: string, b: string, d0: string, d1excl: string) => {
 function cleaningEvents(folios: FolioDto[], from: string, to: string) {
   const out: any[] = [];
   folios.forEach((f) => {
-    if (f.status === "Cancelled" || f.status === "NoShow") return;
+    if (f.resaStatus === "Cancelled" || f.resaStatus === "NoShow") return;
     for (let d = addDays(f.arrival, 3); d < f.departure; d = addDays(d, 3)) { 
       if (d >= from && d <= to) out.push({ unitId: f.unitId, kind: "menage", type: "Ménage", ref: "Cadence 3 j", label: "Nettoyage mi-séjour", start: d, end: "", statut: "planifié", color: C.blue, midstay: true, fid: f.id }); 
     }
