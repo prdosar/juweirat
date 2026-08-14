@@ -3,9 +3,13 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
+using Microsoft.EntityFrameworkCore.Infrastructure;
+
 namespace Juweirat.Infrastructure.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(Juweirat.Infrastructure.Data.AppDbContext))]
+    [Migration("20260814000002_AddRoomCategories")]
     public partial class AddRoomCategories : Migration
     {
         /// <inheritdoc />

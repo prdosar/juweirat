@@ -2,9 +2,13 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
+using Microsoft.EntityFrameworkCore.Infrastructure;
+
 namespace Juweirat.Infrastructure.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(Juweirat.Infrastructure.Data.AppDbContext))]
+    [Migration("20260814000001_UpdateTarifGridAndAddKwh")]
     public partial class UpdateTarifGridAndAddKwh : Migration
     {
         /// <inheritdoc />
