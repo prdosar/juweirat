@@ -48,7 +48,7 @@ export default function FacturePrintPage() {
     </div>
   );
 
-  const cur = config.currency || { code: 'FCFA', decimals: 0 };
+  const cur = { code: config.currencyCode || 'FCFA', decimals: config.currencyDecimals || 0 };
   const fm = (n: number) => (cur.decimals ? num(n).toLocaleString("fr-FR", { minimumFractionDigits: cur.decimals, maximumFractionDigits: cur.decimals }) : Math.round(num(n)).toLocaleString("fr-FR")) + " " + cur.code;
   
   const s = facture.snapshot || ({} as any);
