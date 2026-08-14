@@ -95,23 +95,23 @@ export default function EditionPage() {
   const dateHotel = todayStr();
 
   function resaLifecycle(f: FolioDto): [string, string] {
-    if (f.status === "Cancelled") return ["Annulée", C.muted];
-    if (f.status === "NoShow") return ["No-show", C.danger];
-    if (f.status === "CheckedOut") return ["Partie", C.muted];
+    if (f.resaStatus === "Cancelled") return ["Annulée", C.muted];
+    if (f.resaStatus === "NoShow") return ["No-show", C.danger];
+    if (f.resaStatus === "CheckedOut") return ["Partie", C.muted];
     if (f.arrival > dateHotel) return ["Confirmée", C.gold];
     if (f.departure < dateHotel) return ["Départ en retard", C.danger];
     if (f.departure === dateHotel) return ["Départ prévu", C.warn];
-    if (f.arrival === dateHotel && f.status !== "CheckedIn") return ["Arrivée prévue", C.gold];
+    if (f.arrival === dateHotel && f.resaStatus !== "CheckedIn") return ["Arrivée prévue", C.gold];
     return ["En cours", C.ok];
   }
 
   const events = useMemo(() => {
     const ev: any[] = [];
     folios.forEach((f) => { 
-      if (f.status === "Cancelled") return; 
+      if (f.resaStatus === "Cancelled") return; 
       if (f.arrival < winEnd && from < f.departure) { 
         const life = resaLifecycle(f); 
-        ev.push({ unitId: f.unitId, kind: "sejour", type: "Séjour", ref: f.number, label: f.guest || "(sans nom)", start: f.arrival, end: f.departure, statut: life[0], color: f.status === "CheckedOut" ? C.muted : f.status === "NoShow" ? C.danger : C.green2, fid: f.id }); 
+        ev.push({ unitId: f.unitId, kind: "sejour", type: "Séjour", ref: f.number, label: f.guest || "(sans nom)", start: f.arrival, end: f.departure, statut: life[0], color: f.resaStatus === "CheckedOut" ? C.muted : f.resaStatus === "NoShow" ? C.danger : C.green2, fid: f.id }); 
       } 
     });
     tickets.forEach((t) => { 
@@ -125,8 +125,8 @@ export default function EditionPage() {
   }, [folios, tickets, from, to, winEnd, dateHotel, fRoom]);
 
   const sejN = events.filter((e) => e.kind === "sejour").length;
-  const arrN = folios.filter((f) => f.status !== "Cancelled" && inRoom(f.unitId) && f.arrival >= from && f.arrival <= to).length;
-  const depN = folios.filter((f) => f.status !== "Cancelled" && inRoom(f.unitId) && f.departure >= from && f.departure <= to).length;
+  const arrN = folios.filter((f) => f.resaStatus !== "Cancelled" && inRoom(f.unitId) && f.arrival >= from && f.arrival <= to).length;
+  const depN = folios.filter((f) => f.resaStatus !== "Cancelled" && inRoom(f.unitId) && f.departure >= from && f.departure <= to).length;
   const maintN = events.filter((e) => e.kind === "maint").length;
   const menageN = events.filter((e) => e.kind === "menage").length;
   
@@ -136,7 +136,7 @@ export default function EditionPage() {
     unitsView.forEach((u) => { 
       let heb = 0, pdj = 0, extra = 0, nights = 0, stays = 0, losTot = 0; 
       folios.forEach((f) => { 
-        if (f.unitId !== u.id || f.status === "Cancelled" || f.status === "NoShow") return; 
+        if (f.unitId !== u.id || f.resaStatus === "Cancelled" || f.resaStatus === "NoShow") return; 
         const c = folioCalc(f); 
         const on = overlapNights(f.arrival, f.departure, d0, d1); 
         if (on > 0) { 

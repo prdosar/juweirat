@@ -46,7 +46,7 @@ const overlapNights = (a: string, b: string, d0: string, d1excl: string) => {
   return Math.max(0, dayDiff(s, e)); 
 };
 
-const active = (f: FolioDto) => f.status !== "Cancelled" && f.status !== "NoShow";
+const active = (f: FolioDto) => f.resaStatus !== "Cancelled" && f.resaStatus !== "NoShow";
 
 function monthStat(units: UnitDto[], folios: FolioDto[], m: string) {
   const d0 = m + "-01", d1 = monthAdd(m, 1) + "-01", dim = daysInMonth(m);
