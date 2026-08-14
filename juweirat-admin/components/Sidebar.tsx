@@ -7,6 +7,7 @@ import {
   LayoutDashboard, BedDouble, Users, CalendarCheck,
   CreditCard, LogOut, CalendarDays, Building2,
   ClipboardList, Wrench, Receipt, FileText, Settings,
+  BarChart2, Printer,
 } from 'lucide-react';
 import { clearAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
@@ -24,9 +25,10 @@ const pmsItems = [
   { href: '/pms/folios',       label: 'Folios',           icon: ClipboardList  },
   { href: '/pms/gouvernante',  label: 'Gouvernante',      icon: Building2      },
   { href: '/pms/cloture',      label: 'Clôture',          icon: Receipt        },
-  { href: '/pms/factures',     label: 'Factures',         icon: FileText       },
-  { href: '/pms/maintenance',  label: 'Maintenance',      icon: Wrench         },
   { href: '/pms/debiteurs',    label: 'Débiteurs',        icon: CreditCard     },
+  { href: '/pms/maintenance',  label: 'Maintenance',      icon: Wrench         },
+  { href: '/pms/statistiques', label: 'Statistiques',     icon: BarChart2      },
+  { href: '/pms/edition',      label: 'Édition',          icon: Printer        },
   { href: '/pms/config',       label: 'Config PMS',       icon: Settings       },
 ];
 

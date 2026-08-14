@@ -160,19 +160,25 @@ function BailContract({ d }: { d: ContractDataDto }) {
 
       {/* Preneur */}
       <div style={{ marginBottom: '14pt', paddingLeft: '12pt', borderLeft: '3px solid #333' }}>
-        <p><strong>Et le Preneur :</strong></p>
+        <p><strong>Et le Preneur</strong> <em>(personne physique ou morale — ne conserver que la mention applicable ci-dessous) :</em></p>
         {isCompany ? (
-          <p>La société <strong>{d.societe}</strong>, dont le siège social est à {d.adresse ?? '…………………………'},
-            représentée par {d.prenomNom ?? '…………………………'}, dûment habilité(e) à l&apos;effet des présentes,</p>
+          <p style={{ marginTop: '4pt' }}>
+            <strong>■ Personne morale :</strong> la société <strong>{d.societe}</strong>, ………………………… (forme juridique : SA / SARL / SAS / autre), 
+            au capital de ……………………………… francs CFA, immatriculée au Registre du commerce et du crédit mobilier (RCCM) sous le n° ………………………………, 
+            dont le siège social est à {d.adresse ?? '………………………………'}, représentée par {d.prenomNom ?? '………………………………'} agissant en qualité 
+            de ……………………………… dûment habilité(e) à l&apos;effet des présentes,
+          </p>
         ) : (
-          <p>
-            M. / Mme <strong>{d.prenomNom ?? '…………………………………………………'}</strong>,
-            {d.nationalite ? ` de nationalité ${d.nationalite},` : ''}
-            {d.pieceIdentite ? ` titulaire du ${d.pieceIdentite},` : ''}
-            {d.adresse ? ` demeurant à ${d.adresse},` : ''}
+          <p style={{ marginTop: '4pt' }}>
+            <strong>■ Personne physique :</strong> M. / Mme <strong>{d.prenomNom ?? '…………………………………………………'}</strong>, 
+            né(e) le ……………………… à ………………………, 
+            de nationalité {d.nationalite ?? '………………………'}, 
+            exerçant la profession de ………………………, 
+            titulaire de la pièce d&apos;identité n° {d.pieceIdentite ?? '………………………'}, 
+            demeurant à {d.adresse ?? '………………………'} ;
           </p>
         )}
-        <p style={{ fontStyle: 'italic' }}>ci-après dénommé &laquo; le Preneur &raquo; ou &laquo; le Locataire &raquo;,</p>
+        <p style={{ fontStyle: 'italic', marginTop: '6pt' }}>ci-après dénommé &laquo; le Preneur &raquo; ou &laquo; le Locataire &raquo;,</p>
         <p style={{ fontWeight: 'bold' }}>D&apos;AUTRE PART.</p>
       </div>
 
@@ -183,7 +189,9 @@ function BailContract({ d }: { d: ContractDataDto }) {
         <p>Le Bailleur donne à bail à usage d&apos;habitation au Preneur, qui accepte, un appartement à usage exclusif
         d&apos;habitation situé dans l&apos;immeuble &laquo; JUWEIRAT &raquo;, quartier GBOSSIME — 08BP : 80859, sis à Lomé (Togo).</p>
         <p style={{ marginTop: '6pt' }}>L&apos;appartement, portant le numéro <strong>{d.aptNo ?? '…'}</strong>,
-        est situé au <strong>{floorLabel(d.floor)}</strong> de l&apos;immeuble. Il se compose de {compositionLabel(d.pmsType)}.</p>
+        est situé au <strong>{floorLabel(d.floor)}</strong> de l&apos;immeuble. Il se compose de {compositionLabel(d.pmsType)}. 
+        {(d.pmsType === 'T2' || d.pmsType === 'T3' || d.pmsType === 'T4') && " La chambre 2 et la cuisine disposent chacune d'un balcon."}
+        </p>
         <p style={{ marginTop: '6pt' }}>L&apos;appartement est donné entièrement meublé et équipé, conformément à
         l&apos;inventaire détaillé du mobilier figurant en Annexe 1, laquelle fait partie intégrante du présent contrat.</p>
       </Article>
@@ -328,7 +336,7 @@ function BailContract({ d }: { d: ContractDataDto }) {
       <Article n={16} title="Enregistrement">
         <p>Le présent contrat, établi sous seing privé, est soumis aux formalités d&apos;enregistrement auprès de
         l&apos;administration fiscale, conformément au Code général des impôts (article 11 du décret). Les frais
-        d&apos;enregistrement sont à la charge du Preneur.</p>
+        d&apos;enregistrement sont supportés par ………………………………</p>
       </Article>
 
       {/* ── Article 17 ── */}
@@ -424,6 +432,7 @@ function SignatureBlock({ role, nom }: { role: string; nom: string }) {
         (précédé de la mention manuscrite &laquo; Lu et approuvé &raquo;)
       </p>
       <p style={{ fontSize: '9pt', marginBottom: '4pt' }}>Nom : <strong>{nom}</strong></p>
+      <p style={{ fontSize: '9pt', marginBottom: '4pt' }}>En qualité de (le cas échéant) : ………………………</p>
       <p style={{ fontSize: '9pt' }}>Signature :</p>
       <div style={{ height: '50pt', border: '1px solid #ccc', marginTop: '4pt' }} />
     </div>
@@ -439,13 +448,21 @@ function EdlTable({ title, headers, rows }: {
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '8.5pt' }}>
         <thead>
           <tr>
-            {headers.map((h, i) => (
-              <th key={i} style={{
-                border: '1px solid #aaa', padding: '3pt 5pt',
-                background: '#f0f0f0', textAlign: 'left',
-                width: i === 0 ? '50%' : '25%',
-              }}>{h}</th>
-            ))}
+            {headers.map((h, i) => {
+              let w = 'auto';
+              if (headers.length === 3) {
+                 w = i === 0 ? '50%' : '25%';
+              } else if (headers.length === 4) {
+                 w = i === 0 ? '30%' : (i === 3 ? '30%' : '20%');
+              }
+              return (
+                <th key={i} style={{
+                  border: '1px solid #aaa', padding: '3pt 5pt',
+                  background: '#f0f0f0', textAlign: 'left',
+                  width: w,
+                }}>{h}</th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
@@ -466,8 +483,8 @@ function EdlSection({ title, rows }: { title: string; rows: string[] }) {
   return (
     <EdlTable
       title={title}
-      headers={['Élément', 'État à l\'entrée', 'État à la sortie']}
-      rows={rows.map(r => [r, '', ''])}
+      headers={['Élément', 'État à l\'entrée', 'État à la sortie', 'Observations']}
+      rows={rows.map(r => [r, '', '', ''])}
     />
   );
 }
@@ -478,17 +495,17 @@ function getPieces(pmsType: string | null) {
 
   const pieces = [
     { title: 'SALON', rows: common },
-    { title: 'CHAMBRE 1', rows: withWater },
+    { title: 'CHAMBRE 1 (+ salle d\'eau)', rows: withWater },
   ];
 
   if (pmsType === 'T2' || pmsType === 'T3' || pmsType === 'T4')
-    pieces.push({ title: 'CHAMBRE 2', rows: withWater });
+    pieces.push({ title: 'CHAMBRE 2 (+ salle d\'eau + balcon)', rows: [...withWater, 'Balcon'] });
   if (pmsType === 'T3' || pmsType === 'T4')
     pieces.push({ title: 'CHAMBRE 3', rows: withWater });
   if (pmsType === 'T4')
     pieces.push({ title: 'CHAMBRE 4', rows: withWater });
 
-  pieces.push({ title: 'CUISINE', rows: withWater });
+  pieces.push({ title: 'CUISINE (+ balcon)', rows: [...withWater, 'Balcon'] });
   pieces.push({ title: 'WC VISITEUR', rows: withWater });
   pieces.push({ title: 'HALL / COULOIR', rows: common });
 

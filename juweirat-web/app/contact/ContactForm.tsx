@@ -15,8 +15,13 @@ export default function ContactForm({ lang }: Props) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
-    await new Promise(r => setTimeout(r, 1000))
-    setSent(true)
+    const { submitContact } = await import('@/lib/api')
+    const success = await submitContact(form)
+    if (success) {
+      setSent(true)
+    } else {
+      alert(lang === 'fr' ? 'Une erreur est survenue.' : 'An error occurred.')
+    }
     setLoading(false)
   }
 

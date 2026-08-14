@@ -68,6 +68,20 @@ export default function FolioDetailPage() {
     catch (e: unknown) { setError(e instanceof Error ? e.message : 'Erreur'); }
     finally { setBusy(false); }
   }
+  async function doAnnulerFacture() {
+    if (!f?.factureId) return;
+    if (!confirm('Annuler cette facture ? Le folio sera libéré pour ré-émission.')) return;
+    setBusy(true); setError('');
+    try {
+      const { pmsFactures } = await import('@/lib/pms');
+      await pmsFactures.annuler(f.factureId);
+      load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Erreur');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (loading) return (
     <div className="flex flex-col h-full">
@@ -150,7 +164,19 @@ export default function FolioDetailPage() {
                   </button>
                 )}
                 {f.factureId && (
-                  <p className="text-xs text-center text-green-dark">Facture émise ✓</p>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/pms/folios/${f.id}/facture`}
+                      target="_blank"
+                      className="flex-1 flex justify-center items-center gap-2 bg-green text-charcoal text-sm font-semibold px-4 py-2 rounded-lg hover:opacity-90"
+                    >
+                      <FileText size={15} /> Imprimer facture
+                    </Link>
+                    <button onClick={doAnnulerFacture} disabled={busy} title="Annuler la facture"
+                      className="p-2 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 disabled:opacity-50">
+                      ✕
+                    </button>
+                  </div>
                 )}
                 <Link
                   href={`/pms/folios/${f.id}/contrat`}

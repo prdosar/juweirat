@@ -343,7 +343,19 @@ export default function CategoryBookingForm({
             </span>
           </label>
 
-          <button onClick={() => setStep(3)} disabled={!step2Valid || !agreed}
+          <button onClick={async () => {
+            const { submitBooking } = await import('@/lib/api')
+            const ok = await submitBooking({
+              ...form,
+              categoryId: category.id,
+              checkInDate: localCheckIn,
+              checkOutDate: localCheckOut,
+              adults: category.capacityAdults,
+              children: category.capacityChildren,
+            })
+            if (ok) setStep(3)
+            else alert(fr ? 'Erreur lors de la réservation' : 'Booking error')
+          }} disabled={!step2Valid || !agreed}
             className="w-full flex items-center justify-center gap-2 py-3.5 bg-green text-charcoal text-xs tracking-widest uppercase font-semibold hover:bg-green-light transition-colors duration-300 disabled:opacity-30 disabled:cursor-not-allowed group">
             <Lock size={13} />
             {fr ? 'Confirmer la réservation' : 'Confirm booking'} — {formatFCFA(pricing.total)}

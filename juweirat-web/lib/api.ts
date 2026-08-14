@@ -119,3 +119,32 @@ export function coverImage(room: Room): string {
   const cover = room.images.find(i => i.isCover) ?? room.images[0]
   return cover?.filePath ?? '/images/IMG_5101.jpg'
 }
+
+export async function submitContact(data: { name: string, email: string, phone: string, subject: string, message: string }): Promise<boolean> {
+  try {
+    const res = await fetch(`${API}/api/public/contact`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+export async function submitBooking(data: {
+  firstName: string, lastName: string, email: string, phone: string, nationality: string,
+  categoryId: number, checkInDate: string, checkOutDate: string, adults: number, children: number, notes: string
+}): Promise<boolean> {
+  try {
+    const res = await fetch(`${API}/api/public/booking`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}

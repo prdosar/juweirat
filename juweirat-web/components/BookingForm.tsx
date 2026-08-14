@@ -410,7 +410,19 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
           </label>
 
           <button
-            onClick={() => setStep(3)}
+            onClick={async () => {
+              const { submitBooking } = await import('@/lib/api')
+              const ok = await submitBooking({
+                ...form,
+                categoryId: room.categoryId ?? 0,
+                checkInDate: localCheckIn,
+                checkOutDate: localCheckOut,
+                adults: room.capacityAdults,
+                children: room.capacityChildren,
+              })
+              if (ok) setStep(3)
+              else alert(fr ? 'Erreur lors de la réservation' : 'Booking error')
+            }}
             disabled={!step2Valid || !agreed}
             className="w-full flex items-center justify-center gap-2 py-3.5 bg-green text-charcoal text-xs tracking-widest uppercase font-semibold
                        hover:bg-green-light transition-colors duration-300 disabled:opacity-30 disabled:cursor-not-allowed group"
