@@ -1,5 +1,5 @@
 # Stage 1 — restore & build
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
 # Copy solution and project files first for layer caching
@@ -19,7 +19,7 @@ RUN dotnet publish src/Juweirat.Api/Juweirat.Api.csproj \
     --no-restore
 
 # Stage 2 — runtime (minimal ASP.NET image)
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
 
 # Non-root user for security (Debian-based image)

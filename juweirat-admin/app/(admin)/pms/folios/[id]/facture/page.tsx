@@ -85,6 +85,7 @@ export default function FacturePrintPage() {
   const lines = s.lines || [];
 
   return (
+    <div className="min-h-screen bg-gray-100 print:bg-white text-charcoal">
       {/* Print styles */}
       <style>{`
         @page {
