@@ -13,8 +13,8 @@ using Microsoft.OpenApi.Models;
 var builder = WebApplication.CreateBuilder(args);
 
 // ─── Data Protection (Persistent keys across container restarts) ─────────────
-var keysFolder = Path.Combine(builder.Environment.ContentRootPath, "keys");
-Directory.CreateDirectory(keysFolder);
+var keysFolder = Path.Combine(Path.GetTempPath(), "juweirat-dp-keys");
+try { Directory.CreateDirectory(keysFolder); } catch {}
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(keysFolder))
     .SetApplicationName("Juweirat");
