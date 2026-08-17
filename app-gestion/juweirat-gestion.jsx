@@ -85,6 +85,37 @@ const frMonth = (ym) => { const [y, m] = ym.split("-").map(Number); return new D
 function downloadCSV(fn, rows) { const csv = rows.map((r) => r.map((c) => { const s = String(c == null ? "" : c); return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }).join(";")).join("\n"); const b = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = fn; a.click(); URL.revokeObjectURL(u); }
 function downloadText(fn, t) { const b = new Blob([t], { type: "text/plain;charset=utf-8;" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = fn; a.click(); URL.revokeObjectURL(u); }
 
+function triggerEmailNotification(type, payload, config) {
+  const timestamp = new Date().toISOString();
+  let subject = "";
+  let recipient = payload.email || "client";
+  let content = "";
+  if (type === "confirmation") {
+    subject = "Votre réservation est confirmée — " + (payload.number || "");
+    content = `Réservation confirmée pour ${payload.guest || "le client"} au logement ${payload.unitLabel || payload.unitId} du ${frDate(payload.arrival)} au ${frDate(payload.departure)} (${payload.nights || 0} nuit(s)).`;
+  } else if (type === "annulation") {
+    subject = "Votre réservation a été annulée — " + (payload.number || "");
+    content = `La réservation ${payload.number || ""} pour le séjour du ${frDate(payload.arrival)} au ${frDate(payload.departure)} a bien été annulée.`;
+  } else if (type === "noshow") {
+    subject = "Absence constatée — facturation d'une nuitée — " + (payload.number || "");
+    content = `Suite à l'absence constatée pour le séjour ${payload.number || ""}, une nuitée est facturée conformément aux conditions.`;
+  } else if (type === "cloture") {
+    recipient = "tidjanisaka@gmail.com";
+    subject = "Feuille de journée du " + frDate(payload.dateHotel);
+    content = `Feuille de journée du ${frDate(payload.dateHotel)} : ${payload.nbArrivals || 0} arrivée(s), ${payload.nbDeparts || 0} départ(s), ${payload.nbNoShow || 0} no-show(s), CA passage: ${payload.montant || 0}.`;
+  }
+  console.log(`[Email Automatique - ${type}] Destinataire: ${recipient} | Objet: ${subject}`, payload);
+  try {
+    if (typeof fetch !== "undefined") {
+      fetch("/api/notifications/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, recipient, subject, content, payload, timestamp, building: config?.buildingName })
+      }).catch(() => {});
+    }
+  } catch (e) {}
+}
+
 /* ---------- atoms ---------- */
 function Btn({ children, onClick, kind = "primary", size = "md", title, style, disabled }) {
   const base = { border: "1px solid transparent", borderRadius: 6, cursor: disabled ? "not-allowed" : "pointer", fontWeight: 600, padding: size === "sm" ? "5px 10px" : "9px 16px", fontSize: size === "sm" ? 12.5 : 13.5, opacity: disabled ? 0.5 : 1 };
@@ -328,6 +359,8 @@ function FolioModal({ folio, units, folios, updateFolio, onClose, config, factur
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
       <Field label="Nom"><TextInput value={folio.nom} onChange={(v) => setName({ nom: v })} /></Field>
       <Field label="Prénom"><TextInput value={folio.prenom} onChange={(v) => setName({ prenom: v })} /></Field>
+      <Field label="Email"><TextInput value={folio.email} placeholder="client@exemple.com" onChange={(v) => set({ email: v })} /></Field>
+      <Field label="Téléphone"><TextInput value={folio.phone} placeholder="+228 90 00 00 00" onChange={(v) => set({ phone: v })} /></Field>
       <Field label="Société"><TextInput value={folio.societe} placeholder="—" onChange={(v) => set({ societe: v })} /></Field>
       <Field label="Réservataire" hint="personne ayant réservé"><TextInput value={folio.reservataire} onChange={(v) => set({ reservataire: v })} /></Field>
       <Field label="Date d'arrivée"><DateInput value={folio.arrival} onChange={(v) => applyTarif({ arrival: v })} /></Field>
@@ -442,9 +475,9 @@ function Journee({ units, setUnits, folios, setFolios, monthly, setMonthly, conf
   const empty = folios.length === 0 && Object.keys(monthly).length === 0;
   const loadDemo = () => {
     const cu = units.filter((u) => u.mode === "court"); const nf = []; const D = config.dateHotel;
-    if (cu[0]) nf.push({ id: Date.now() + 1, number: "FL-DEMO-001", unitId: cu[0].id, guest: "Kodjo A.", nom: "A.", prenom: "Kodjo", societe: "", reservataire: "", cardNumber: "", cardExpiry: "", cardHolder: "", segment: "Direct", pax: 2, arrival: addDays(D, -2), departure: addDays(D, 2), rate: cu[0].rate, heb: 0, pdjParJour: 2, pdjPrix: 3000, debiteur: 0, dependances: 15000, arrhes: 20000, paid: 40000, resaStatus: "confirmée", checkedIn: true, note: "", closed: false });
-    if (cu[1]) nf.push({ id: Date.now() + 2, number: "FL-DEMO-002", unitId: cu[1].id, guest: "M. Sena", nom: "Sena", prenom: "M.", societe: "YAS", reservataire: "", cardNumber: "", cardExpiry: "", cardHolder: "", segment: "OTA", pax: 2, arrival: D, departure: addDays(D, 3), rate: cu[1].rate, heb: 0, pdjParJour: 2, pdjPrix: 3000, debiteur: 0, dependances: 0, arrhes: 0, paid: 0, resaStatus: "confirmée", checkedIn: false, note: "", closed: false });
-    if (cu[2]) nf.push({ id: Date.now() + 3, number: "FL-DEMO-003", unitId: cu[2].id, guest: "Ayaba K.", nom: "K.", prenom: "Ayaba", societe: "", reservataire: "", cardNumber: "", cardExpiry: "", cardHolder: "", segment: "Société", pax: 1, arrival: addDays(D, -3), departure: D, rate: cu[2].rate, heb: 0, pdjParJour: 1, pdjPrix: 3000, debiteur: 5000, dependances: 0, arrhes: 0, paid: 60000, resaStatus: "confirmée", checkedIn: true, note: "", closed: false });
+    if (cu[0]) nf.push({ id: Date.now() + 1, number: "FL-DEMO-001", unitId: cu[0].id, guest: "Kodjo A.", nom: "A.", prenom: "Kodjo", email: "kodjo.a@example.com", phone: "+228 90 11 22 33", societe: "", reservataire: "", cardNumber: "", cardExpiry: "", cardHolder: "", segment: "Direct", pax: 2, arrival: addDays(D, -2), departure: addDays(D, 2), rate: cu[0].rate, heb: 0, pdjParJour: 2, pdjPrix: 3000, debiteur: 0, dependances: 15000, arrhes: 20000, paid: 40000, resaStatus: "confirmée", checkedIn: true, note: "", closed: false });
+    if (cu[1]) nf.push({ id: Date.now() + 2, number: "FL-DEMO-002", unitId: cu[1].id, guest: "M. Sena", nom: "Sena", prenom: "M.", email: "sena@yas-holding.com", phone: "+228 91 22 33 44", societe: "YAS", reservataire: "", cardNumber: "", cardExpiry: "", cardHolder: "", segment: "OTA", pax: 2, arrival: D, departure: addDays(D, 3), rate: cu[1].rate, heb: 0, pdjParJour: 2, pdjPrix: 3000, debiteur: 0, dependances: 0, arrhes: 0, paid: 0, resaStatus: "confirmée", checkedIn: false, note: "", closed: false });
+    if (cu[2]) nf.push({ id: Date.now() + 3, number: "FL-DEMO-003", unitId: cu[2].id, guest: "Ayaba K.", nom: "K.", prenom: "Ayaba", email: "ayaba.k@societe.tg", phone: "+228 92 33 44 55", societe: "", reservataire: "", cardNumber: "", cardExpiry: "", cardHolder: "", segment: "Société", pax: 1, arrival: addDays(D, -3), departure: D, rate: cu[2].rate, heb: 0, pdjParJour: 1, pdjPrix: 3000, debiteur: 5000, dependances: 0, arrhes: 0, paid: 60000, resaStatus: "confirmée", checkedIn: true, note: "", closed: false });
     setFolios((p) => [...nf, ...p]);
     const seed = {}; [monthAdd(thisMonth(), -1), thisMonth()].forEach((mm) => { const r = {}; units.filter((u) => u.mode === "long").forEach((u) => { r[u.id] = { leased: true, rentDue: u.rent, rentPaid: u.rent }; }); seed[mm] = r; }); setMonthly((p) => ({ ...seed, ...p }));
   };
@@ -540,7 +573,7 @@ function Reservations({ units, setUnits, folios, setFolios, updateFolio, config,
   const resaUnits = units.filter((u) => typeFilter === "Tous" || u.type === typeFilter).sort((x, y) => (x.roomNo || x.label).localeCompare(y.roomNo || y.label));
   const nights = Math.max(0, dayDiff(a, b));
   const free = (unitId) => nights > 0 && !folios.some((f) => f.unitId === unitId && active(f) && f.arrival < b && a < f.departure);
-  const makeFolio = (u, arr, dep) => { const nights = Math.max(0, dayDiff(arr, dep)); const tf = u.tarifs ? tarifForStay(u.tarifs, nights) : null; return { unitId: u.id, tarifTier: tf ? tf.tier : "nuitée", elecIncluded: tf ? tf.elec : true, guest: "", nom: "", prenom: "", societe: "", reservataire: "", cardNumber: "", cardExpiry: "", cardHolder: "", segment: "Direct", pax: 1, arrival: arr, departure: dep, rate: u.rate, heb: 0, pdjParJour: 0, pdjPrix: 3000, debiteur: 0, dependances: 0, arrhes: 0, paid: 0, resaStatus: "confirmée", checkedIn: false, note: "", closed: false }; };
+  const makeFolio = (u, arr, dep) => { const nights = Math.max(0, dayDiff(arr, dep)); const tf = u.tarifs ? tarifForStay(u.tarifs, nights) : null; return { unitId: u.id, tarifTier: tf ? tf.tier : "nuitée", elecIncluded: tf ? tf.elec : true, guest: "", nom: "", prenom: "", email: "", phone: "", societe: "", reservataire: "", cardNumber: "", cardExpiry: "", cardHolder: "", segment: "Direct", pax: 1, arrival: arr, departure: dep, rate: u.rate, heb: 0, pdjParJour: 0, pdjPrix: 3000, debiteur: 0, dependances: 0, arrhes: 0, paid: 0, resaStatus: "confirmée", checkedIn: false, note: "", closed: false }; };
   const reserve = (u) => { const f = makeFolio(u, a, b); const nights = Math.max(0, dayDiff(a, b)); const tf = u.tarifs ? tarifForStay(u.tarifs, nights) : null; if (tf) f.rate = Math.round(tf.perNight); createResa(f); };
   const del = (id) => setFolios((p) => p.filter((f) => f.id !== id));
   const roomDirty = (unitId) => setUnits((p) => p.map((u) => (u.id === unitId ? { ...u, statutMenage: "sale" } : u)));
@@ -827,8 +860,12 @@ function Cloture({ config, setConfig, units, setUnits, folios, setFolios, update
   const validate = () => {
     const stamp = new Date().toISOString();
     const lines = previewLines.map((l, i) => ({ id: Date.now() + i, dateHotel: D, ...l, libelle: l.famille + " · " + frDate(D), horodatage: stamp }));
+    const nbArr = folios.filter((f) => f.arrival === D && active(f)).length;
+    const nbDep = folios.filter((f) => f.departure === D && f.closed).length;
+    const nbNs = folios.filter((f) => f.arrival === D && f.resaStatus === "no-show").length;
     setPostings((p) => [...p, ...lines]);
-    setClotures((p) => [...p, { dateHotel: D, executedAt: stamp, indicators: ind, nbArrivals: folios.filter((f) => f.arrival === D && active(f)).length, nbDeparts: folios.filter((f) => f.departure === D && f.closed).length, nbNoShow: folios.filter((f) => f.arrival === D && f.resaStatus === "no-show").length, nbLignes: lines.length, montant: totalPassage }]);
+    setClotures((p) => [...p, { dateHotel: D, executedAt: stamp, indicators: ind, nbArrivals: nbArr, nbDeparts: nbDep, nbNoShow: nbNs, nbLignes: lines.length, montant: totalPassage }]);
+    triggerEmailNotification("cloture", { dateHotel: D, indicators: ind, nbArrivals: nbArr, nbDeparts: nbDep, nbNoShow: nbNs, nbLignes: lines.length, montant: totalPassage }, config);
     setConfig((c) => ({ ...c, dateHotel: addDays(D, 1) }));
     setStep(5);
   };
@@ -908,17 +945,20 @@ function ClotureHistory({ clotures, money }) {
    ============================================================ */
 function Debiteurs({ units, monthly, debtors, setDebtors, updateMonthly }) {
   const money = useMoney();
+  const [showSoldes, setShowSoldes] = useState(false);
   const arr = useMemo(() => arrears(units, monthly), [units, monthly]);
   const arrTotal = arr.reduce((s, a) => s + a.impaye, 0);
   const add = () => setDebtors((p) => [{ id: Date.now(), client: "", label: "", dueDate: addDays(today(), 30), amount: 0, paid: 0 }, ...p]);
   const upd = (id, patch) => setDebtors((p) => p.map((d) => (d.id === id ? { ...d, ...patch } : d)));
   const del = (id) => setDebtors((p) => p.filter((d) => d.id !== id));
   const t = today();
-  const other = debtors.map((d) => { const rest = num(d.amount) - num(d.paid); const overdue = d.dueDate < t && rest > 0.5; return { ...d, rest, overdue, daysLate: overdue ? Math.round((new Date(t) - new Date(d.dueDate)) / 86400000) : 0 }; });
-  const otherTotal = other.reduce((s, d) => s + Math.max(0, d.rest), 0);
-  const exportCSV = () => downloadCSV(`juweirat_creances_${t}.csv`, [["ARRIÉRÉS DE LOYER"], ["Mois", "Logement", "Locataire", "Impayé"], ...arr.map((a) => [frMonth(a.ym), a.label, a.tenant, Math.round(a.impaye)]), [], ["AUTRES CRÉANCES"], ["Client", "Libellé", "Échéance", "Montant", "Réglé", "Reste"], ...other.map((d) => [d.client, d.label, d.dueDate, Math.round(d.amount), Math.round(d.paid), Math.round(d.rest)])]);
+  const allOther = debtors.map((d) => { const rest = num(d.amount) - num(d.paid); const overdue = d.dueDate < t && rest > 0.5; return { ...d, rest, overdue, daysLate: overdue ? Math.round((new Date(t) - new Date(d.dueDate)) / 86400000) : 0, isSolded: rest <= 0.5 && num(d.amount) > 0 }; });
+  const other = showSoldes ? allOther : allOther.filter((d) => !d.isSolded);
+  const otherTotal = allOther.filter((d) => !d.isSolded).reduce((s, d) => s + Math.max(0, d.rest), 0);
+  const nbSoldes = allOther.filter((d) => d.isSolded).length;
+  const exportCSV = () => downloadCSV(`juweirat_creances_${t}.csv`, [["ARRIÉRÉS DE LOYER"], ["Mois", "Logement", "Locataire", "Impayé"], ...arr.map((a) => [frMonth(a.ym), a.label, a.tenant, Math.round(a.impaye)]), [], ["AUTRES CRÉANCES"], ["Client", "Libellé", "Échéance", "Montant", "Réglé", "Reste", "Statut"], ...allOther.map((d) => [d.client, d.label, d.dueDate, Math.round(d.amount), Math.round(d.paid), Math.round(d.rest), d.isSolded ? "Soldé" : d.overdue ? "En retard" : "En cours"])]);
   return (<div>
-    <SectionTitle eyebrow="Créances" title="Débiteurs & créances" right={<div style={{ display: "flex", gap: 8 }}><Btn kind="gold" size="sm" onClick={exportCSV}>Exporter</Btn><Btn onClick={add}>+ Autre créance</Btn></div>} />
+    <SectionTitle eyebrow="Créances" title="Débiteurs & créances" right={<div style={{ display: "flex", gap: 8, alignItems: "center" }}>{nbSoldes > 0 && <Btn size="sm" kind={showSoldes ? "primary" : "ghost"} onClick={() => setShowSoldes((x) => !x)}>{showSoldes ? "Masquer soldés" : `Voir soldés (${nbSoldes})`}</Btn>}<Btn kind="gold" size="sm" onClick={exportCSV}>Exporter</Btn><Btn onClick={add}>+ Autre créance</Btn></div>} />
     <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 18 }}>
       <Kpi label="Arriérés de loyer" value={money(arrTotal)} sub={`${arr.length} échéance(s)`} accent={arrTotal > 0 ? C.danger : C.ok} />
       <Kpi label="Autres créances" value={money(otherTotal)} accent={otherTotal > 0 ? C.danger : C.ok} />
@@ -934,15 +974,15 @@ function Debiteurs({ units, monthly, debtors, setDebtors, updateMonthly }) {
     <Card style={{ overflow: "hidden" }}><div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
       <thead><tr><th style={th}>Client</th><th style={th}>Libellé</th><th style={th}>Échéance</th><th style={{ ...th, textAlign: "right" }}>Montant</th><th style={{ ...th, textAlign: "right" }}>Réglé</th><th style={{ ...th, textAlign: "right" }}>Reste</th><th style={{ ...th, textAlign: "center" }}>Retard</th><th style={{ ...th, width: 90 }}></th></tr></thead>
       <tbody>{other.length === 0 && <tr><td colSpan={8} style={{ ...td, textAlign: "center", color: C.muted, padding: 20 }}>Aucune autre créance.</td></tr>}
-        {other.map((d, i) => (<tr key={d.id} style={{ background: d.overdue ? "#FCF3F0" : i % 2 ? C.rowAlt : "#fff" }}>
+        {other.map((d, i) => (<tr key={d.id} style={{ background: d.isSolded ? "#F0F7F2" : d.overdue ? "#FCF3F0" : i % 2 ? C.rowAlt : "#fff" }}>
           <td style={td}><TextInput value={d.client} placeholder="Nom" onChange={(v) => upd(d.id, { client: v })} /></td>
           <td style={td}><TextInput value={d.label} placeholder="Objet" onChange={(v) => upd(d.id, { label: v })} /></td>
           <td style={td}><DateInput value={d.dueDate} onChange={(v) => upd(d.id, { dueDate: v })} /></td>
           <td style={td}><div style={{ width: 148, marginLeft: "auto" }}><MoneyInput value={d.amount} onChange={(v) => upd(d.id, { amount: v })} /></div></td>
           <td style={td}><div style={{ width: 148, marginLeft: "auto" }}><MoneyInput value={d.paid} onChange={(v) => upd(d.id, { paid: v })} /></div></td>
           <td style={{ ...tdR, fontWeight: 700, color: d.rest > 0.5 ? C.danger : C.ok }}>{money(d.rest)}</td>
-          <td style={{ ...td, textAlign: "center", color: d.overdue ? C.danger : C.muted, fontWeight: d.overdue ? 700 : 400, fontSize: 12.5 }}>{d.overdue ? "+" + d.daysLate + " j" : "—"}</td>
-          <td style={{ ...td, textAlign: "center", whiteSpace: "nowrap" }}><Btn size="sm" kind="ghost" onClick={() => upd(d.id, { paid: d.amount })}>Solder</Btn>{" "}<button onClick={() => del(d.id)} style={{ border: "none", background: "transparent", color: C.danger, cursor: "pointer", fontSize: 16 }}>×</button></td>
+          <td style={{ ...td, textAlign: "center", color: d.isSolded ? C.ok : d.overdue ? C.danger : C.muted, fontWeight: d.overdue || d.isSolded ? 700 : 400, fontSize: 12.5 }}>{d.isSolded ? "Soldé" : d.overdue ? "+" + d.daysLate + " j" : "—"}</td>
+          <td style={{ ...td, textAlign: "center", whiteSpace: "nowrap" }}>{!d.isSolded && <Btn size="sm" kind="ghost" onClick={() => upd(d.id, { paid: d.amount })}>Solder</Btn>}{" "}<button onClick={() => del(d.id)} style={{ border: "none", background: "transparent", color: C.danger, cursor: "pointer", fontSize: 16 }}>×</button></td>
         </tr>))}
       </tbody></table></div></Card>
   </div>);
@@ -1193,7 +1233,7 @@ function Maintenance({ tickets, setTickets, units, setUnits, config }) {
 /* ============================================================
    Édition — calendrier des évènements par chambre
    ============================================================ */
-function Edition({ units, folios, tickets, config }) {
+function Edition({ units, folios, tickets, debtors = [], monthly = {}, config }) {
   const money = useMoney();
   const now = thisMonth();
   const [from, setFrom] = useState(now + "-01");
@@ -1204,6 +1244,7 @@ function Edition({ units, folios, tickets, config }) {
   const validPeriod = to >= from;
   const unitsView = fRoom === "tous" ? units : units.filter((u) => u.id === fRoom);
   const inRoom = (uid) => fRoom === "tous" || uid === fRoom;
+  const t = config.dateHotel;
 
   const events = useMemo(() => {
     const ev = [];
@@ -1224,6 +1265,24 @@ function Edition({ units, folios, tickets, config }) {
   const pmGlobal = agg.nights ? agg.heb / agg.nights : 0;
   const losGlobal = agg.stays ? agg.losTot / agg.stays : 0;
 
+  const dList = (debtors || []).map((d) => {
+    const rest = num(d.amount) - num(d.paid);
+    const overdue = d.dueDate < t && rest > 0.5;
+    const inPeriod = d.dueDate >= from && d.dueDate <= to;
+    return {
+      ...d,
+      rest,
+      overdue,
+      inPeriod,
+      daysLate: overdue ? Math.round((new Date(t) - new Date(d.dueDate)) / 86400000) : 0,
+      isSolded: rest <= 0.5 && num(d.amount) > 0
+    };
+  });
+  const periodDebtors = dList.filter((d) => d.inPeriod || (d.rest > 0.5 && d.dueDate <= to));
+  const totDebAmount = periodDebtors.reduce((s, d) => s + num(d.amount), 0);
+  const totDebPaid = periodDebtors.reduce((s, d) => s + num(d.paid), 0);
+  const totDebRest = periodDebtors.reduce((s, d) => s + Math.max(0, d.rest), 0);
+
   const unitLabel = (id) => { const u = units.find((x) => x.id === id); return u ? u.label + " · " + u.type : null; };
   const byUnit = unitsView.map((u) => ({ u, evs: events.filter((e) => e.unitId === u.id).sort((a, b) => (a.start < b.start ? -1 : 1)) }));
   const communs = fRoom === "tous" ? events.filter((e) => e.kind === "maint" && (!e.unitId || e.zone === "commun")).sort((a, b) => (a.start < b.start ? -1 : 1)) : [];
@@ -1232,23 +1291,40 @@ function Edition({ units, folios, tickets, config }) {
   const tooLong = span > 92;
   const dayW = 38, labelW = 150, cellBox = { boxSizing: "border-box" };
 
-  const exportCSV = () => downloadCSV(`edition_evenements_${from}_${to}.csv`, [["Édition — évènements des chambres", frDate(from) + " → " + frDate(to)], [], ["Logement", "Type", "Référence", "Détail", "Début", "Fin", "Statut"], ...events.slice().sort((a, b) => (a.start < b.start ? -1 : 1)).map((e) => [e.unitId ? (unitLabel(e.unitId) || e.unitId) : "Parties communes" + (e.spot ? " · " + e.spot : ""), e.type, e.ref, e.label, frDate(e.start), e.end ? frDate(e.end) : "", e.statut || ""]), [], ["Synthèse par chambre"], ["Chambre", "Séjours", "Nuits", "Durée moy. (nuits)", "Prix moyen", "Hébergement", "PDJ", "Extras", "CA total"], ...unitsView.filter((u) => caByUnit[u.id] && (caByUnit[u.id].total > 0 || caByUnit[u.id].stays > 0)).map((u) => { const x = caByUnit[u.id]; return [u.label + " · " + u.type, x.stays, x.nights, x.los.toFixed(1).replace(".", ","), Math.round(x.pm), Math.round(x.heb), Math.round(x.pdj), Math.round(x.extra), Math.round(x.total)]; }), ["TOTAL", agg.stays, agg.nights, losGlobal.toFixed(1).replace(".", ","), Math.round(pmGlobal), "", "", "", Math.round(caTotal)]]);
+  const exportCSV = () => downloadCSV(`edition_evenements_${from}_${to}.csv`, [
+    ["Édition — évènements des chambres & créances", frDate(from) + " → " + frDate(to)],
+    [],
+    ["Logement", "Type", "Référence", "Détail", "Début", "Fin", "Statut"],
+    ...events.slice().sort((a, b) => (a.start < b.start ? -1 : 1)).map((e) => [e.unitId ? (unitLabel(e.unitId) || e.unitId) : "Parties communes" + (e.spot ? " · " + e.spot : ""), e.type, e.ref, e.label, frDate(e.start), e.end ? frDate(e.end) : "", e.statut || ""]),
+    [],
+    ["Synthèse par chambre"],
+    ["Chambre", "Séjours", "Nuits", "Durée moy. (nuits)", "Prix moyen", "Hébergement", "PDJ", "Extras", "CA total"],
+    ...unitsView.filter((u) => caByUnit[u.id] && (caByUnit[u.id].total > 0 || caByUnit[u.id].stays > 0)).map((u) => { const x = caByUnit[u.id]; return [u.label + " · " + u.type, x.stays, x.nights, x.los.toFixed(1).replace(".", ","), Math.round(x.pm), Math.round(x.heb), Math.round(x.pdj), Math.round(x.extra), Math.round(x.total)]; }),
+    ["TOTAL", agg.stays, agg.nights, losGlobal.toFixed(1).replace(".", ","), Math.round(pmGlobal), "", "", "", Math.round(caTotal)],
+    [],
+    ["SUIVI DES DÉBITEURS & CRÉANCES DIVERSES"],
+    ["Client", "Libellé", "Échéance", "Montant dû", "Réglé", "Reste à recouvrer", "Retard (j)", "Statut"],
+    ...periodDebtors.map((d) => [d.client, d.label, frDate(d.dueDate), Math.round(d.amount), Math.round(d.paid), Math.round(d.rest), d.overdue ? d.daysLate : 0, d.isSolded ? "Soldé" : d.overdue ? "En retard" : "En cours"]),
+    ["TOTAL CRÉANCES", "", "", Math.round(totDebAmount), Math.round(totDebPaid), Math.round(totDebRest), "", ""]
+  ]);
 
   const printHTML = () => {
     const rowsFor = (evs) => evs.map((e) => '<tr><td>' + e.type + '</td><td>' + (e.ref || "") + '</td><td>' + e.label + '</td><td>' + frDate(e.start) + (e.end ? ' → ' + frDate(e.end) : '') + '</td><td>' + (e.statut || "") + '</td></tr>').join("");
     const fmC = (n) => (config.currency.decimals ? num(n).toLocaleString('fr-FR', { minimumFractionDigits: config.currency.decimals, maximumFractionDigits: config.currency.decimals }) : Math.round(num(n)).toLocaleString('fr-FR')) + ' ' + config.currency.code;
     const blocks = byUnit.filter((b) => b.evs.length).map((b) => { const x = caByUnit[b.u.id] || {}; return '<h3>' + b.u.label + ' · ' + b.u.type + '</h3><div class="muted">CA période : ' + fmC(x.total || 0) + ' · prix moyen : ' + fmC(x.pm || 0) + ' · durée moyenne : ' + ((x.los || 0).toFixed(1)) + ' nuit(s) · ' + (x.nights || 0) + ' nuitée(s)</div><table><thead><tr><th>Type</th><th>Réf.</th><th>Détail</th><th>Période</th><th>Statut</th></tr></thead><tbody>' + rowsFor(b.evs) + '</tbody></table>'; }).join("");
     const communBlock = communs.length ? '<h3>Parties communes</h3><table><thead><tr><th>Type</th><th>Réf.</th><th>Détail</th><th>Période</th><th>Statut</th></tr></thead><tbody>' + rowsFor(communs) + '</tbody></table>' : "";
+    const debtorRows = periodDebtors.map((d) => '<tr><td>' + (d.client || "—") + '</td><td>' + (d.label || "—") + '</td><td>' + frDate(d.dueDate) + '</td><td style="text-align:right">' + fmC(d.amount) + '</td><td style="text-align:right">' + fmC(d.paid) + '</td><td style="text-align:right;font-weight:bold;color:' + (d.rest > 0.5 ? '#B91C1C' : '#15803D') + '">' + fmC(d.rest) + '</td><td>' + (d.isSolded ? 'Soldé' : (d.overdue ? '+' + d.daysLate + ' j retard' : 'En cours')) + '</td></tr>').join("");
+    const debtorBlock = '<h3>Suivi des débiteurs et créances diverses</h3>' + (periodDebtors.length ? '<table><thead><tr><th>Client</th><th>Libellé</th><th>Échéance</th><th style="text-align:right">Montant</th><th style="text-align:right">Réglé</th><th style="text-align:right">Reste</th><th>Statut</th></tr></thead><tbody>' + debtorRows + '</tbody><tfoot><tr style="background:#1B4332;color:#fff;font-weight:bold"><td colspan="3">TOTAL CRÉANCES</td><td style="text-align:right">' + fmC(totDebAmount) + '</td><td style="text-align:right">' + fmC(totDebPaid) + '</td><td style="text-align:right">' + fmC(totDebRest) + '</td><td></td></tr></tfoot></table>' : '<p class="muted">Aucune créance sur la période.</p>');
     const html = '<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Édition ' + from + ' ' + to + '</title>' +
-'<style>body{font-family:Segoe UI,system-ui,Arial,sans-serif;color:#2A2622;margin:0;padding:34px}h1{color:#1B4332;font-size:20px;margin:0}h3{color:#1B4332;margin:22px 0 6px;border-bottom:2px solid #B08D57;padding-bottom:3px}.muted{color:#8A8172;font-size:12.5px}table{width:100%;border-collapse:collapse;margin-top:4px}th{background:#1B4332;color:#fff;text-align:left;padding:7px 10px;font-size:11.5px;text-transform:uppercase}td{padding:6px 10px;border-bottom:1px solid #E4DCCB;font-size:13px}@media print{body{padding:0}}</style></head><body>' +
-'<h1>' + config.buildingName + ' — Évènements des chambres</h1><div class="muted">Période : ' + frDate(from) + ' → ' + frDate(to) + ' · édité le ' + frDate(config.dateHotel) + '</div>' + '<div style="font-weight:800;color:#1B4332;margin-top:6px">CA total période : ' + fmC(caTotal) + '</div>' +
-(blocks || '<p class="muted">Aucun évènement sur la période.</p>') + communBlock + '</body></html>';
+'<style>body{font-family:Segoe UI,system-ui,Arial,sans-serif;color:#2A2622;margin:0;padding:34px}h1{color:#1B4332;font-size:20px;margin:0}h3{color:#1B4332;margin:22px 0 6px;border-bottom:2px solid #B08D57;padding-bottom:3px}.muted{color:#8A8172;font-size:12.5px}table{width:100%;border-collapse:collapse;margin-top:4px;margin-bottom:16px}th{background:#1B4332;color:#fff;text-align:left;padding:7px 10px;font-size:11.5px;text-transform:uppercase}td{padding:6px 10px;border-bottom:1px solid #E4DCCB;font-size:13px}@media print{body{padding:0}}</style></head><body>' +
+'<h1>' + config.buildingName + ' — Rapport d\'édition consolidé</h1><div class="muted">Période : ' + frDate(from) + ' → ' + frDate(to) + ' · édité le ' + frDate(config.dateHotel) + '</div>' + '<div style="font-weight:800;color:#1B4332;margin-top:6px">CA total période : ' + fmC(caTotal) + ' · Reste créances : ' + fmC(totDebRest) + '</div>' +
+(blocks || '<p class="muted">Aucun évènement sur la période.</p>') + communBlock + debtorBlock + '</body></html>';
     downloadText('edition_' + from + '_' + to + '.html', html);
   };
 
   const quick = (f, t2) => { setFrom(f); setTo(t2); };
   return (<div>
-    <SectionTitle eyebrow="Édition · rapport" title="Évènements des chambres" right={<div style={{ display: "flex", gap: 8 }}><Btn kind="ghost" size="sm" onClick={exportCSV}>Exporter CSV</Btn><Btn kind="gold" size="sm" onClick={printHTML}>Imprimer / PDF</Btn></div>} />
+    <SectionTitle eyebrow="Édition · rapport" title="Évènements des chambres & créances" right={<div style={{ display: "flex", gap: 8 }}><Btn kind="ghost" size="sm" onClick={exportCSV}>Exporter CSV</Btn><Btn kind="gold" size="sm" onClick={printHTML}>Imprimer / PDF</Btn></div>} />
 
     <Card style={{ padding: 16, marginBottom: 16 }}>
       <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
@@ -1263,7 +1339,7 @@ function Edition({ units, folios, tickets, config }) {
     </Card>
 
     <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-      <Kpi label="Séjours" value={sejN} accent={C.green2} /><Kpi label="Arrivées" value={arrN} /><Kpi label="Départs" value={depN} /><Kpi label="Interventions" value={maintN} accent={maintN ? C.warn : C.green} /><Kpi label="Ménages" value={menageN} accent={C.blue} /><Kpi label="Prix moyen" value={money(pmGlobal)} accent={C.green2} /><Kpi label="Durée moy. séjour" value={(losGlobal ? losGlobal.toFixed(1).replace(".", ",") + " nuit(s)" : "—")} /><Kpi label="CA période" value={money(caTotal)} accent={C.gold} />
+      <Kpi label="Séjours" value={sejN} accent={C.green2} /><Kpi label="Arrivées" value={arrN} /><Kpi label="Départs" value={depN} /><Kpi label="Interventions" value={maintN} accent={maintN ? C.warn : C.green} /><Kpi label="Ménages" value={menageN} accent={C.blue} /><Kpi label="Prix moyen" value={money(pmGlobal)} accent={C.green2} /><Kpi label="CA période" value={money(caTotal)} accent={C.gold} /><Kpi label="Créances période" value={money(totDebRest)} accent={totDebRest > 0 ? C.danger : C.ok} sub={totDebAmount > 0 ? `${periodDebtors.length} créance(s)` : ""} />
     </div>
 
     {validPeriod && !tooLong && (<Card style={{ overflow: "hidden", marginBottom: 18 }}>
@@ -1320,6 +1396,39 @@ function Edition({ units, folios, tickets, config }) {
         </table>
       </div>
     </Card>
+
+    <div style={{ fontWeight: 800, color: C.green, marginBottom: 10 }}>Suivi des débiteurs & créances diverses sur la période</div>
+    <Card style={{ overflow: "hidden", marginBottom: 18 }}>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860 }}>
+          <thead><tr><th style={th}>Client</th><th style={th}>Libellé / Objet</th><th style={th}>Échéance</th><th style={{ ...th, textAlign: "right" }}>Montant dû</th><th style={{ ...th, textAlign: "right" }}>Réglé</th><th style={{ ...th, textAlign: "right" }}>Reste</th><th style={{ ...th, textAlign: "center" }}>Statut / Retard</th></tr></thead>
+          <tbody>
+            {periodDebtors.length === 0 && <tr><td colSpan={7} style={{ ...td, textAlign: "center", color: C.muted, padding: 20 }}>Aucune créance sur cette période.</td></tr>}
+            {periodDebtors.map((d, i) => (
+              <tr key={d.id} style={{ background: d.isSolded ? "#F0F7F2" : d.overdue ? "#FCF3F0" : i % 2 ? C.rowAlt : "#fff" }}>
+                <td style={{ ...td, fontWeight: 600 }}>{d.client || "—"}</td>
+                <td style={td}>{d.label || "—"}</td>
+                <td style={{ ...td, whiteSpace: "nowrap" }}>{frDate(d.dueDate)}</td>
+                <td style={tdR}>{money(d.amount)}</td>
+                <td style={tdR}>{money(d.paid)}</td>
+                <td style={{ ...tdR, fontWeight: 700, color: d.rest > 0.5 ? C.danger : C.ok }}>{money(d.rest)}</td>
+                <td style={{ ...td, textAlign: "center" }}><Tag color={d.isSolded ? C.ok : d.overdue ? C.danger : C.warn}>{d.isSolded ? "Soldé" : d.overdue ? `+${d.daysLate} j retard` : "En cours"}</Tag></td>
+              </tr>
+            ))}
+          </tbody>
+          {periodDebtors.length > 0 && (
+            <tfoot><tr style={{ background: C.green }}>
+              <td style={{ ...td, color: "#fff", fontWeight: 800, borderBottom: "none" }} colSpan={3}>TOTAL CRÉANCES PÉRIODE</td>
+              <td style={{ ...tdR, color: "#fff", fontWeight: 800, borderBottom: "none" }}>{money(totDebAmount)}</td>
+              <td style={{ ...tdR, color: "#fff", fontWeight: 800, borderBottom: "none" }}>{money(totDebPaid)}</td>
+              <td style={{ ...tdR, color: C.gold2, fontWeight: 800, borderBottom: "none" }}>{money(totDebRest)}</td>
+              <td style={{ ...td, borderBottom: "none" }}></td>
+            </tr></tfoot>
+          )}
+        </table>
+      </div>
+    </Card>
+
     <div style={{ fontWeight: 800, color: C.green, marginBottom: 10 }}>Détail par logement</div>
     <Card style={{ overflow: "hidden" }}>
       <div style={{ overflowX: "auto" }}>
@@ -1393,16 +1502,39 @@ export default function App() {
   useEffect(() => { if (loaded) saveKey(KEYS.maintenance, tickets); }, [tickets, loaded]);
 
   const updateMonthly = (ym, id, patch) => setMonthly((p) => ({ ...p, [ym]: { ...(p[ym] || {}), [id]: { ...((p[ym] || {})[id] || {}), ...patch } } }));
-  const updateFolio = (id, patch) => setFolios((p) => p.map((f) => (f.id === id ? { ...f, ...patch } : f)));
+  const updateFolio = (id, patch) => {
+    setFolios((p) => {
+      const old = p.find((f) => f.id === id);
+      if (old && patch.resaStatus && patch.resaStatus !== old.resaStatus) {
+        const merged = { ...old, ...patch };
+        const u = units.find((x) => x.id === merged.unitId);
+        const c = folioCalc(merged);
+        const pld = { ...merged, unitLabel: u ? u.label + " (" + u.type + ")" : merged.unitId, nights: c.nights, total: c.total };
+        if (patch.resaStatus === "confirmée" && merged.email) {
+          triggerEmailNotification("confirmation", pld, config);
+        } else if (patch.resaStatus === "annulée" && merged.email) {
+          triggerEmailNotification("annulation", pld, config);
+        } else if (patch.resaStatus === "no-show" && merged.email) {
+          triggerEmailNotification("noshow", pld, config);
+        }
+      }
+      return p.map((f) => (f.id === id ? { ...f, ...patch } : f));
+    });
+  };
   const openFolio = (id) => setOpenFolioId(id);
   const openFacture = (id) => setOpenFactureId(id);
   const createResa = (partial) => {
     const seq = (config.resaSeq || 0) + 1;
     const number = "FL-" + new Date().getFullYear() + "-" + String(seq).padStart(4, "0");
-    const f = { id: Date.now(), number, ...partial };
+    const f = { id: Date.now(), number, email: "", phone: "", ...partial };
     setFolios((p) => [f, ...p]);
     setConfig((cc) => ({ ...cc, resaSeq: (cc.resaSeq || 0) + 1 }));
     setOpenFolioId(f.id);
+    if ((f.resaStatus === "confirmée" || !f.resaStatus) && f.email) {
+      const u = units.find((x) => x.id === f.unitId);
+      const c = folioCalc(f);
+      triggerEmailNotification("confirmation", { ...f, unitLabel: u ? u.label + " (" + u.type + ")" : f.unitId, nights: c.nights, total: c.total }, config);
+    }
     return f;
   };
   const factureSnapshot = (folio, recipient) => {
@@ -1419,16 +1551,24 @@ export default function App() {
   const emitFacture = (folio, recipient) => {
     let fac = factures.find((x) => x.id === folio.factureId && x.status !== "annulée");
     if (!fac) {
+      const c = folioCalc(folio);
+      if (c.solde > 0.5) {
+        const cur = config.currency;
+        const curFmt = (n) => (cur.decimals ? num(n).toLocaleString("fr-FR", { minimumFractionDigits: cur.decimals, maximumFractionDigits: cur.decimals }) : Math.round(num(n)).toLocaleString("fr-FR")) + " " + cur.code;
+        window.alert("Facturation impossible : le folio présente un solde restant de " + curFmt(c.solde) + ". Veuillez d'abord encaisser le solde ou le transférer en débiteur avant d'éditer la facture.");
+        return null;
+      }
       fac = { id: Date.now(), number: "FAC-" + new Date().getFullYear() + "-" + String((config.factureSeq || 0) + 1).padStart(4, "0"), folioId: folio.id, date: config.dateHotel, status: "émise", printCount: 0, corrections: 0, snapshot: factureSnapshot(folio, recipient) };
       setFactures((p) => [fac, ...p]);
       setConfig((cc) => ({ ...cc, factureSeq: (cc.factureSeq || 0) + 1 }));
-      updateFolio(folio.id, { factureId: fac.id });
+      updateFolio(folio.id, { factureId: fac.id, closed: true, facture: true, checkoutDate: folio.checkoutDate || config.dateHotel });
+      setUnits((p) => p.map((u) => (u.id === folio.unitId ? { ...u, statutMenage: "sale" } : u)));
     }
     printFacture(fac);
     return fac;
   };
   const updateFacture = (id, patch) => setFactures((p) => p.map((x) => x.id === id ? { ...x, ...patch } : x));
-  const cancelFacture = (fac) => { updateFacture(fac.id, { status: "annulée" }); const f = folios.find((y) => y.id === fac.folioId); if (f && f.factureId === fac.id) updateFolio(f.id, { factureId: null }); };
+  const cancelFacture = (fac) => { updateFacture(fac.id, { status: "annulée" }); const f = folios.find((y) => y.id === fac.folioId); if (f && f.factureId === fac.id) updateFolio(f.id, { factureId: null, closed: false, facture: false }); };
   const applyPlan = () => { if (window.confirm("Charger le plan réel de l'immeuble Juweirat (étages 2, 4, 5 et 6 — 19 logements) ? La liste des logements sera remplacée ; les réservations liées aux anciens logements devront être réaffectées.")) setUnits(genUnits()); };
   const transferDebiteur = (folio) => {
     const c = folioCalc(folio); if (c.solde <= 0.5) return;
@@ -1475,7 +1615,7 @@ export default function App() {
           {tab === "gouvernante" && <Gouvernante {...{ units, setUnits, folios, monthly, config, applyPlan }} />}
           {tab === "maintenance" && <Maintenance {...{ tickets, setTickets, units, setUnits, config }} />}
           {tab === "stats" && <Stats {...{ units, folios, monthly }} />}
-          {tab === "edition" && <Edition {...{ units, folios, tickets, config }} />}
+          {tab === "edition" && <Edition {...{ units, folios, tickets, debtors, monthly, config }} />}
           {tab === "debiteurs" && <Debiteurs {...{ units, monthly, debtors, setDebtors, updateMonthly }} />}
           {tab === "cloture" && <Cloture {...{ config, setConfig, units, setUnits, folios, setFolios, updateFolio, monthly, postings, setPostings, clotures, setClotures }} />}
           {tab === "factures" && <FacturesTab {...{ factures, folios, config, openFacture, cancelFacture, printFacture }} />}
