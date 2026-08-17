@@ -1635,7 +1635,38 @@ export default function App() {
     if (c.dep > 0) lines.push({ label: "Dépendances", montant: c.dep });
     return { lines, total: c.total, arrhes: num(folio.arrhes), paid: num(folio.paid), payMode: folio.payMode || "Espèces", recipient, client: folio.guest || "", societe: folio.societe || "", reservataire: folio.reservataire || "", unitLabel: unit ? unit.label + " (" + unit.type + ")" : folio.unitId, arrival: folio.arrival, departure: folio.departure, nights: c.nights, pax: num(folio.pax) };
   };
-  const printFacture = (fac, force) => { const dup = force !== undefined ? force : ((fac.printCount || 0) >= 1); downloadText(fac.number + ".html", buildFactureHTML(fac, config, dup)); setFactures((p) => p.map((x) => x.id === fac.id ? { ...x, printCount: (x.printCount || 0) + 1 } : x)); };
+  const printFacture = (fac, force) => {
+    const dup = force !== undefined ? force : ((fac.printCount || 0) >= 1);
+    const html = buildFactureHTML(fac, config, dup);
+    try {
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      document.body.appendChild(iframe);
+      const doc = iframe.contentWindow && iframe.contentWindow.document;
+      if (doc) {
+        doc.open();
+        doc.write(html);
+        doc.close();
+        iframe.contentWindow.focus();
+        setTimeout(() => {
+          iframe.contentWindow.print();
+          setTimeout(() => {
+            try { document.body.removeChild(iframe); } catch(e) {}
+          }, 2000);
+        }, 250);
+      } else {
+        downloadText(fac.number + ".html", html);
+      }
+    } catch(e) {
+      downloadText(fac.number + ".html", html);
+    }
+    setFactures((p) => p.map((x) => x.id === fac.id ? { ...x, printCount: (x.printCount || 0) + 1 } : x));
+  };
   const emitFacture = (folio, recipient) => {
     let fac = factures.find((x) => x.id === folio.factureId && x.status !== "annulée");
     if (!fac) {

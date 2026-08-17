@@ -85,38 +85,160 @@ export default function FacturePrintPage() {
   const avoir = Math.max(0, paid + arrhes - total);
   const lines = s.lines || [];
 
+  const handlePrint = () => {
+    pmsFactures.print(facture.id).catch(() => {});
+
+    const sheet = document.getElementById('facture-sheet');
+    if (!sheet) {
+      window.print();
+      return;
+    }
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html lang="fr">
+      <head>
+        <meta charset="utf-8">
+        <title>Facture ${facture.number} — ${config.buildingName}</title>
+        <style>
+          @page {
+            size: A4 portrait;
+            margin: 6mm 8mm;
+          }
+          * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          html, body {
+            background: #FFFFFF;
+            color: #1F2421;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-size: 11px;
+            line-height: 1.3;
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            max-height: 100%;
+            overflow: hidden;
+          }
+          .invoice-card {
+            max-width: 100%;
+            margin: 0 auto;
+            background: #fff;
+            page-break-inside: avoid;
+            page-break-after: avoid;
+            break-inside: avoid;
+            break-after: avoid;
+          }
+          @media print {
+            html, body {
+              margin: 0 !important;
+              padding: 0 !important;
+              height: 100% !important;
+              max-height: 100% !important;
+              overflow: hidden !important;
+              background: #fff !important;
+            }
+            .invoice-card {
+              max-width: 100% !important;
+              margin: 0 !important;
+              padding: 0 !important;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="invoice-card">
+          ${sheet.innerHTML}
+        </div>
+      </body>
+      </html>
+    `);
+    doc.close();
+
+    iframe.contentWindow?.focus();
+    setTimeout(() => {
+      iframe.contentWindow?.print();
+      setTimeout(() => {
+        try {
+          document.body.removeChild(iframe);
+        } catch {}
+      }, 2000);
+    }, 250);
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 print:bg-white text-charcoal">
       {/* Print styles */}
       <style>{`
         @page {
           size: A4 portrait;
-          margin: 8mm 10mm;
+          margin: 0;
         }
         @media print {
           html, body {
-            background: white !important;
-            color: black !important;
             margin: 0 !important;
             padding: 0 !important;
-            width: 100% !important;
             height: 100% !important;
             max-height: 100% !important;
             overflow: hidden !important;
+            background: #FFFFFF !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          .no-print {
-            display: none !important;
+          
+          /* Hide EVERYTHING on the page */
+          body * {
+            visibility: hidden !important;
           }
+          
+          aside, header, nav, footer, .no-print, [data-no-print] {
+            display: none !important;
+            visibility: hidden !important;
+          }
+
+          /* Show ONLY #facture-sheet */
+          #facture-sheet, #facture-sheet * {
+            visibility: visible !important;
+          }
+
           #facture-sheet {
-            box-shadow: none !important;
+            display: block !important;
+            position: fixed !important;
+            top: 6mm !important;
+            left: 8mm !important;
+            right: 8mm !important;
+            width: calc(100% - 16mm) !important;
+            max-width: 100% !important;
             margin: 0 !important;
             padding: 0 !important;
-            max-width: 100% !important;
             border: none !important;
+            box-shadow: none !important;
+            background: #FFFFFF !important;
             page-break-inside: avoid !important;
             page-break-after: avoid !important;
+            page-break-before: avoid !important;
+            break-inside: avoid !important;
+            break-after: avoid !important;
           }
         }
       `}</style>
@@ -138,12 +260,7 @@ export default function FacturePrintPage() {
         </div>
 
         <button
-          onClick={() => {
-            pmsFactures
-              .print(facture.id)
-              .then(() => window.print())
-              .catch(() => window.print());
-          }}
+          onClick={handlePrint}
           className="inline-flex items-center gap-2 bg-[#1B4332] text-white hover:bg-[#143225] px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition-all"
         >
           <Printer size={15} /> Imprimer la facture
