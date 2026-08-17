@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { pmsUnits, pmsFolios, pmsMaintenance } from '@/lib/pms';
 import type { UnitDto, FolioDto, MaintenanceTicketDto } from '@/lib/pmsTypes';
+import { Search, BedDouble, Wrench, Sparkles, Calendar, ChevronRight, User, Phone, CheckCircle, AlertCircle, Clock, FileDown, Printer } from 'lucide-react';
 
 const C = {
   green: "#1B4332", green2: "#2D5A45", gold: "#B08D57", gold2: "#C9A227",
@@ -64,13 +65,20 @@ function cleaningEvents(folios: FolioDto[], from: string, to: string) {
   return out;
 }
 
-const MAINT_STATUS: any = { ouvert: ["Ouvert", C.warn], en_cours: ["En cours", C.blue], resolu: ["Résolu", C.ok], annule: ["Annulé", C.muted] };
+const MAINT_STATUS: Record<string, [string, string]> = { 
+  ouvert: ["Ouvert", C.warn], 
+  en_cours: ["En cours", C.blue], 
+  resolu: ["Résolu", C.ok], 
+  annule: ["Annulé", C.muted] 
+};
 
 export default function EditionPage() {
   const now = thisMonth();
   const [from, setFrom] = useState(now + "-01");
   const [to, setTo] = useState(now + "-" + String(daysInMonth(now)).padStart(2, "0"));
   const [fRoom, setFRoom] = useState("tous");
+  const [searchDetail, setSearchDetail] = useState("");
+  const [filterType, setFilterType] = useState<"tous" | "sejours" | "maint" | "menage">("tous");
 
   const [units, setUnits] = useState<UnitDto[]>([]);
   const [folios, setFolios] = useState<FolioDto[]>([]);
@@ -111,13 +119,44 @@ export default function EditionPage() {
       if (f.resaStatus === "Cancelled") return; 
       if (f.arrival < winEnd && from < f.departure) { 
         const life = resaLifecycle(f); 
-        ev.push({ unitId: f.unitId, kind: "sejour", type: "Séjour", ref: f.number, label: f.guest || "(sans nom)", start: f.arrival, end: f.departure, statut: life[0], color: f.resaStatus === "CheckedOut" ? C.muted : f.resaStatus === "NoShow" ? C.danger : C.green2, fid: f.id }); 
+        ev.push({ 
+          unitId: f.unitId, 
+          kind: "sejour", 
+          type: "Séjour", 
+          ref: f.number, 
+          label: f.guest || "(sans nom)", 
+          phone: f.guestPhone,
+          start: f.arrival, 
+          end: f.departure, 
+          pax: f.pax,
+          nights: f.nights,
+          statut: life[0], 
+          color: f.resaStatus === "CheckedOut" ? C.muted : f.resaStatus === "NoShow" ? C.danger : C.green2, 
+          fid: f.id,
+          total: f.heb + (f.pdjParJour * f.pdjPrix * f.nights) + f.debiteur + f.dependances,
+          paid: f.paid + f.arrhes,
+          solde: Math.max(0, (f.heb + (f.pdjParJour * f.pdjPrix * f.nights) + f.debiteur + f.dependances) - (f.paid + f.arrhes))
+        }); 
       } 
     });
     tickets.forEach((t) => { 
       const end = t.resolvedAt || to; 
       if (t.createdAt <= to && end >= from) {
-        ev.push({ unitId: t.unitId, zone: t.zone, spot: t.spot, kind: "maint", type: "Maintenance", ref: t.category, label: t.title, start: t.createdAt, end: t.resolvedAt || "", statut: (MAINT_STATUS[t.status] || [])[0], color: C.warn, priority: t.priority }); 
+        ev.push({ 
+          unitId: t.unitId, 
+          zone: t.zone, 
+          spot: t.spot, 
+          kind: "maint", 
+          type: "Maintenance", 
+          ref: t.category, 
+          label: t.title, 
+          description: t.description,
+          start: t.createdAt, 
+          end: t.resolvedAt || "", 
+          statut: (MAINT_STATUS[t.status] || ["Inconnu", C.muted])[0], 
+          color: C.warn, 
+          priority: t.priority 
+        }); 
       }
     });
     cleaningEvents(folios, from, to).forEach((e) => ev.push(e));
@@ -133,7 +172,7 @@ export default function EditionPage() {
   const caByUnit = useMemo(() => { 
     const m: Record<number, any> = {}; 
     const d0 = from, d1 = addDays(to, 1); 
-    unitsView.forEach((u) => { 
+    units.forEach((u) => { 
       let heb = 0, pdj = 0, extra = 0, nights = 0, stays = 0, losTot = 0; 
       folios.forEach((f) => { 
         if (f.unitId !== u.id || f.resaStatus === "Cancelled" || f.resaStatus === "NoShow") return; 
@@ -157,20 +196,52 @@ export default function EditionPage() {
       m[u.id] = { heb, pdj, extra, nights, total, stays, losTot, pm: nights ? heb / nights : 0, los: stays ? losTot / stays : 0 }; 
     }); 
     return m; 
-  }, [unitsView, folios, from, to]);
+  }, [units, folios, from, to]);
 
-  const caTotal = Object.keys(caByUnit).reduce((sm, k) => sm + caByUnit[Number(k)].total, 0);
-  const agg = Object.keys(caByUnit).reduce((a, k) => { 
-    const x = caByUnit[Number(k)]; 
-    a.heb += x.heb; a.nights += x.nights; a.stays += x.stays; a.losTot += x.losTot; 
+  const caTotal = unitsView.reduce((sm, u) => sm + (caByUnit[u.id]?.total || 0), 0);
+  const agg = unitsView.reduce((a, u) => { 
+    const x = caByUnit[u.id] || { heb: 0, pdj: 0, extra: 0, nights: 0, stays: 0, losTot: 0, total: 0 }; 
+    a.heb += x.heb; 
+    a.pdj += x.pdj;
+    a.extra += x.extra;
+    a.nights += x.nights; 
+    a.stays += x.stays; 
+    a.losTot += x.losTot; 
+    a.total += x.total;
     return a; 
-  }, { heb: 0, nights: 0, stays: 0, losTot: 0 });
+  }, { heb: 0, pdj: 0, extra: 0, nights: 0, stays: 0, losTot: 0, total: 0 });
+  
   const pmGlobal = agg.nights ? agg.heb / agg.nights : 0;
   const losGlobal = agg.stays ? agg.losTot / agg.stays : 0;
 
   const unitLabel = (id: number) => { const u = units.find((x) => x.id === id); return u ? u.nameFr + " · " + u.pmsType : null; };
-  const byUnit = unitsView.map((u) => ({ u, evs: events.filter((e) => e.unitId === u.id).sort((a, b) => (a.start < b.start ? -1 : 1)) }));
-  const communs = fRoom === "tous" ? events.filter((e) => e.kind === "maint" && (!e.unitId || e.zone === "commun")).sort((a, b) => (a.start < b.start ? -1 : 1)) : [];
+  const byUnit = unitsView.map((u) => ({ 
+    u, 
+    evs: events.filter((e) => e.unitId === u.id).sort((a, b) => (a.start < b.start ? -1 : 1)),
+    stays: events.filter((e) => e.unitId === u.id && e.kind === "sejour"),
+    maints: events.filter((e) => e.unitId === u.id && e.kind === "maint"),
+    cleanings: events.filter((e) => e.unitId === u.id && e.kind === "menage"),
+  }));
+
+  // Filtering for detail view
+  const filteredUnits = useMemo(() => {
+    const q = searchDetail.trim().toLowerCase();
+    return byUnit.filter(({ u, evs, stays, maints, cleanings }) => {
+      if (filterType === "sejours" && stays.length === 0) return false;
+      if (filterType === "maint" && maints.length === 0) return false;
+      if (filterType === "menage" && cleanings.length === 0) return false;
+      if (!q) return true;
+      
+      const matchUnit = u.nameFr.toLowerCase().includes(q) || u.pmsType.toLowerCase().includes(q) || u.roomNumber.toLowerCase().includes(q);
+      const matchEvent = evs.some(e => 
+        (e.label && e.label.toLowerCase().includes(q)) ||
+        (e.ref && e.ref.toLowerCase().includes(q)) ||
+        (e.description && e.description.toLowerCase().includes(q)) ||
+        (e.phone && e.phone.includes(q))
+      );
+      return matchUnit || matchEvent;
+    });
+  }, [byUnit, searchDetail, filterType]);
 
   const list = Array.from({ length: Math.min(span, 92) }, (_, i) => addDays(from, i));
   const tooLong = span > 92;
@@ -178,22 +249,43 @@ export default function EditionPage() {
 
   const exportCSV = () => {
     downloadCSV(`edition_evenements_${from}_${to}.csv`, [
-      ["Édition — évènements des chambres", frDate(from) + " → " + frDate(to)], 
+      ["Édition — Synthèse & Évènements des chambres", frDate(from) + " → " + frDate(to)], 
       [], 
-      ["Logement", "Type", "Référence", "Détail", "Début", "Fin", "Statut"], 
+      ["SYNTHÈSE PAR CHAMBRE"],
+      ["Logement", "Type", "Séjours", "Nuits vendues", "Durée moy. (j)", "Prix moyen (ADR)", "Hébergement", "Petit Déjeuner", "Extras", "CA Total"], 
+      ...unitsView.map((u) => { 
+        const x = caByUnit[u.id] || { stays: 0, nights: 0, los: 0, pm: 0, heb: 0, pdj: 0, extra: 0, total: 0 }; 
+        return [
+          u.nameFr, 
+          u.pmsType, 
+          x.stays, 
+          x.nights, 
+          x.los.toFixed(1).replace(".", ","), 
+          Math.round(x.pm), 
+          Math.round(x.heb), 
+          Math.round(x.pdj), 
+          Math.round(x.extra), 
+          Math.round(x.total)
+        ]; 
+      }), 
+      ["TOTAL CONSOLIDÉ", "", agg.stays, agg.nights, losGlobal.toFixed(1).replace(".", ","), Math.round(pmGlobal), Math.round(agg.heb), Math.round(agg.pdj), Math.round(agg.extra), Math.round(agg.total)],
+      [], 
+      ["DÉTAIL DES ÉVÈNEMENTS"],
+      ["Logement", "Type d'évènement", "Référence / Rôle", "Détail / Client", "Date Début", "Date Fin", "Statut"], 
       ...events.slice().sort((a, b) => (a.start < b.start ? -1 : 1)).map((e) => [
         e.unitId ? (unitLabel(e.unitId) || e.unitId) : "Parties communes" + (e.spot ? " · " + e.spot : ""), 
-        e.type, e.ref, e.label, frDate(e.start), e.end ? frDate(e.end) : "", e.statut || ""
-      ]), 
-      [], 
-      ["Synthèse par chambre"], 
-      ["Chambre", "Séjours", "Nuits", "Durée moy. (nuits)", "Prix moyen", "Hébergement", "PDJ", "Extras", "CA total"], 
-      ...unitsView.filter((u) => caByUnit[u.id] && (caByUnit[u.id].total > 0 || caByUnit[u.id].stays > 0)).map((u) => { 
-        const x = caByUnit[u.id]; 
-        return [u.nameFr + " · " + u.pmsType, x.stays, x.nights, x.los.toFixed(1).replace(".", ","), Math.round(x.pm), Math.round(x.heb), Math.round(x.pdj), Math.round(x.extra), Math.round(x.total)]; 
-      }), 
-      ["TOTAL", agg.stays, agg.nights, losGlobal.toFixed(1).replace(".", ","), Math.round(pmGlobal), "", "", "", Math.round(caTotal)]
+        e.type, 
+        e.ref, 
+        e.label, 
+        frDate(e.start), 
+        e.end ? frDate(e.end) : "", 
+        e.statut || ""
+      ])
     ]);
+  };
+
+  const printConsolidated = () => {
+    window.print();
   };
 
   const quick = (f: string, t2: string) => { setFrom(f); setTo(t2); };
@@ -206,35 +298,44 @@ export default function EditionPage() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex items-end justify-between">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <div className="text-[11.5px] uppercase tracking-wider text-gold font-extrabold mb-1">Édition · Rapport</div>
-          <h1 className="text-2xl font-bold text-green m-0">Évènements des chambres</h1>
+          <div className="text-[11.5px] uppercase tracking-wider text-gold font-extrabold mb-1">Édition · Reporting Consolidé</div>
+          <h1 className="text-2xl font-bold text-green m-0">Évènements & Synthèse des Logements</h1>
           <div className="h-1 w-12 bg-gold mt-2 rounded-full" />
         </div>
-        <button onClick={exportCSV} className="bg-gold text-white px-4 py-2 text-sm font-semibold rounded-lg hover:bg-gold/90 transition-colors">
-          Exporter CSV
-        </button>
+        <div className="flex items-center gap-2.5">
+          <button onClick={exportCSV} className="inline-flex items-center gap-1.5 bg-white border border-gray-200 text-charcoal px-3.5 py-2 text-sm font-semibold rounded-lg hover:bg-gray-50 shadow-sm transition-colors">
+            <FileDown size={16} className="text-green" />
+            Exporter CSV
+          </button>
+          <button onClick={printConsolidated} className="inline-flex items-center gap-1.5 bg-gold text-white px-4 py-2 text-sm font-semibold rounded-lg hover:bg-gold/90 shadow-sm transition-colors">
+            <Printer size={16} />
+            Imprimer
+          </button>
+        </div>
       </div>
 
+      {/* Date Filters Card */}
       <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-sm">
         <div className="flex flex-wrap items-end gap-4">
           <div className="w-40">
             <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Du</label>
-            <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+            <input type="date" value={from} onChange={e => setFrom(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green/20 focus:border-green" />
           </div>
           <div className="w-40">
             <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Au</label>
-            <input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+            <input type="date" value={to} onChange={e => setTo(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-green/20 focus:border-green" />
           </div>
-          <button onClick={() => quick(now + "-01", now + "-" + String(daysInMonth(now)).padStart(2, "0"))} className="px-3 py-2 text-sm text-green border border-gray-200 rounded-lg hover:bg-gray-50">Ce mois</button>
-          <button onClick={() => quick(dateHotel, addDays(dateHotel, 6))} className="px-3 py-2 text-sm text-green border border-gray-200 rounded-lg hover:bg-gray-50">7 jours</button>
-          <button onClick={() => quick(dateHotel, addDays(dateHotel, 29))} className="px-3 py-2 text-sm text-green border border-gray-200 rounded-lg hover:bg-gray-50">30 jours</button>
+          <button onClick={() => quick(now + "-01", now + "-" + String(daysInMonth(now)).padStart(2, "0"))} className="px-3 py-2 text-sm text-green font-medium border border-gray-200 rounded-lg hover:bg-green/5">Ce mois</button>
+          <button onClick={() => quick(dateHotel, addDays(dateHotel, 6))} className="px-3 py-2 text-sm text-green font-medium border border-gray-200 rounded-lg hover:bg-green/5">7 jours</button>
+          <button onClick={() => quick(dateHotel, addDays(dateHotel, 29))} className="px-3 py-2 text-sm text-green font-medium border border-gray-200 rounded-lg hover:bg-green/5">30 jours</button>
           
           <div className="w-56">
             <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Chambre</label>
-            <select value={fRoom} onChange={e => setFRoom(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
-              <option value="tous">Toutes les chambres</option>
+            <select value={fRoom} onChange={e => setFRoom(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-green/20 focus:border-green">
+              <option value="tous">Toutes les chambres ({units.length})</option>
               {units.map(u => <option key={u.id} value={u.id}>{u.nameFr} · {u.pmsType}</option>)}
             </select>
           </div>
@@ -244,6 +345,7 @@ export default function EditionPage() {
         </div>
       </div>
 
+      {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
         {[
           { label: 'Séjours', value: sejN, c: 'text-green-dark' },
@@ -262,8 +364,16 @@ export default function EditionPage() {
         ))}
       </div>
 
+      {/* Graphic Calendar */}
       {validPeriod && !tooLong && (
         <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm relative">
+          <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-green m-0 flex items-center gap-2">
+              <Calendar size={16} className="text-gold" />
+              Calendrier des Évènements par Logement
+            </h2>
+            <span className="text-xs text-gray-400">{frDate(from)} → {frDate(to)}</span>
+          </div>
           <div className="overflow-x-auto">
             <div style={{ minWidth: labelW + list.length * dayW }}>
               <div className="flex bg-green text-white">
@@ -335,16 +445,266 @@ export default function EditionPage() {
         </div>
       )}
 
-      {tooLong && <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 text-sm text-gray-500 text-center">Période trop longue pour le calendrier ({span} jours). Réduis-la à 92 jours max pour l'afficher — l'export CSV reste disponible.</div>}
+      {tooLong && <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 text-sm text-gray-500 text-center">Période trop longue pour le calendrier graphique ({span} jours). Réduis-la à 92 jours max pour l'afficher — le tableau récapitulatif et l'export CSV restent disponibles.</div>}
       
-      <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-gray-400">
-        <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-green-dark" /> séjour</span>
-        <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-gold" /> option</span>
-        <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-gray-400" /> parti</span>
-        <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm" style={{ backgroundImage: `repeating-linear-gradient(45deg, ${C.warn}, ${C.warn} 5px, #D89A3A 5px, #D89A3A 10px)` }} /> maintenance</span>
-        <span className="flex items-center gap-1.5"><div className="w-0.5 h-3 bg-blue-600" /> ménage 3 j</span>
+      {/* Legend */}
+      <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-gray-400 bg-white p-3 rounded-lg border border-gray-100 shadow-sm">
+        <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-green-dark" /> Séjour en cours</span>
+        <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-gold" /> Arrivée / Option</span>
+        <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-gray-400" /> Séjour clôturé</span>
+        <span className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm" style={{ backgroundImage: `repeating-linear-gradient(45deg, ${C.warn}, ${C.warn} 5px, #D89A3A 5px, #D89A3A 10px)` }} /> Maintenance</span>
+        <span className="flex items-center gap-1.5"><div className="w-0.5 h-3 bg-blue-600" /> Ménage mi-séjour (3j)</span>
+        <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-blue-600" /> Ménage départ</span>
       </div>
 
+      {/* ── SECTION 1 : SYNTHÈSE PAR CHAMBRE ── */}
+      <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-surface/50">
+          <div>
+            <h2 className="text-base font-bold text-charcoal m-0 flex items-center gap-2">
+              <BedDouble size={18} className="text-gold" />
+              Synthèse d'Activité par Chambre
+            </h2>
+            <p className="text-xs text-gray-400 mt-0.5">Indicateurs clés et chiffre d'affaires consolidé sur la période du {frDate(from)} au {frDate(to)}</p>
+          </div>
+          <span className="text-xs font-bold text-green bg-green/10 px-2.5 py-1 rounded-full">{unitsView.length} Logements</span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm border-collapse">
+            <thead>
+              <tr className="bg-green text-white text-[11px] font-bold uppercase tracking-wider">
+                <th className="py-3 px-4">Logement</th>
+                <th className="py-3 px-4">Type / Gamme</th>
+                <th className="py-3 px-4 text-center">Séjours</th>
+                <th className="py-3 px-4 text-center">Nuits</th>
+                <th className="py-3 px-4 text-right">Durée moy.</th>
+                <th className="py-3 px-4 text-right">Prix moyen (ADR)</th>
+                <th className="py-3 px-4 text-right">Hébergement</th>
+                <th className="py-3 px-4 text-right">Petit Déj.</th>
+                <th className="py-3 px-4 text-right">Extras</th>
+                <th className="py-3 px-4 text-right font-extrabold text-gold-light">Chiffre d'Affaires</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {unitsView.map((u, i) => {
+                const x = caByUnit[u.id] || { stays: 0, nights: 0, los: 0, pm: 0, heb: 0, pdj: 0, extra: 0, total: 0 };
+                return (
+                  <tr key={u.id} className={`hover:bg-green/5 transition-colors ${i % 2 ? 'bg-gray-50/50' : 'bg-white'}`}>
+                    <td className="py-3 px-4 font-bold text-charcoal flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: u.horsService ? C.danger : C.ok }} />
+                      {u.nameFr}
+                    </td>
+                    <td className="py-3 px-4 text-gray-500 text-xs">{u.pmsType}</td>
+                    <td className="py-3 px-4 text-center font-semibold">{x.stays || '—'}</td>
+                    <td className="py-3 px-4 text-center font-semibold">{x.nights || '—'}</td>
+                    <td className="py-3 px-4 text-right text-gray-600">{x.los ? x.los.toFixed(1).replace(".", ",") + " j" : "—"}</td>
+                    <td className="py-3 px-4 text-right text-gray-600">{x.pm ? money(x.pm) : "—"}</td>
+                    <td className="py-3 px-4 text-right font-medium text-gray-700">{money(x.heb)}</td>
+                    <td className="py-3 px-4 text-right text-gray-600">{money(x.pdj)}</td>
+                    <td className="py-3 px-4 text-right text-gray-600">{money(x.extra)}</td>
+                    <td className="py-3 px-4 text-right font-bold text-green-dark">{money(x.total)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="bg-surface font-extrabold text-charcoal border-t-2 border-green text-sm">
+                <td colSpan={2} className="py-3.5 px-4 text-green uppercase text-xs tracking-wider">TOTAL CONSOLIDÉ</td>
+                <td className="py-3.5 px-4 text-center text-green-dark">{agg.stays}</td>
+                <td className="py-3.5 px-4 text-center text-green-dark">{agg.nights}</td>
+                <td className="py-3.5 px-4 text-right text-green-dark">{losGlobal ? losGlobal.toFixed(1).replace(".", ",") + " j" : "—"}</td>
+                <td className="py-3.5 px-4 text-right text-green-dark">{money(pmGlobal)}</td>
+                <td className="py-3.5 px-4 text-right text-green-dark">{money(agg.heb)}</td>
+                <td className="py-3.5 px-4 text-right text-green-dark">{money(agg.pdj)}</td>
+                <td className="py-3.5 px-4 text-right text-green-dark">{money(agg.extra)}</td>
+                <td className="py-3.5 px-4 text-right text-base text-gold font-black">{money(agg.total)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      {/* ── SECTION 2 : DÉTAIL PAR LOGEMENT AVEC RECHERCHE ── */}
+      <div className="bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm">
+        <div className="p-4 border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-surface/50">
+          <div>
+            <h2 className="text-base font-bold text-charcoal m-0 flex items-center gap-2">
+              <Search size={18} className="text-gold" />
+              Détail des Évènements par Logement
+            </h2>
+            <p className="text-xs text-gray-400 mt-0.5">Historique des séjours clients, interventions techniques et passages de ménage</p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Search Bar */}
+            <div className="relative min-w-[260px]">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={searchDetail}
+                onChange={e => setSearchDetail(e.target.value)}
+                placeholder="Rechercher logement, client, ticket..."
+                className="w-full pl-9 pr-3 py-1.5 text-xs border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-green/20 focus:border-green"
+              />
+              {searchDetail && (
+                <button onClick={() => setSearchDetail("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-charcoal text-xs">
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {/* Filter Chips */}
+            <div className="flex items-center bg-gray-100 p-0.5 rounded-lg text-xs font-semibold text-gray-500">
+              <button onClick={() => setFilterType("tous")} className={`px-2.5 py-1 rounded-md transition-colors ${filterType === 'tous' ? 'bg-white text-green shadow-sm' : 'hover:text-charcoal'}`}>Tous</button>
+              <button onClick={() => setFilterType("sejours")} className={`px-2.5 py-1 rounded-md transition-colors ${filterType === 'sejours' ? 'bg-white text-green shadow-sm' : 'hover:text-charcoal'}`}>Séjours</button>
+              <button onClick={() => setFilterType("maint")} className={`px-2.5 py-1 rounded-md transition-colors ${filterType === 'maint' ? 'bg-white text-green shadow-sm' : 'hover:text-charcoal'}`}>Maintenance</button>
+              <button onClick={() => setFilterType("menage")} className={`px-2.5 py-1 rounded-md transition-colors ${filterType === 'menage' ? 'bg-white text-green shadow-sm' : 'hover:text-charcoal'}`}>Ménages</button>
+            </div>
+          </div>
+        </div>
+
+        {filteredUnits.length === 0 ? (
+          <div className="p-12 text-center text-gray-400 text-sm">
+            Aucun évènement ne correspond à vos critères de recherche sur la période.
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {filteredUnits.map(({ u, stays, maints, cleanings }) => (
+              <div key={u.id} className="p-5 hover:bg-gray-50/30 transition-colors space-y-4">
+                {/* Unit Header */}
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-surface p-3 rounded-lg border border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-green text-white font-bold flex items-center justify-center text-sm shadow-sm">
+                      {u.roomNumber}
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-charcoal m-0">{u.nameFr}</h3>
+                      <div className="text-xs text-gray-400">{u.pmsType} · Étage {u.floor} {u.horsService ? "· [HORS SERVICE]" : ""}</div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4 text-xs">
+                    <span className="flex items-center gap-1.5 text-charcoal font-semibold">
+                      <BedDouble size={14} className="text-green" />
+                      {stays.length} séjour(s)
+                    </span>
+                    <span className="flex items-center gap-1.5 text-charcoal font-semibold">
+                      <Wrench size={14} className="text-amber-600" />
+                      {maints.length} ticket(s)
+                    </span>
+                    <span className="flex items-center gap-1.5 text-charcoal font-semibold">
+                      <Sparkles size={14} className="text-blue-600" />
+                      {cleanings.length} ménage(s)
+                    </span>
+                    <div className="pl-3 border-l border-gray-200 font-extrabold text-gold">
+                      CA {money(caByUnit[u.id]?.total || 0)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sub-sections grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  {/* 1. Séjours */}
+                  <div className="bg-white border border-gray-100 rounded-lg p-3 shadow-xs space-y-2">
+                    <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-green flex items-center gap-1.5">
+                        <BedDouble size={14} />
+                        Séjours ({stays.length})
+                      </span>
+                    </div>
+                    {stays.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic py-2">Aucun séjour sur la période.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {stays.map((s, idx) => (
+                          <div key={idx} className="p-2.5 rounded bg-surface text-xs space-y-1 border border-gray-100">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-charcoal">{s.label}</span>
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: s.color + "20", color: s.color }}>
+                                {s.statut}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-gray-500 flex items-center justify-between">
+                              <span>{frDate(s.start)} → {frDate(s.end)}</span>
+                              <span>{s.nights} nuit(s) · {s.pax} pers.</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] pt-1 border-t border-gray-200/50 font-medium">
+                              <span className="text-green-dark font-bold">{money(s.total)}</span>
+                              <span className={s.solde > 0 ? "text-red-600 font-bold" : "text-green font-semibold"}>
+                                {s.solde > 0 ? `Reste ${money(s.solde)}` : "Soldé ✓"}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 2. Maintenance */}
+                  <div className="bg-white border border-gray-100 rounded-lg p-3 shadow-xs space-y-2">
+                    <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-amber-700 flex items-center gap-1.5">
+                        <Wrench size={14} />
+                        Problèmes techniques ({maints.length})
+                      </span>
+                    </div>
+                    {maints.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic py-2">Aucune intervention signalée.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {maints.map((m, idx) => (
+                          <div key={idx} className="p-2.5 rounded bg-surface text-xs space-y-1 border border-gray-100">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-charcoal">{m.label}</span>
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: m.color + "20", color: m.color }}>
+                                {m.statut}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-gray-500">
+                              Catégorie : <span className="font-medium text-charcoal">{m.ref}</span> {m.priority ? `· Priorité ${m.priority}` : ''}
+                            </div>
+                            <div className="text-[10px] text-gray-400">
+                              Créé le {frDate(m.start)} {m.end ? `· Résolu le ${frDate(m.end)}` : '· En cours'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. Ménages */}
+                  <div className="bg-white border border-gray-100 rounded-lg p-3 shadow-xs space-y-2">
+                    <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-blue-700 flex items-center gap-1.5">
+                        <Sparkles size={14} />
+                        Passages Ménage ({cleanings.length})
+                      </span>
+                    </div>
+                    {cleanings.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic py-2">Aucun ménage planifié.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {cleanings.map((c, idx) => (
+                          <div key={idx} className="p-2.5 rounded bg-surface text-xs flex items-center justify-between border border-gray-100">
+                            <div>
+                              <div className="font-bold text-charcoal">{c.label}</div>
+                              <div className="text-[10px] text-gray-400">{c.ref} · Date : {frDate(c.start)}</div>
+                            </div>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800">
+                              Planifié
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

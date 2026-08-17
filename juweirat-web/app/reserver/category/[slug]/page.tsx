@@ -7,7 +7,7 @@ import { getCategoryBySlug } from '@/lib/api'
 import CategoryBookingForm from '@/components/CategoryBookingForm'
 
 interface Props {
-  params:      Promise<{ slug: string }>
+  params:       Promise<{ slug: string }>
   searchParams: Promise<{ checkIn?: string; checkOut?: string; adults?: string; children?: string }>
 }
 
@@ -19,6 +19,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 function nightsBetween(a: string, b: string) {
+  if (!a || !b) return 0
   const diff = new Date(b).getTime() - new Date(a).getTime()
   return Math.max(0, Math.round(diff / 86400000))
 }
@@ -41,38 +42,33 @@ function formatFCFA(n: number) {
 }
 
 function formatDate(d: string, lang: 'fr' | 'en') {
+  if (!d) return '—'
   return new Date(d).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    weekday: 'short', day: 'numeric', month: 'long', year: 'numeric',
   })
 }
 
+function toDateStr(d: Date) { return d.toISOString().split('T')[0] }
+
 export default async function CategoryBookingPage({ params, searchParams }: Props) {
   const { slug }                                                               = await params
-  const { checkIn = '', checkOut = '', adults = '1', children = '0' }         = await searchParams
+  const { checkIn: queryCheckIn = '', checkOut: queryCheckOut = '', adults = '1', children = '0' } = await searchParams
   const [lang, cat]                                                            = await Promise.all([getLang(), getCategoryBySlug(slug)])
 
   if (!cat) notFound()
 
   const fr = lang === 'fr'
 
-  if (!checkIn || !checkOut) {
-    return (
-      <div className="pt-20 min-h-screen bg-[#FAFAFA] flex items-center justify-center">
-        <div className="text-center px-6">
-          <p className="text-charcoal/40 text-sm font-light mb-6">
-            {fr ? 'Aucune date sélectionnée.' : 'No dates selected.'}
-          </p>
-          <Link href={`/categories/${slug}`} className="text-green text-xs tracking-widest uppercase border border-green px-6 py-3 hover:bg-green hover:text-charcoal transition-colors">
-            {fr ? '← Retour à la catégorie' : '← Back to category'}
-          </Link>
-        </div>
-      </div>
-    )
-  }
+  // Default dates if not supplied in URL parameters (Tomorrow -> +3 days)
+  const defaultCheckIn = toDateStr(new Date(Date.now() + 86400000))
+  const defaultCheckOut = toDateStr(new Date(Date.now() + 86400000 * 3))
 
-  const nights                               = nightsBetween(checkIn, checkOut)
-  const { total, savings, rateLabel }        = calcPrice(cat.tarifNuit, cat.tarifN15, cat.tarifN30, nights)
-  const name                                 = fr ? cat.nameFr : cat.nameEn
+  const initialCheckIn = queryCheckIn || defaultCheckIn
+  const initialCheckOut = queryCheckOut || defaultCheckOut
+
+  const nights = nightsBetween(initialCheckIn, initialCheckOut)
+  const { total, savings, rateLabel } = calcPrice(cat.tarifNuit, cat.tarifN15, cat.tarifN30, nights)
+  const name = fr ? cat.nameFr : cat.nameEn
 
   return (
     <div className="pt-20 bg-[#FAFAFA] min-h-screen">
@@ -102,10 +98,10 @@ export default async function CategoryBookingPage({ params, searchParams }: Prop
               categoryId={cat.id}
               categorySlug={slug}
               lang={lang}
-              checkIn={checkIn}
-              checkOut={checkOut}
-              adults={parseInt(adults)}
-              children={parseInt(children)}
+              checkIn={initialCheckIn}
+              checkOut={initialCheckOut}
+              adults={parseInt(adults) || 1}
+              children={parseInt(children) || 0}
               nights={nights}
               totalFcfa={total}
               savings={savings}
@@ -149,13 +145,13 @@ export default async function CategoryBookingPage({ params, searchParams }: Prop
                     <p className="text-charcoal/30 text-[10px] tracking-widest uppercase font-light flex items-center gap-1">
                       <CalendarDays size={10} /> {fr ? 'Arrivée' : 'Check-in'}
                     </p>
-                    <p className="text-charcoal text-xs font-light">{formatDate(checkIn, lang)}</p>
+                    <p className="text-charcoal text-xs font-light">{formatDate(initialCheckIn, lang)}</p>
                   </div>
                   <div className="bg-surface p-3 space-y-1">
                     <p className="text-charcoal/30 text-[10px] tracking-widest uppercase font-light flex items-center gap-1">
                       <CalendarDays size={10} /> {fr ? 'Départ' : 'Check-out'}
                     </p>
-                    <p className="text-charcoal text-xs font-light">{formatDate(checkOut, lang)}</p>
+                    <p className="text-charcoal text-xs font-light">{formatDate(initialCheckOut, lang)}</p>
                   </div>
                 </div>
 
@@ -191,8 +187,8 @@ export default async function CategoryBookingPage({ params, searchParams }: Prop
 
               <p className="text-charcoal/25 text-xs font-light text-center leading-relaxed">
                 {fr
-                  ? 'Des questions ? Contactez-nous sur WhatsApp au +228 90 00 00 00'
-                  : 'Questions? Contact us on WhatsApp at +228 90 00 00 00'}
+                  ? 'Des questions ? Contactez-nous au +228 90 00 00 00 ou par email à contact@juweirat.com'
+                  : 'Questions? Contact us at +228 90 00 00 00 or by email at contact@juweirat.com'}
               </p>
             </div>
           </div>

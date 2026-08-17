@@ -2,9 +2,10 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import Image from 'next/image'
 import { notFound } from 'next/navigation'
-import { ArrowLeft, ArrowRight, Users, Home, Zap } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Users, Home, Zap, Camera, ShieldCheck, Sparkles, Coffee } from 'lucide-react'
 import { getLang } from '@/lib/lang'
 import { getCategoryBySlug, getRooms } from '@/lib/api'
+import { getCategoryPhotos } from '@/lib/categoryPhotos'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -37,14 +38,10 @@ export default async function CategoryPage({ params }: Props) {
   const desc = fr ? cat.descriptionFr : cat.descriptionEn
   const gammeLabel = GAMME_LABELS[lang]?.[cat.pmsGamme] ?? cat.pmsGamme
 
-  // Rooms in this category — pick their cover images
-  const categoryRooms = rooms.filter(r => r.categorySlug === slug)
-  const sampleImages  = categoryRooms
-    .flatMap(r => r.images)
-    .filter(i => i.isCover || i.sortOrder === 0)
-    .slice(0, 3)
-
-  const coverSrc = sampleImages[0]?.filePath ?? '/images/IMG_5101.jpg'
+  // Real photos mapped specifically to this category
+  const categoryPhotos = getCategoryPhotos(slug)
+  const coverSrc = categoryPhotos.hero
+  const galleryImages = categoryPhotos.gallery
 
   return (
     <div className="pt-20 bg-[#FAFAFA] min-h-screen">
@@ -63,91 +60,123 @@ export default async function CategoryPage({ params }: Props) {
       <div className="max-w-6xl mx-auto px-6 lg:px-10 pb-24">
         <div className="grid lg:grid-cols-5 gap-10">
 
-          {/* LEFT: Info */}
+          {/* LEFT: Info + Photo Gallery */}
           <div className="lg:col-span-3 space-y-8">
 
-            {/* Hero */}
-            <div className="relative h-72 overflow-hidden bg-charcoal/5">
+            {/* Hero Cover */}
+            <div className="relative h-80 sm:h-96 overflow-hidden rounded-2xl bg-charcoal/5 shadow-md group">
               <Image
                 src={coverSrc}
                 alt={name}
                 fill
-                className="object-cover"
+                className="object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
                 sizes="(max-width: 1024px) 100vw, 60vw"
                 priority
               />
-              <div className="absolute inset-0 bg-charcoal/25" />
+              <div className="absolute inset-0 bg-gradient-to-t from-charcoal/60 via-transparent to-black/20" />
               <div className="absolute top-4 left-4 flex gap-2">
-                <span className="text-[10px] tracking-widest uppercase bg-charcoal/60 text-white px-2.5 py-1 font-medium backdrop-blur-sm">
+                <span className="text-[10px] tracking-widest uppercase bg-charcoal/80 text-white px-3 py-1 font-semibold rounded-md backdrop-blur-md">
                   {cat.pmsType}
                 </span>
-                <span className="text-[10px] tracking-widest uppercase bg-green/90 text-charcoal px-2.5 py-1 font-semibold">
+                <span className="text-[10px] tracking-widest uppercase bg-green text-charcoal px-3 py-1 font-bold rounded-md shadow-sm">
                   {gammeLabel}
+                </span>
+              </div>
+              <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-white text-xs">
+                <span className="flex items-center gap-1.5 bg-black/40 px-3 py-1.5 rounded-full backdrop-blur-sm">
+                  <Camera size={13} /> {galleryImages.length} photos disponibles
                 </span>
               </div>
             </div>
 
             {/* Title + description */}
             <div>
-              <p className="text-green text-xs tracking-[0.4em] uppercase font-light mb-2">Résidence Juweirat</p>
+              <p className="text-green text-xs tracking-[0.4em] uppercase font-bold mb-2">Résidence Juweirat · Lomé</p>
               <h1 className="font-display text-4xl font-light text-charcoal mb-4">{name}</h1>
-              {desc && <p className="text-charcoal/60 font-light leading-relaxed">{desc}</p>}
+              {desc && <p className="text-charcoal/70 font-light leading-relaxed text-base">{desc}</p>}
             </div>
 
-            {/* Specs */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {/* Specs Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {[
-                { label: fr ? 'Type' : 'Type', value: cat.pmsType },
-                { label: fr ? 'Gamme' : 'Grade', value: gammeLabel },
-                { label: fr ? 'Capacité' : 'Capacity', value: `${cat.capacityAdults} adultes${cat.capacityChildren > 0 ? ` + ${cat.capacityChildren} enfant${cat.capacityChildren > 1 ? 's' : ''}` : ''}` },
-                { label: fr ? 'Unités disponibles' : 'Available units', value: String(cat.roomCount) },
+                { label: fr ? 'Type de logement' : 'Unit Type', value: cat.pmsType },
+                { label: fr ? 'Gamme de finition' : 'Finish Grade', value: gammeLabel },
+                { label: fr ? 'Capacité d\'accueil' : 'Capacity', value: `${cat.capacityAdults} adultes${cat.capacityChildren > 0 ? ` + ${cat.capacityChildren} enfant${cat.capacityChildren > 1 ? 's' : ''}` : ''}` },
+                { label: fr ? 'Logements dans l\'immeuble' : 'Units in Residence', value: `${cat.roomCount} appartements` },
+                { label: fr ? 'Wifi & Climatisation' : 'Wifi & AC', value: 'Inclus' },
+                { label: fr ? 'Service de ménage' : 'Housekeeping', value: 'Régulier' },
               ].map(({ label, value }) => (
-                <div key={label} className="bg-white border border-charcoal/8 p-4">
-                  <p className="text-charcoal/30 text-[10px] tracking-widest uppercase font-light mb-1">{label}</p>
-                  <p className="text-charcoal font-light text-sm">{value}</p>
+                <div key={label} className="bg-white border border-gray-100 p-4 rounded-xl shadow-2xs">
+                  <p className="text-gray-400 text-[10px] tracking-wider uppercase font-bold mb-1">{label}</p>
+                  <p className="text-charcoal font-semibold text-sm">{value}</p>
                 </div>
               ))}
             </div>
 
-            {/* Tariffs */}
-            <div className="bg-white border border-charcoal/8 p-6">
-              <p className="text-green text-[10px] tracking-widest uppercase font-light mb-4">
-                {fr ? 'Grille tarifaire' : 'Rate grid'}
+            {/* ── GALERIE PHOTOS DE CETTE CATÉGORIE ── */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-charcoal flex items-center gap-2">
+                  <Camera size={18} className="text-green" />
+                  {fr ? 'Galerie Photos du Logement' : 'Apartment Photo Gallery'}
+                </h3>
+                <span className="text-xs text-gray-400 font-medium">{galleryImages.length} vues HD</span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {galleryImages.map((imgSrc, idx) => (
+                  <div key={idx} className="relative h-36 sm:h-44 rounded-xl overflow-hidden bg-gray-100 border border-gray-200 group">
+                    <Image
+                      src={imgSrc}
+                      alt={`${name} photo ${idx + 1}`}
+                      fill
+                      className="object-cover group-hover:scale-110 transition-transform duration-500 ease-out"
+                      sizes="(max-width: 640px) 50vw, 33vw"
+                    />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Tariffs Breakdown */}
+            <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm">
+              <p className="text-green text-xs tracking-widest uppercase font-extrabold mb-4">
+                {fr ? 'Grille tarifaire dégressive' : 'Discounted Rate Grid'}
               </p>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between pb-3 border-b border-charcoal/5">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-3.5 border-b border-gray-100">
                   <div>
-                    <p className="text-charcoal text-sm font-light">
-                      {fr ? 'Nuitée (< 15 nuits)' : 'Nightly (< 15 nights)'}
+                    <p className="text-charcoal text-sm font-semibold">
+                      {fr ? 'Nuitée standard (< 15 nuits)' : 'Nightly rate (< 15 nights)'}
                     </p>
-                    <p className="text-charcoal/30 text-xs font-light flex items-center gap-1 mt-0.5">
-                      <Zap size={10} className="text-green" />
-                      {fr ? 'Électricité incluse' : 'Electricity included'}
+                    <p className="text-green text-xs flex items-center gap-1 mt-0.5 font-medium">
+                      <Zap size={11} /> {fr ? 'Électricité incluse' : 'Electricity included'}
                     </p>
                   </div>
-                  <p className="text-green font-semibold text-lg">{fmt(cat.tarifNuit)} <span className="text-xs font-light text-charcoal/40">FCFA</span></p>
+                  <p className="text-green-dark font-black text-xl">{fmt(cat.tarifNuit)} <span className="text-xs font-semibold text-gray-400">FCFA/n</span></p>
                 </div>
-                <div className="flex items-center justify-between pb-3 border-b border-charcoal/5">
+                <div className="flex items-center justify-between pb-3.5 border-b border-gray-100">
                   <div>
-                    <p className="text-charcoal text-sm font-light">
-                      {fr ? 'Forfait 15 jours (15–29 nuits)' : '15-day rate (15–29 nights)'}
+                    <p className="text-charcoal text-sm font-semibold">
+                      {fr ? 'Forfait 15 jours (15–29 nuits)' : '15-day stay (15–29 nights)'}
                     </p>
-                    <p className="text-charcoal/30 text-xs font-light mt-0.5">
+                    <p className="text-amber-700 text-xs mt-0.5 font-medium">
                       {fr ? 'Électricité hors forfait (230 FCFA/kWh)' : 'Electricity not included (230 FCFA/kWh)'}
                     </p>
                   </div>
-                  <p className="text-charcoal font-medium text-sm">{fmt(cat.tarifN15)} <span className="text-xs font-light text-charcoal/40">FCFA/nuit</span></p>
+                  <p className="text-charcoal font-bold text-base">{fmt(cat.tarifN15)} <span className="text-xs text-gray-400">FCFA/n</span></p>
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-charcoal text-sm font-light">
-                      {fr ? 'Forfait mensuel (≥ 30 nuits)' : 'Monthly rate (≥ 30 nights)'}
+                    <p className="text-charcoal text-sm font-semibold">
+                      {fr ? 'Forfait mensuel (≥ 30 nuits)' : 'Monthly stay (≥ 30 nights)'}
                     </p>
-                    <p className="text-charcoal/30 text-xs font-light mt-0.5">
-                      {fr ? 'Électricité hors forfait (230 FCFA/kWh)' : 'Electricity not included (230 FCFA/kWh)'}
+                    <p className="text-amber-700 text-xs mt-0.5 font-medium">
+                      {fr ? 'Contrat de bail requis · Électricité au compteur' : 'Lease agreement · Metered electricity'}
                     </p>
                   </div>
-                  <p className="text-charcoal font-medium text-sm">{fmt(cat.tarifN30)} <span className="text-xs font-light text-charcoal/40">FCFA/nuit</span></p>
+                  <p className="text-charcoal font-bold text-base">{fmt(cat.tarifN30)} <span className="text-xs text-gray-400">FCFA/n</span></p>
                 </div>
               </div>
             </div>
@@ -156,47 +185,60 @@ export default async function CategoryPage({ params }: Props) {
           {/* RIGHT: Booking CTA */}
           <div className="lg:col-span-2">
             <div className="sticky top-28 space-y-4">
-              <div className="bg-white border border-charcoal/10 p-6 space-y-5">
-                <p className="text-green text-[10px] tracking-widest uppercase font-light">
-                  {fr ? 'Réserver cette catégorie' : 'Book this category'}
+              <div className="bg-white border border-gray-100 rounded-2xl p-6 space-y-5 shadow-sm">
+                <p className="text-gold text-xs tracking-widest uppercase font-extrabold">
+                  {fr ? 'Réservation Directe' : 'Direct Booking'}
                 </p>
                 <div>
-                  <p className="text-charcoal/40 text-xs font-light mb-1">
+                  <p className="text-gray-400 text-xs font-medium mb-1">
                     {fr ? 'À partir de' : 'Starting from'}
                   </p>
-                  <p className="text-green font-semibold text-3xl">{fmt(cat.tarifNuit)}</p>
-                  <p className="text-charcoal/30 text-xs font-light">FCFA / {fr ? 'nuit' : 'night'}</p>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-green-dark font-black text-3xl">{fmt(cat.tarifNuit)}</span>
+                    <span className="text-gray-400 text-xs font-semibold">FCFA / {fr ? 'nuit' : 'night'}</span>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-3 text-sm font-light text-charcoal/60 bg-charcoal/3 p-3">
-                  <Users size={14} className="text-green/60 shrink-0" />
+                <div className="flex items-center gap-3 text-sm font-medium text-charcoal bg-gray-50 p-3 rounded-lg border border-gray-100">
+                  <Users size={15} className="text-green shrink-0" />
                   <span>
-                    {cat.capacityAdults} {fr ? 'adultes max' : 'adults max'}
+                    {cat.capacityAdults} {fr ? 'adultes' : 'adults'}
                     {cat.capacityChildren > 0 && ` · ${cat.capacityChildren} ${fr ? 'enfants' : 'children'}`}
                   </span>
                 </div>
 
-                <p className="text-charcoal/40 text-xs font-light leading-relaxed">
-                  {fr
-                    ? 'Une unité disponible vous sera automatiquement assignée à votre arrivée.'
-                    : 'An available unit will be automatically assigned to you at check-in.'}
-                </p>
+                <div className="space-y-2 text-xs text-gray-500">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck size={14} className="text-green" />
+                    <span>{fr ? 'Confirmation instantanée' : 'Instant confirmation'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Coffee size={14} className="text-gold" />
+                    <span>{fr ? 'Option Petit Déjeuner disponible' : 'Breakfast option available'}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={14} className="text-blue-600" />
+                    <span>{fr ? 'Service hôtelier & conciergerie' : 'Hotel amenities & concierge'}</span>
+                  </div>
+                </div>
 
                 <Link
                   href={`/reserver/category/${cat.slug}`}
-                  className="w-full flex items-center justify-center gap-2 py-3.5 bg-green text-charcoal text-xs tracking-widest uppercase font-semibold
-                             hover:bg-green-light transition-colors duration-300 group"
+                  className="w-full flex items-center justify-center gap-2 py-3.5 bg-green text-white text-xs tracking-widest uppercase font-bold rounded-xl shadow-sm
+                             hover:bg-green-dark transition-all duration-300 group"
                 >
-                  {fr ? 'Réserver' : 'Book now'}
-                  <ArrowRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
+                  {fr ? 'Réserver maintenant' : 'Book now'}
+                  <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
                 </Link>
               </div>
 
-              <p className="text-charcoal/25 text-xs font-light text-center leading-relaxed">
-                {fr
-                  ? 'Des questions ? Contactez-nous sur WhatsApp au +228 90 00 00 00'
-                  : 'Questions? Contact us on WhatsApp at +228 90 00 00 00'}
-              </p>
+              <div className="bg-white border border-gray-100 rounded-xl p-4 text-center text-xs text-gray-500 space-y-1 shadow-2xs">
+                <p className="font-semibold text-charcoal">{fr ? 'Besoin d\'assistance ?' : 'Need assistance?'}</p>
+                <p>{fr ? 'Contactez-nous sur WhatsApp au' : 'Contact us on WhatsApp at'}</p>
+                <a href="https://wa.me/22890000000" target="_blank" rel="noopener noreferrer" className="font-bold text-green hover:underline inline-block mt-0.5">
+                  +228 90 00 00 00
+                </a>
+              </div>
             </div>
           </div>
         </div>

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import type { Room, RoomAmenity } from '@/lib/api'
 import type { Lang } from '@/lib/i18n'
+import { getCategoryPhotos } from '@/lib/categoryPhotos'
 
 const PER_PAGE = 4
 
@@ -339,7 +340,7 @@ export default function ApartmentsList({ rooms, lang }: Props) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-px bg-charcoal/5">
                 {paginated.map(room => {
                   const name       = lang === 'en' ? room.nameEn : room.nameFr
-                  const cover      = room.images.find(i => i.isCover)?.filePath ?? room.images[0]?.filePath ?? '/images/IMG_5101.jpg'
+                  const cover      = room.images.find(i => i.isCover)?.filePath ?? room.images[0]?.filePath ?? (room.categorySlug ? getCategoryPhotos(room.categorySlug).hero : '/images/IMG_5101.jpg')
                   const available  = room.status === 'Available'
                   const isPrestige = room.floor === 6
 
