@@ -266,12 +266,26 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         foreach (var entry in entries)
         {
-            if (entry.Properties.Any(p => p.Metadata.Name == "UpdatedAt"))
-                entry.Property("UpdatedAt").CurrentValue = DateTime.UtcNow;
+            var updatedProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "UpdatedAt");
+            if (updatedProp != null)
+            {
+                if (updatedProp.Metadata.ClrType == typeof(DateTimeOffset) || updatedProp.Metadata.ClrType == typeof(DateTimeOffset?))
+                    updatedProp.CurrentValue = DateTimeOffset.UtcNow;
+                else
+                    updatedProp.CurrentValue = DateTime.UtcNow;
+            }
 
-            if (entry.State == EntityState.Added &&
-                entry.Properties.Any(p => p.Metadata.Name == "CreatedAt"))
-                entry.Property("CreatedAt").CurrentValue = DateTime.UtcNow;
+            if (entry.State == EntityState.Added)
+            {
+                var createdProp = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "CreatedAt");
+                if (createdProp != null)
+                {
+                    if (createdProp.Metadata.ClrType == typeof(DateTimeOffset) || createdProp.Metadata.ClrType == typeof(DateTimeOffset?))
+                        createdProp.CurrentValue = DateTimeOffset.UtcNow;
+                    else
+                        createdProp.CurrentValue = DateTime.UtcNow;
+                }
+            }
         }
     }
 }
