@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { auth } from '@/lib/api';
 import { saveAuth } from '@/lib/auth';
@@ -40,17 +39,17 @@ export default function LoginPage() {
 
       <div className="w-full max-w-sm relative z-10">
         {/* Logo */}
-        <div className="flex flex-col items-center mb-8">
-          <Image
-            src="/img/logo.png"
-            alt="Résidence Juweirat"
-            width={180}
-            height={72}
-            className="h-14 w-auto object-contain"
-            priority
-          />
-          <p className="text-white/25 text-[9px] tracking-[0.35em] mt-3 uppercase font-medium">
-            Administration
+        <div className="flex flex-col items-center mb-6">
+          <div className="bg-white px-6 py-3.5 rounded-2xl shadow-xl border border-gray-100 flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/img/logo.png"
+              alt="Résidence Juweirat"
+              className="h-12 w-auto object-contain"
+            />
+          </div>
+          <p className="text-white/40 text-[9.5px] tracking-[0.35em] mt-3 uppercase font-semibold">
+            Administration &amp; Gestion
           </p>
         </div>
 
@@ -59,10 +58,10 @@ export default function LoginPage() {
           className="bg-white rounded-2xl shadow-2xl overflow-hidden"
         >
           {/* Green top accent */}
-          <div className="h-1 bg-green w-full" />
+          <div className="h-1.5 bg-[#1B4332] w-full" />
 
           <div className="p-8 space-y-5">
-            <h2 className="text-lg font-semibold text-charcoal text-center">Connexion</h2>
+            <h2 className="text-lg font-bold text-charcoal text-center">Connexion</h2>
 
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
@@ -77,7 +76,7 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="admin@juweirat.com"
+                placeholder="contact@juweirat.com"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green/40 focus:border-green/50 transition-colors"
               />
             </div>

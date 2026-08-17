@@ -3,6 +3,19 @@
 -- Run AFTER: dotnet ef database update
 -- ============================================================
 
+-- Default user / Sender (email: contact@juweirat.com, password: Juweirat2026)
+INSERT INTO "users" ("email", "passwordHash", "firstName", "lastName", "role", "isActive", "createdAt", "updatedAt")
+VALUES (
+    'contact@juweirat.com',
+    '$2a$11$9G76DNtcLRNOeB38lmY2uO.amoxv4mEJwBW5cMwy3vH960en4RBfm',
+    'Contact',
+    'Juweirat',
+    'Admin',
+    true,
+    NOW(),
+    NOW()
+) ON CONFLICT DO NOTHING;
+
 -- Admin user (password: Admin@2026!)
 INSERT INTO "users" ("email", "passwordHash", "firstName", "lastName", "role", "isActive", "createdAt", "updatedAt")
 VALUES (

@@ -44,7 +44,8 @@ public class EmailService(IConfiguration configuration)
         using var client = new SmtpClient();
         try
         {
-            await client.ConnectAsync(smtpHost, smtpPort, SecureSocketOptions.StartTls);
+            var secureOption = smtpPort == 465 ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTls;
+            await client.ConnectAsync(smtpHost, smtpPort, secureOption);
             
             if (!string.IsNullOrEmpty(smtpUser) && !string.IsNullOrEmpty(smtpPass))
             {
