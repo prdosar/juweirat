@@ -139,3 +139,18 @@ export interface DashboardStats {
   revenueThisMonth: number;
   currency: string;
 }
+
+export interface ContactMessageDto {
+  id: number;
+  name: string;
+  email: string;
+  phone: string | null;
+  subject: string;
+  message: string;
+  status: 'New' | 'Read' | 'Replied' | 'Archived';
+  replyMessage: string | null;
+  repliedAt: string | null;
+  repliedBy: string | null;
+  createdAt: string;
+}
+

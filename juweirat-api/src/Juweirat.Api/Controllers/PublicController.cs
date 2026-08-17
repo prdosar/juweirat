@@ -9,7 +9,13 @@ namespace Juweirat.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [AllowAnonymous]
-public class PublicController(ClientService clientService, ReservationService reservationService, RoomCategoryService categorySvc, EmailService emailService) : ControllerBase
+public class PublicController(
+    ClientService clientService,
+    ReservationService reservationService,
+    RoomCategoryService categorySvc,
+    EmailService emailService,
+    ContactMessageService contactMessageService
+) : ControllerBase
 {
     public record PublicBookingRequest(
         string FirstName, string LastName, string Email, string Phone, string Nationality,
@@ -78,12 +84,15 @@ public class PublicController(ClientService clientService, ReservationService re
         string subject = string.IsNullOrWhiteSpace(req.Subject) ? "Demande de contact" : req.Subject;
         string phone = string.IsNullOrWhiteSpace(req.Phone) ? "Non renseigné" : req.Phone;
 
-        // 1. Send luxury message notification to admin
-        string adminSubject = $"[CONTACT SITE] {subject} — {req.Name}";
-        string adminBody = EmailTemplateService.BuildContactAdminNotification(req.Name, req.Email, phone, subject, req.Message);
-        await emailService.SendEmailAsync("contact@juweirat.com", adminSubject, adminBody, req.Name, req.Email);
+        // 1. Persist contact message in database
+        var savedMessage = await contactMessageService.CreateAsync(req.Name, req.Email, req.Phone, subject, req.Message);
 
-        // 2. Send luxury acknowledgement to sender
+        // 2. Send luxury notification to admin contact@juweirat.com with Reply-To set to sender
+        string adminSubject = $"[CONTACT SITE WEB #{savedMessage.Id}] {subject} — {req.Name}";
+        string adminBody = EmailTemplateService.BuildContactAdminNotification(req.Name, req.Email, phone, subject, req.Message);
+        await emailService.SendEmailAsync("contact@juweirat.com", adminSubject, adminBody, "Site Juweirat", req.Email);
+
+        // 3. Send luxury acknowledgement to sender
         if (!string.IsNullOrWhiteSpace(req.Email))
         {
             string clientSubject = $"Accusé de réception : {subject} — Résidence Juweirat";
@@ -91,6 +100,6 @@ public class PublicController(ClientService clientService, ReservationService re
             await emailService.SendEmailAsync(req.Email, clientSubject, clientBody, "Résidence Juweirat", "contact@juweirat.com");
         }
 
-        return Ok(new { success = true });
+        return Ok(new { success = true, id = savedMessage.Id });
     }
 }

@@ -25,6 +25,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Cloture>          Clotures         { get; set; }
     public DbSet<MaintenanceTicket> MaintenanceTickets { get; set; }
     public DbSet<Debtor>           Debtors          { get; set; }
+    public DbSet<ContactMessage>   ContactMessages  { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

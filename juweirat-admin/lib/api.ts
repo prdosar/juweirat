@@ -128,3 +128,23 @@ export const payments = {
   create: (body: { reservationId: number; amount: number; currency?: string; method: string; notes?: string }) =>
     request<import('./types').PaymentDto>('/api/payments', { method: 'POST', body: JSON.stringify(body) }),
 };
+
+// ── Contact Messages ──────────────────────────────────────────────────────────
+export const contactMessages = {
+  getAll: (status?: string, search?: string) => {
+    const qs = new URLSearchParams();
+    if (status) qs.set('status', status);
+    if (search) qs.set('search', search);
+    return request<import('./types').ContactMessageDto[]>(`/api/contactmessages?${qs}`);
+  },
+  getById: (id: number) =>
+    request<import('./types').ContactMessageDto>(`/api/contactmessages/${id}`),
+  markAsRead: (id: number) =>
+    request<{ success: boolean }>(`/api/contactmessages/${id}/read`, { method: 'POST' }),
+  reply: (id: number, replyBody: string) =>
+    request<{ success: boolean }>(`/api/contactmessages/${id}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ replyBody }),
+    }),
+};
+

@@ -40,6 +40,7 @@ builder.Services.AddScoped<FactureService>();
 builder.Services.AddScoped<MaintenanceService>();
 builder.Services.AddScoped<DebiteurService>();
 builder.Services.AddScoped<EmailService>();
+builder.Services.AddScoped<ContactMessageService>();
 
 // ─── Authentication / JWT ────────────────────────────────────────────────────
 var jwtSection = builder.Configuration.GetSection("Jwt");

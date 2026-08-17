@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BedDouble, Users, CalendarCheck,
   CreditCard, LogOut, CalendarDays, Building2,
   ClipboardList, Wrench, Receipt, FileText, Settings,
-  BarChart2, Printer,
+  BarChart2, Printer, Mail,
 } from 'lucide-react';
 import { clearAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
@@ -18,6 +18,7 @@ const navItems = [
   { href: '/clients',      label: 'Clients',          icon: Users           },
   { href: '/reservations', label: 'Réservations',     icon: CalendarCheck   },
   { href: '/payments',     label: 'Paiements',        icon: CreditCard      },
+  { href: '/messages',     label: 'Messages Contact', icon: Mail            },
 ];
 
 const pmsItems = [

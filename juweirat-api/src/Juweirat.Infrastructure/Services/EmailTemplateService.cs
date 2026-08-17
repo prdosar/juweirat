@@ -406,4 +406,43 @@ public static class EmailTemplateService
             actionButtonUrl: "http://localhost:3001/pms"
         );
     }
+
+    public static string BuildContactReplyEmail(string senderName, string originalSubject, string originalMessage, string replyText)
+    {
+        var body = $@"
+        <h2 style=""margin: 0 0 10px 0; font-size: 18px; font-weight: 800; color: {BrandGreen};"">
+          Bonjour {senderName},
+        </h2>
+        <p style=""margin: 0 0 16px 0; font-size: 13.5px; color: {TextColor}; line-height: 1.6;"">
+          Nous vous remercions pour votre prise de contact avec la <strong>Résidence Hôtelière Juweirat</strong>. Voici la réponse de notre équipe :
+        </p>
+
+        <!-- Reply text box -->
+        <div style=""background-color: #FAF8F5; border-left: 4px solid {BrandGold}; border-radius: 4px; padding: 16px 18px; margin-bottom: 22px;"">
+          <div style=""font-size: 13.5px; color: {TextColor}; line-height: 1.6; white-space: pre-wrap;"">{replyText}</div>
+        </div>
+
+        <!-- Original message recall -->
+        <div style=""background-color: #F8F9FA; border: 1px solid {BorderColor}; border-radius: 6px; padding: 14px 16px; margin-bottom: 16px;"">
+          <div style=""font-size: 10px; font-weight: 800; text-transform: uppercase; color: {MutedColor}; letter-spacing: 0.8px; margin-bottom: 4px;"">
+            Rappel de votre message initial ({originalSubject})
+          </div>
+          <div style=""font-size: 12px; color: {MutedColor}; font-style: italic; line-height: 1.5;"">
+            ""{originalMessage}""
+          </div>
+        </div>
+
+        <p style=""margin: 0; font-size: 12.5px; color: {MutedColor}; line-height: 1.5;"">
+          Pour toute information complémentaire, vous pouvez directement répondre à cet email ou nous joindre sur WhatsApp au <strong>+228 90 00 00 00</strong>.
+        </p>";
+
+        return WrapInLuxuryLayout(
+            title: $"Réponse à votre message — Résidence Juweirat",
+            preheader: $"Réponse de la Direction Juweirat concernant votre demande : {originalSubject}",
+            badgeText: "RÉPONSE DE LA DIRECTION",
+            bodyContent: body,
+            actionButtonText: "Visiter le Site Web",
+            actionButtonUrl: "https://juweirat.com"
+        );
+    }
 }
