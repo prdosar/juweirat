@@ -21,10 +21,13 @@ builder.Services.AddDataProtection()
 
 // ─── Database ────────────────────────────────────────────────────────────────
 builder.Services.AddDbContext<AppDbContext>(options =>
+{
     options.UseNpgsql(
         builder.Configuration.GetConnectionString("Postgres"),
         npgsql => npgsql.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery)
-    ));
+    );
+    options.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
+});
 
 // ─── Application Services ────────────────────────────────────────────────────
 builder.Services.AddScoped<AuthService>();
