@@ -52,7 +52,7 @@ public class PublicController(ClientService clientService, ReservationService re
         // 1. Send luxury notification to admin
         string adminSubject = $"[RÉSERVATION WEB] {req.FirstName} {req.LastName} — {categoryName}";
         string adminBody = EmailTemplateService.BuildBookingAdminNotification(
-            req.FirstName, req.LastName, req.Email, req.Phone, req.Nationality,
+            req.FirstName, req.LastName, req.Email ?? "", req.Phone, req.Nationality,
             categoryName, req.CheckInDate, req.CheckOutDate, req.Adults, req.Children, req.Notes
         );
         await emailService.SendEmailAsync("contact@juweirat.com", adminSubject, adminBody, "Réservation Juweirat", req.Email);
