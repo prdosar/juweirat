@@ -1497,6 +1497,8 @@ namespace Juweirat.Infrastructure.Migrations
             modelBuilder.Entity("Juweirat.Domain.Entities.Client", b =>
                 {
                     b.Navigation("Reservations");
+                });
+
             modelBuilder.Entity("Juweirat.Domain.Entities.ContactMessage", b =>
                 {
                     b.Property<long>("Id")
