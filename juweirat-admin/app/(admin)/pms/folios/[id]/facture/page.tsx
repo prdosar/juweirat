@@ -82,6 +82,7 @@ export default function FacturePrintPage() {
   const paid = num(s.paid);
   const arrhes = num(s.arrhes);
   const solde = Math.max(0, total - paid - arrhes);
+  const avoir = Math.max(0, paid + arrhes - total);
   const lines = s.lines || [];
 
   return (
