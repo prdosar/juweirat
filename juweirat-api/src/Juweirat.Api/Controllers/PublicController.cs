@@ -55,7 +55,7 @@ public class PublicController(ClientService clientService, ReservationService re
             req.FirstName, req.LastName, req.Email ?? "", req.Phone, req.Nationality,
             categoryName, req.CheckInDate, req.CheckOutDate, req.Adults, req.Children, req.Notes
         );
-        await emailService.SendEmailAsync("contact@juweirat.com", adminSubject, adminBody, "Réservation Juweirat", req.Email);
+        await emailService.SendEmailAsync("contact@juweirat.com", adminSubject, adminBody, "Réservation Juweirat", req.Email ?? "");
 
         // 2. Send luxury confirmation to guest
         if (!string.IsNullOrWhiteSpace(req.Email))
@@ -70,24 +70,27 @@ public class PublicController(ClientService clientService, ReservationService re
         return Ok(res);
     }
 
-    public record PublicContactRequest(string Name, string Email, string Phone, string Subject, string Message);
+    public record PublicContactRequest(string Name, string Email, string? Phone, string? Subject, string Message);
 
     [HttpPost("contact")]
     public async Task<IActionResult> SubmitContact([FromBody] PublicContactRequest req)
     {
+        string subject = string.IsNullOrWhiteSpace(req.Subject) ? "Demande de contact" : req.Subject;
+        string phone = string.IsNullOrWhiteSpace(req.Phone) ? "Non renseigné" : req.Phone;
+
         // 1. Send luxury message notification to admin
-        string adminSubject = $"[CONTACT SITE] {req.Subject} — {req.Name}";
-        string adminBody = EmailTemplateService.BuildContactAdminNotification(req.Name, req.Email, req.Phone, req.Subject, req.Message);
+        string adminSubject = $"[CONTACT SITE] {subject} — {req.Name}";
+        string adminBody = EmailTemplateService.BuildContactAdminNotification(req.Name, req.Email, phone, subject, req.Message);
         await emailService.SendEmailAsync("contact@juweirat.com", adminSubject, adminBody, req.Name, req.Email);
 
         // 2. Send luxury acknowledgement to sender
         if (!string.IsNullOrWhiteSpace(req.Email))
         {
-            string clientSubject = $"Accusé de réception : {req.Subject} — Résidence Juweirat";
-            string clientBody = EmailTemplateService.BuildContactClientAcknowledgement(req.Name, req.Subject);
+            string clientSubject = $"Accusé de réception : {subject} — Résidence Juweirat";
+            string clientBody = EmailTemplateService.BuildContactClientAcknowledgement(req.Name, subject);
             await emailService.SendEmailAsync(req.Email, clientSubject, clientBody, "Résidence Juweirat", "contact@juweirat.com");
         }
 
-        return Ok();
+        return Ok(new { success = true });
     }
 }

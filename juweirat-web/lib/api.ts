@@ -1,4 +1,6 @@
-const API = process.env.API_URL ?? 'http://localhost:5177'
+const API = typeof window === 'undefined'
+  ? (process.env.INTERNAL_API_URL ?? process.env.API_URL ?? 'http://juweirat-api:8080')
+  : (process.env.NEXT_PUBLIC_API_URL ?? '')
 
 export interface RoomImage {
   id: number
@@ -120,7 +122,7 @@ export function coverImage(room: Room): string {
   return cover?.filePath ?? '/images/IMG_5101.jpg'
 }
 
-export async function submitContact(data: { name: string, email: string, phone: string, subject: string, message: string }): Promise<boolean> {
+export async function submitContact(data: { name: string, email: string, phone?: string, subject?: string, message: string }): Promise<boolean> {
   try {
     const res = await fetch(`${API}/api/public/contact`, {
       method: 'POST',
@@ -128,7 +130,8 @@ export async function submitContact(data: { name: string, email: string, phone: 
       body: JSON.stringify(data)
     })
     return res.ok
-  } catch {
+  } catch (e) {
+    console.error('[submitContact] error:', e)
     return false
   }
 }
