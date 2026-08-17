@@ -82,21 +82,27 @@ export default function FacturePrintPage() {
   const paid = num(s.paid);
   const arrhes = num(s.arrhes);
   const solde = Math.max(0, total - paid - arrhes);
-  const avoir = Math.max(0, paid + arrhes - total);
   const lines = s.lines || [];
 
   return (
-    <div className="min-h-screen bg-gray-100 print:bg-white text-charcoal">
       {/* Print styles */}
       <style>{`
         @page {
           size: A4 portrait;
-          margin: 15mm 20mm;
+          margin: 8mm 10mm;
         }
         @media print {
-          body {
+          html, body {
             background: white !important;
             color: black !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            max-height: 100% !important;
+            overflow: hidden !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           .no-print {
             display: none !important;
@@ -107,6 +113,8 @@ export default function FacturePrintPage() {
             padding: 0 !important;
             max-width: 100% !important;
             border: none !important;
+            page-break-inside: avoid !important;
+            page-break-after: avoid !important;
           }
         }
       `}</style>
@@ -134,176 +142,207 @@ export default function FacturePrintPage() {
               .then(() => window.print())
               .catch(() => window.print());
           }}
-          className="inline-flex items-center gap-2 bg-charcoal text-white hover:bg-black px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition-all"
+          className="inline-flex items-center gap-2 bg-[#1B4332] text-white hover:bg-[#143225] px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition-all"
         >
           <Printer size={15} /> Imprimer la facture
         </button>
       </header>
 
       {/* Screen Paper Preview */}
-      <main className="py-8 px-4 print:p-0">
+      <main className="py-6 px-4 print:p-0">
         <div
           id="facture-sheet"
-          className={`max-w-[780px] mx-auto bg-white p-12 print:p-0 shadow-xl rounded-sm border border-gray-200 print:border-none ${
-            cancelled ? 'opacity-70' : ''
+          className={`max-w-[760px] mx-auto bg-white p-7 print:p-0 shadow-lg rounded-sm border border-gray-200 print:border-none font-sans ${
+            cancelled ? 'opacity-75' : ''
           }`}
         >
-          {/* Header */}
-          <div className="flex justify-between items-start border-b-[3px] border-gold pb-5">
-            <div>
-              <div className="text-[24px] font-black text-green tracking-tight font-serif">
-                {config.buildingName}
-              </div>
-              <div className="text-[12px] text-gray-600 mt-1 uppercase tracking-wider font-sans">
-                {config.city} — SCI JUWEIRAT
-              </div>
-              <div className="text-[11.5px] text-gray-500 mt-0.5">
-                Propriétaire : {config.ownerName}
+          {/* Header with Logo */}
+          <div className="flex justify-between items-center border-b-[2.5px] border-[#B08D57] pb-3 mb-3">
+            <div className="flex items-center gap-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/img/logo.png"
+                alt="Logo Juweirat"
+                className="h-11 w-auto max-w-[130px] object-contain"
+              />
+              <div>
+                <div className="text-[15px] font-black text-[#1B4332] uppercase tracking-tight">
+                  {config.buildingName}
+                </div>
+                <div className="text-[10.5px] text-gray-600 font-medium mt-0.5">
+                  SCI JUWEIRAT · Résidence Hôtelière
+                </div>
+                <div className="text-[10px] text-gray-500">
+                  Quartier Gbossimé, Lomé — TOGO
+                </div>
               </div>
             </div>
 
-            <div className="text-right font-sans">
-              <div className="text-[14px] text-green font-bold uppercase tracking-wide">
+            <div className="text-right">
+              <div className="inline-block bg-[#1B4332] text-white text-[12.5px] font-extrabold uppercase tracking-wide px-3 py-1 rounded">
                 FACTURE N° {facture.number}
               </div>
-              <div className="text-[12px] text-gray-500 mt-1">
+              <div className="text-[11px] text-gray-600 mt-1">
                 Date d’émission : <strong>{frDate(facture.date)}</strong>
               </div>
-              <div className="text-[11.5px] text-gray-400 mt-0.5">
+              <div className="text-[10.5px] text-gray-400">
                 Réf. Folio : {folio?.number}
               </div>
 
               {cancelled && (
-                <div className="mt-2.5 inline-block text-[11px] font-bold text-red-700 bg-red-50 border border-red-300 rounded px-2.5 py-0.5 tracking-wider uppercase">
+                <div className="mt-1 inline-block text-[10px] font-extrabold text-red-700 bg-red-50 border border-red-300 rounded px-2 py-0.5 tracking-wider uppercase">
                   FACTURE ANNULÉE
                 </div>
               )}
               {!cancelled && duplicata && (
-                <div className="mt-2.5 inline-block text-[11px] font-bold text-red-700 bg-red-50 border border-red-300 rounded px-2.5 py-0.5 tracking-wider uppercase">
+                <div className="mt-1 inline-block text-[10px] font-extrabold text-red-700 bg-red-50 border border-red-300 rounded px-2 py-0.5 tracking-wider uppercase">
                   DUPLICATA
                 </div>
               )}
-              {!cancelled && !duplicata && facture.corrections > 0 && (
-                <div className="mt-2.5 inline-block text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-300 rounded px-2.5 py-0.5 tracking-wider uppercase">
+              {!cancelled && !duplicata && (facture.corrections || 0) > 0 && (
+                <div className="mt-1 inline-block text-[10px] font-extrabold text-amber-700 bg-amber-50 border border-amber-300 rounded px-2 py-0.5 tracking-wider uppercase">
                   FACTURE RECTIFIÉE
                 </div>
               )}
             </div>
           </div>
 
-          {/* Destinataire / Séjour */}
-          <div className="grid grid-cols-2 gap-6 my-6 text-[13px] font-sans">
-            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50/50">
-              <div className="text-[10.5px] tracking-wider uppercase text-gold font-bold mb-1.5">
-                Client / Destinataire
+          {/* Destinataire / Séjour (2 Cards) */}
+          <div className="grid grid-cols-2 gap-3 mb-3 text-[12px]">
+            <div className="border border-[#E5DFD5] rounded-md p-2.5 bg-[#FAF8F5]">
+              <div className="text-[9px] tracking-wider uppercase text-[#B08D57] font-extrabold mb-1">
+                Facturé à / Destinataire
               </div>
-              <div className="font-bold text-[14.5px] text-charcoal">{destNom}</div>
+              <div className="font-extrabold text-[13px] text-[#1B4332]">{destNom}</div>
               {!destSociete && s.reservataire && (
-                <div className="text-[12px] text-gray-600 mt-0.5">
-                  Réservé par : {s.reservataire}
+                <div className="text-[10.5px] text-gray-600 mt-0.5">
+                  Réservataire : {s.reservataire}
+                </div>
+              )}
+              {(s.phone || s.email) && (
+                <div className="text-[10px] text-gray-500 mt-0.5">
+                  {[s.phone, s.email].filter(Boolean).join(' · ')}
                 </div>
               )}
             </div>
 
-            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50/50">
-              <div className="text-[10.5px] tracking-wider uppercase text-gold font-bold mb-1.5">
+            <div className="border border-[#E5DFD5] rounded-md p-2.5 bg-[#FAF8F5]">
+              <div className="text-[9px] tracking-wider uppercase text-[#B08D57] font-extrabold mb-1">
                 Détails du séjour
               </div>
-              <div className="font-bold text-[14px] text-charcoal">{s.unitLabel || 'Appartement'}</div>
-              <div className="text-[12px] text-gray-600 mt-0.5">
-                Du {frDate(s.arrival)} au {frDate(s.departure)} ({num(s.nights)} nuit{num(s.nights) > 1 ? 's' : ''})
+              <div className="font-bold text-[12.5px] text-[#1B4332]">{s.unitLabel || 'Hébergement Juweirat'}</div>
+              <div className="text-[10.5px] text-gray-600 mt-0.5">
+                Du <strong>{frDate(s.arrival)}</strong> au <strong>{frDate(s.departure)}</strong> ({num(s.nights)} nuit{num(s.nights) > 1 ? 's' : ''})
               </div>
-              <div className="text-[11.5px] text-gray-500 mt-0.5">
+              <div className="text-[10px] text-gray-500 mt-0.5">
                 Occupants : {num(s.pax)} personne{num(s.pax) > 1 ? 's' : ''}
               </div>
             </div>
           </div>
 
           {/* Items Table */}
-          <table className="w-full border-collapse mt-4 text-[13px] font-sans">
+          <table className="w-full border-collapse mb-2.5 text-[11.5px]">
             <thead>
-              <tr className="border-b-2 border-green">
-                <th className="bg-green text-white text-left px-3.5 py-2.5 text-[11.5px] uppercase tracking-wider font-semibold">
+              <tr>
+                <th className="bg-[#1B4332] text-white text-left px-2.5 py-1.5 text-[10px] uppercase tracking-wider font-bold rounded-tl">
                   Désignation des prestations
                 </th>
-                <th className="bg-green text-white text-right px-3.5 py-2.5 text-[11.5px] uppercase tracking-wider font-semibold w-36">
-                  Montant
+                <th className="bg-[#1B4332] text-white text-right px-2.5 py-1.5 text-[10px] uppercase tracking-wider font-bold w-40 rounded-tr">
+                  Montant ({cur.code})
                 </th>
               </tr>
             </thead>
             <tbody>
               {lines.map((r: any, i: number) => (
-                <tr key={i} className={i % 2 === 1 ? 'bg-gray-50/70' : 'bg-white'}>
-                  <td className="px-3.5 py-2.5 border-b border-gray-100 text-charcoal font-medium">
+                <tr key={i} className={i % 2 === 1 ? 'bg-[#FAF8F5]' : 'bg-white'}>
+                  <td className="px-2.5 py-1.5 border-b border-gray-100 text-charcoal font-medium">
                     {r.label}
                   </td>
-                  <td className="px-3.5 py-2.5 border-b border-gray-100 text-right tabular-nums font-semibold">
+                  <td className="px-2.5 py-1.5 border-b border-gray-100 text-right tabular-nums font-semibold text-[#1B4332]">
                     {fm(r.montant)}
                   </td>
                 </tr>
               ))}
             </tbody>
-            <tfoot className="font-sans">
-              <tr className="border-t-2 border-gray-300">
-                <td className="pt-4 px-3.5 pb-1.5 font-bold text-[14.5px] text-charcoal uppercase">
-                  Total Facturé
-                </td>
-                <td className="pt-4 px-3.5 pb-1.5 text-right tabular-nums font-black text-[15px] text-green">
-                  {fm(total)}
-                </td>
-              </tr>
-              {arrhes > 0 && (
-                <tr className="text-gray-600 text-[12.5px]">
-                  <td className="px-3.5 py-1">Arrhes / Acompte perçu</td>
-                  <td className="px-3.5 py-1 text-right tabular-nums font-medium text-green">
-                    - {fm(arrhes)}
-                  </td>
-                </tr>
-              )}
-              <tr className="text-gray-600 text-[12.5px]">
-                <td className="px-3.5 py-1">
-                  Montant Réglé ({s.payMode || 'Espèces'})
-                </td>
-                <td className="px-3.5 py-1 text-right tabular-nums font-medium text-green">
-                  - {fm(paid)}
-                </td>
-              </tr>
-              <tr className="border-t border-gray-200">
-                <td className="px-3.5 py-2.5 font-extrabold text-[14px] uppercase text-charcoal">
-                  Net à payer (Solde)
-                </td>
-                <td
-                  className={`px-3.5 py-2.5 text-right tabular-nums font-extrabold text-[15px] ${
-                    solde > 0.5 ? 'text-red-700' : 'text-green'
-                  }`}
-                >
-                  {fm(solde)}
-                </td>
-              </tr>
-              {avoir > 0.5 && (
-                <tr className="text-blue-800 text-[12.5px] bg-blue-50/50">
-                  <td className="px-3.5 py-1.5 font-semibold">Avoir / Trop-perçu</td>
-                  <td className="px-3.5 py-1.5 text-right tabular-nums font-bold">
-                    {fm(avoir)}
-                  </td>
-                </tr>
-              )}
-            </tfoot>
           </table>
 
-          {/* Footer & Legal Mentions */}
-          <div className="mt-12 pt-4 border-t border-gray-200 text-[11px] text-gray-500 flex justify-between items-end font-sans">
-            <div>
-              <p className="font-semibold text-gray-700">Société Civile Immobilière JUWEIRAT</p>
-              <p>Quartier GBOSSIME, 08BP: 80859 — Lomé, Togo</p>
-              <p className="mt-0.5">Tél : (+228) 90 00 00 00 · Email : contact@juweirat.com</p>
+          {/* Settlement Summary & Totals */}
+          <div className="flex justify-between items-stretch gap-3 mb-2.5">
+            <div className="flex-1 border border-[#E5DFD5] rounded-md p-2.5 bg-[#FAF8F5] flex flex-col justify-between">
+              <div>
+                <div className="text-[9px] tracking-wider uppercase text-[#B08D57] font-extrabold mb-1">
+                  Mode & Statut de Règlement
+                </div>
+                <div className="text-[11px] text-gray-700">
+                  Mode de paiement : <strong>{s.payMode || 'Espèces'}</strong>
+                </div>
+                <div className="text-[10px] text-gray-500 mt-0.5">
+                  Réf. Transaction : Facture {facture.number}
+                </div>
+              </div>
+              <div className="mt-2">
+                {solde <= 0.5 ? (
+                  <span className="inline-block bg-[#DEF7EC] text-[#03543F] border border-[#BCF0DA] px-2 py-0.5 rounded text-[10.5px] font-extrabold">
+                    ✓ FACTURE SOLDÉE / ACQUITTÉE
+                  </span>
+                ) : (
+                  <span className="inline-block bg-[#FDE8E8] text-[#9B1C1C] border border-[#FBD5D5] px-2 py-0.5 rounded text-[10.5px] font-extrabold">
+                    ⚠ SOLDE RESTANT DÛ : {fm(solde)}
+                  </span>
+                )}
+              </div>
             </div>
-            <div className="text-right">
-              <p>Facture générée le {frDate(facture.date)}</p>
-              {facture.corrections > 0 && (
-                <p>Rectifiée le {frDate(facture.corrigeeLe || facture.date)}</p>
-              )}
-              <p className="text-[10px] text-gray-400 mt-0.5">Document officiel PMS Juweirat</p>
+
+            <div className="w-64 border border-[#E5DFD5] rounded-md p-2 bg-[#FAF8F5]">
+              <table className="w-full border-collapse text-[11px]">
+                <tbody>
+                  <tr>
+                    <td className="py-0.5 text-gray-600">Total Prestations</td>
+                    <td className="py-0.5 text-right tabular-nums font-bold text-[#1B4332]">{fm(total)}</td>
+                  </tr>
+                  {arrhes > 0 && (
+                    <tr>
+                      <td className="py-0.5 text-gray-600">Arrhes / Acompte</td>
+                      <td className="py-0.5 text-right tabular-nums font-medium text-[#2D6A4F]">- {fm(arrhes)}</td>
+                    </tr>
+                  )}
+                  <tr>
+                    <td className="py-0.5 text-gray-600">Montant Réglé</td>
+                    <td className="py-0.5 text-right tabular-nums font-medium text-[#2D6A4F]">- {fm(paid)}</td>
+                  </tr>
+                  <tr className="border-t-[1.5px] border-b-[1.5px] border-[#1B4332] bg-[#F4EFE6]">
+                    <td className="py-1 px-1 font-black text-[11.5px] text-[#1B4332] uppercase">
+                      Net à Payer (Solde)
+                    </td>
+                    <td
+                      className={`py-1 px-1 text-right tabular-nums font-black text-[12.5px] ${
+                        solde > 0.5 ? 'text-red-700' : 'text-[#15803D]'
+                      }`}
+                    >
+                      {fm(solde)}
+                    </td>
+                  </tr>
+                  {avoir > 0.5 && (
+                    <tr>
+                      <td className="py-0.5 text-blue-800 font-semibold">Avoir / Trop-perçu</td>
+                      <td className="py-0.5 text-right tabular-nums font-bold text-blue-800">{fm(avoir)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Footer & Legal Mentions with Signature Box */}
+          <div className="border-t border-[#E5DFD5] pt-2 flex justify-between items-end text-[9.5px] text-gray-500">
+            <div>
+              <p className="font-bold text-gray-700">{config.buildingName} — SCI JUWEIRAT</p>
+              <p>Quartier GBOSSIME, Lomé, TOGO · Tél : (+228) 90 00 00 00 · contact@juweirat.com</p>
+              <p className="mt-0.5 text-[9px] text-gray-400">Éditée le {frDate(facture.date)} · Document officiel PMS Juweirat</p>
+            </div>
+            <div className="text-center border border-dashed border-[#C4BCAF] rounded px-2.5 py-1 bg-gray-50 w-28 shrink-0">
+              <div className="text-[8px] uppercase text-gray-400 tracking-wider font-semibold">Cachet & Signature</div>
+              <div className="text-[9.5px] font-bold text-[#1B4332] mt-0.5">Pour Acquit</div>
             </div>
           </div>
         </div>
