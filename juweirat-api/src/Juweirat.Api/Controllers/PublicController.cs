@@ -9,7 +9,7 @@ namespace Juweirat.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [AllowAnonymous]
-public class PublicController(ClientService clientService, ReservationService reservationService, EmailService emailService) : ControllerBase
+public class PublicController(ClientService clientService, ReservationService reservationService, RoomCategoryService categorySvc, EmailService emailService) : ControllerBase
 {
     public record PublicBookingRequest(
         string FirstName, string LastName, string Email, string Phone, string Nationality,
@@ -46,15 +46,26 @@ public class PublicController(ClientService clientService, ReservationService re
         var (res, err) = await reservationService.CreateAsync(createRes);
         if (err is not null) return BadRequest(new { error = err });
 
-        // Send email to admin
-        string adminSubject = $"[WEB] Nouvelle réservation: {req.FirstName} {req.LastName}";
-        string adminBody = $"<p>Une nouvelle demande de réservation a été effectuée sur le site web.</p>" +
-                           $"<ul><li>Nom: {req.FirstName} {req.LastName}</li>" +
-                           $"<li>Email: {req.Email}</li><li>Téléphone: {req.Phone}</li>" +
-                           $"<li>Séjour: {req.CheckInDate:dd/MM/yyyy} - {req.CheckOutDate:dd/MM/yyyy}</li>" +
-                           $"<li>Notes: {req.Notes}</li></ul>";
-        
-        await emailService.SendEmailAsync("contact@juweirat.com", adminSubject, adminBody, req.FirstName + " " + req.LastName, req.Email);
+        var category = await categorySvc.GetByIdAsync(req.CategoryId);
+        string categoryName = category?.NameFr ?? "Appartement Résidence Juweirat";
+
+        // 1. Send luxury notification to admin
+        string adminSubject = $"[RÉSERVATION WEB] {req.FirstName} {req.LastName} — {categoryName}";
+        string adminBody = EmailTemplateService.BuildBookingAdminNotification(
+            req.FirstName, req.LastName, req.Email, req.Phone, req.Nationality,
+            categoryName, req.CheckInDate, req.CheckOutDate, req.Adults, req.Children, req.Notes
+        );
+        await emailService.SendEmailAsync("contact@juweirat.com", adminSubject, adminBody, "Réservation Juweirat", req.Email);
+
+        // 2. Send luxury confirmation to guest
+        if (!string.IsNullOrWhiteSpace(req.Email))
+        {
+            string clientSubject = $"Confirmation de votre demande de séjour — Résidence Juweirat";
+            string clientBody = EmailTemplateService.BuildBookingClientConfirmation(
+                req.FirstName, req.LastName, categoryName, req.CheckInDate, req.CheckOutDate, req.Adults, req.Children
+            );
+            await emailService.SendEmailAsync(req.Email, clientSubject, clientBody, "Résidence Juweirat", "contact@juweirat.com");
+        }
 
         return Ok(res);
     }
@@ -64,15 +75,18 @@ public class PublicController(ClientService clientService, ReservationService re
     [HttpPost("contact")]
     public async Task<IActionResult> SubmitContact([FromBody] PublicContactRequest req)
     {
-        string subject = $"[WEB] Nouveau message: {req.Subject}";
-        string body = $"<p>Un nouveau message a été envoyé depuis le formulaire de contact du site web.</p>" +
-                      $"<ul><li><b>Nom:</b> {req.Name}</li>" +
-                      $"<li><b>Email:</b> {req.Email}</li>" +
-                      $"<li><b>Téléphone:</b> {req.Phone}</li>" +
-                      $"<li><b>Sujet:</b> {req.Subject}</li></ul>" +
-                      $"<hr><p><b>Message:</b></p><p>{req.Message.Replace("\n", "<br>")}</p>";
+        // 1. Send luxury message notification to admin
+        string adminSubject = $"[CONTACT SITE] {req.Subject} — {req.Name}";
+        string adminBody = EmailTemplateService.BuildContactAdminNotification(req.Name, req.Email, req.Phone, req.Subject, req.Message);
+        await emailService.SendEmailAsync("contact@juweirat.com", adminSubject, adminBody, req.Name, req.Email);
 
-        await emailService.SendEmailAsync("contact@juweirat.com", subject, body, req.Name, req.Email);
+        // 2. Send luxury acknowledgement to sender
+        if (!string.IsNullOrWhiteSpace(req.Email))
+        {
+            string clientSubject = $"Accusé de réception : {req.Subject} — Résidence Juweirat";
+            string clientBody = EmailTemplateService.BuildContactClientAcknowledgement(req.Name, req.Subject);
+            await emailService.SendEmailAsync(req.Email, clientSubject, clientBody, "Résidence Juweirat", "contact@juweirat.com");
+        }
 
         return Ok();
     }
