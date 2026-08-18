@@ -66,7 +66,7 @@ export default function DashboardPage() {
     .slice(0, 8);
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className="flex flex-col min-h-full">
       <Header title="Tableau de bord" />
       <div className="flex-1 p-6 space-y-5">
         {loading ? (

@@ -123,7 +123,20 @@ export const TERRASSE_PHOTOS: CategoryPhotoSet = {
   ],
 };
 
-export function getCategoryPhotos(slug: string): CategoryPhotoSet {
+export function getCategoryPhotos(
+  slug: string,
+  category?: { images?: Array<{ filePath: string; isCover?: boolean; sortOrder?: number }>; coverImage?: string | null } | null
+): CategoryPhotoSet {
+  if (category?.images && category.images.length > 0) {
+    const sorted = [...category.images].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    const cover = sorted.find((i) => i.isCover)?.filePath || category.coverImage || sorted[0].filePath;
+    const gallery = sorted.map((i) => i.filePath);
+    return {
+      hero: cover,
+      gallery: gallery.length > 0 ? gallery : [cover],
+    };
+  }
+
   return CATEGORY_PHOTOS[slug] || {
     hero: '/images/IMG_5101.jpg',
     gallery: ['/images/IMG_5101.jpg', '/images/IMG_5001.jpg', '/images/IMG_5033.jpg'],

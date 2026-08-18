@@ -65,6 +65,24 @@ export const pmsFolios = {
     if (params?.status) qs.set('status', params.status);
     return pmsReq<FolioDto[]>(`/api/pms/folios?${qs}`);
   },
+  getPaged: (params?: import('./types').FolioFilterParams) => {
+    const qs = new URLSearchParams();
+    if (params?.pageNumber) qs.set('pageNumber', String(params.pageNumber));
+    if (params?.pageSize) qs.set('pageSize', String(params.pageSize));
+    if (params?.search) qs.set('search', params.search);
+    if (params?.sortBy) qs.set('sortBy', params.sortBy);
+    if (params?.isDescending !== undefined) qs.set('isDescending', String(params.isDescending));
+    if (params?.closed !== undefined) qs.set('closed', String(params.closed));
+    if (params?.unitId !== undefined) qs.set('unitId', String(params.unitId));
+    if (params?.resaStatus) qs.set('resaStatus', params.resaStatus);
+    if (params?.segment) qs.set('segment', params.segment);
+    if (params?.balanceStatus) qs.set('balanceStatus', params.balanceStatus);
+    if (params?.arrivalFrom) qs.set('arrivalFrom', params.arrivalFrom);
+    if (params?.arrivalTo) qs.set('arrivalTo', params.arrivalTo);
+    if (params?.departureFrom) qs.set('departureFrom', params.departureFrom);
+    if (params?.departureTo) qs.set('departureTo', params.departureTo);
+    return pmsReq<import('./types').PagedResult<FolioDto>>(`/api/pms/folios/paged?${qs}`);
+  },
   getById:       (id: number) => pmsReq<FolioDto>(`/api/pms/folios/${id}`),
   getContractData: (id: number) => pmsReq<ContractDataDto>(`/api/pms/folios/${id}/contract-data`),
   create:   (body: Record<string, unknown>) =>

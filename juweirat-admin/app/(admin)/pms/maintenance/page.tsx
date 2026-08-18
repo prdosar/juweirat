@@ -99,7 +99,7 @@ export default function MaintenancePage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className="flex flex-col min-h-full">
       <Header title="Maintenance" />
       <div className="flex-1 p-6 space-y-4">
 

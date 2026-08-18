@@ -53,6 +53,30 @@ export const categories = {
       `/api/room-categories/available?checkIn=${checkIn}&checkOut=${checkOut}&adults=${adults}`
     ),
   getById: (id: number) => request<import('./types').RoomCategoryDto>(`/api/room-categories/${id}`),
+  update: (id: number, body: unknown) =>
+    request<import('./types').RoomCategoryDto>(`/api/room-categories/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  uploadImage: async (categoryId: number, file: File): Promise<import('./types').RoomImageDto> => {
+    const token = getToken();
+    const body = new FormData();
+    body.append('file', file);
+    const res = await fetch(`${BASE_URL}/api/room-categories/${categoryId}/images`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body,
+    });
+    if (res.status === 401) { window.location.href = '/login'; throw new Error('Unauthorized'); }
+    if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error ?? `HTTP ${res.status}`); }
+    return res.json();
+  },
+  deleteImage: (categoryId: number, imageId: number) =>
+    request<void>(`/api/room-categories/${categoryId}/images/${imageId}`, { method: 'DELETE' }),
+  setCover: (categoryId: number, imageId: number) =>
+    request<void>(`/api/room-categories/${categoryId}/images/${imageId}/cover`, { method: 'PATCH' }),
+  reorderImages: (categoryId: number, imageIds: number[]) =>
+    request<void>(`/api/room-categories/${categoryId}/images/reorder`, {
+      method: 'PUT',
+      body: JSON.stringify({ imageIds }),
+    }),
 };
 
 // ── Rooms ─────────────────────────────────────────────────────────────────────
@@ -83,6 +107,20 @@ export const clients = {
     const qs = search ? `?search=${encodeURIComponent(search)}` : '';
     return request<import('./types').ClientDto[]>(`/api/clients${qs}`);
   },
+  getPaged: (params?: import('./types').ClientFilterParams) => {
+    const qs = new URLSearchParams();
+    if (params?.pageNumber) qs.set('pageNumber', String(params.pageNumber));
+    if (params?.pageSize) qs.set('pageSize', String(params.pageSize));
+    if (params?.search) qs.set('search', params.search);
+    if (params?.sortBy) qs.set('sortBy', params.sortBy);
+    if (params?.isDescending !== undefined) qs.set('isDescending', String(params.isDescending));
+    if (params?.nationality) qs.set('nationality', params.nationality);
+    if (params?.documentType) qs.set('documentType', params.documentType);
+    if (params?.city) qs.set('city', params.city);
+    if (params?.country) qs.set('country', params.country);
+    if (params?.hasReservations !== undefined) qs.set('hasReservations', String(params.hasReservations));
+    return request<import('./types').PagedResult<import('./types').ClientDto>>(`/api/clients/paged?${qs}`);
+  },
   getById: (id: number) => request<import('./types').ClientDto>(`/api/clients/${id}`),
   create:  (body: unknown) => request<import('./types').ClientDto>('/api/clients', { method: 'POST', body: JSON.stringify(body) }),
   update:  (id: number, body: unknown) => request<import('./types').ClientDto>(`/api/clients/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
@@ -93,6 +131,23 @@ export const reservations = {
   getAll:  (status?: string) => {
     const qs = status ? `?status=${status}` : '';
     return request<import('./types').ReservationDto[]>(`/api/reservations${qs}`);
+  },
+  getPaged: (params?: import('./types').ReservationFilterParams) => {
+    const qs = new URLSearchParams();
+    if (params?.pageNumber) qs.set('pageNumber', String(params.pageNumber));
+    if (params?.pageSize) qs.set('pageSize', String(params.pageSize));
+    if (params?.search) qs.set('search', params.search);
+    if (params?.sortBy) qs.set('sortBy', params.sortBy);
+    if (params?.isDescending !== undefined) qs.set('isDescending', String(params.isDescending));
+    if (params?.status) qs.set('status', params.status);
+    if (params?.categoryId) qs.set('categoryId', String(params.categoryId));
+    if (params?.roomId) qs.set('roomId', String(params.roomId));
+    if (params?.clientId) qs.set('clientId', String(params.clientId));
+    if (params?.startDate) qs.set('startDate', params.startDate);
+    if (params?.endDate) qs.set('endDate', params.endDate);
+    if (params?.source) qs.set('source', params.source);
+    if (params?.paymentStatus) qs.set('paymentStatus', params.paymentStatus);
+    return request<import('./types').PagedResult<import('./types').ReservationDto>>(`/api/reservations/paged?${qs}`);
   },
   getById: (id: number) => request<import('./types').ReservationDto>(`/api/reservations/${id}`),
   create:  (body: unknown) => request<import('./types').ReservationDto>('/api/reservations', { method: 'POST', body: JSON.stringify(body) }),
@@ -123,6 +178,24 @@ export const roomImages = {
 
 // ── Payments ──────────────────────────────────────────────────────────────────
 export const payments = {
+  getAll: () => request<import('./types').PaymentDto[]>('/api/payments'),
+  getPaged: (params?: import('./types').PaymentFilterParams) => {
+    const qs = new URLSearchParams();
+    if (params?.pageNumber) qs.set('pageNumber', String(params.pageNumber));
+    if (params?.pageSize) qs.set('pageSize', String(params.pageSize));
+    if (params?.search) qs.set('search', params.search);
+    if (params?.sortBy) qs.set('sortBy', params.sortBy);
+    if (params?.isDescending !== undefined) qs.set('isDescending', String(params.isDescending));
+    if (params?.status) qs.set('status', params.status);
+    if (params?.method) qs.set('method', params.method);
+    if (params?.reservationId) qs.set('reservationId', String(params.reservationId));
+    if (params?.minAmount !== undefined) qs.set('minAmount', String(params.minAmount));
+    if (params?.maxAmount !== undefined) qs.set('maxAmount', String(params.maxAmount));
+    if (params?.startDate) qs.set('startDate', params.startDate);
+    if (params?.endDate) qs.set('endDate', params.endDate);
+    if (params?.currency) qs.set('currency', params.currency);
+    return request<import('./types').PagedResult<import('./types').PaymentDto>>(`/api/payments/paged?${qs}`);
+  },
   getByReservation: (reservationId: number) =>
     request<import('./types').PaymentDto[]>(`/api/payments/reservation/${reservationId}`),
   create: (body: { reservationId: number; amount: number; currency?: string; method: string; notes?: string }) =>

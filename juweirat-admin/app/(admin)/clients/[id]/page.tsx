@@ -75,7 +75,7 @@ export default function ClientFormPage() {
   }
 
   if (loading) return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className="flex flex-col min-h-full">
       <Header title="Client" />
       <div className="flex-1 flex items-center justify-center">
         <div className="w-6 h-6 border-2 border-green/30 border-t-green rounded-full animate-spin" />
@@ -84,7 +84,7 @@ export default function ClientFormPage() {
   );
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className="flex flex-col min-h-full">
       <Header title={isNew ? 'Nouveau client' : 'Modifier le client'} />
       <div className="flex-1 p-6 max-w-2xl">
         <Link href="/clients" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-charcoal mb-5">

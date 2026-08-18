@@ -110,7 +110,7 @@ export default function NewFolioPage() {
   const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green/30 bg-white";
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className="flex flex-col min-h-full">
       <Header title="Nouveau folio" />
       <div className="flex-1 p-6 max-w-2xl space-y-5">
 

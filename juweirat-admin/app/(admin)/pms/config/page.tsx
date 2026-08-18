@@ -33,7 +33,7 @@ export default function PmsConfigPage() {
   }
 
   if (loading) return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col min-h-full">
       <Header title="Config PMS" />
       <div className="flex-1 flex items-center justify-center">
         <div className="w-6 h-6 border-2 border-green/30 border-t-green rounded-full animate-spin" />
@@ -42,7 +42,7 @@ export default function PmsConfigPage() {
   );
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className="flex flex-col min-h-full">
       <Header title="Config PMS" />
       <div className="flex-1 p-6 max-w-xl space-y-5">
 

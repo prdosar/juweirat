@@ -37,6 +37,8 @@ export interface RoomCategoryDto {
   tarifN15: number;
   tarifN30: number;
   roomCount: number;
+  images: RoomImageDto[];
+  coverImage: string | null;
 }
 
 export interface RoomDto {
@@ -153,4 +155,65 @@ export interface ContactMessageDto {
   repliedBy: string | null;
   createdAt: string;
 }
+
+export interface PagedResult<T> {
+  items: T[];
+  pageNumber: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+}
+
+export interface PaginationFilterParams {
+  pageNumber?: number;
+  pageSize?: number;
+  search?: string;
+  sortBy?: string;
+  isDescending?: boolean;
+}
+
+export interface ClientFilterParams extends PaginationFilterParams {
+  nationality?: string;
+  documentType?: string;
+  city?: string;
+  country?: string;
+  hasReservations?: boolean;
+}
+
+export interface ReservationFilterParams extends PaginationFilterParams {
+  status?: string;
+  categoryId?: number;
+  roomId?: number;
+  clientId?: number;
+  startDate?: string;
+  endDate?: string;
+  source?: string;
+  paymentStatus?: string;
+}
+
+export interface PaymentFilterParams extends PaginationFilterParams {
+  status?: string;
+  method?: string;
+  reservationId?: number;
+  minAmount?: number;
+  maxAmount?: number;
+  startDate?: string;
+  endDate?: string;
+  currency?: string;
+}
+
+export interface FolioFilterParams extends PaginationFilterParams {
+  closed?: boolean;
+  unitId?: number;
+  resaStatus?: string;
+  segment?: string;
+  balanceStatus?: string;
+  arrivalFrom?: string;
+  arrivalTo?: string;
+  departureFrom?: string;
+  departureTo?: string;
+}
+
 

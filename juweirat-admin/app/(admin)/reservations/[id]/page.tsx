@@ -96,7 +96,7 @@ export default function ReservationDetailPage() {
   const nextStatuses = TRANSITIONS[r.status] ?? [];
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className="flex flex-col min-h-full">
       <Header title={`Réservation ${r.reference}`} />
       <div className="flex-1 p-6 max-w-3xl space-y-5">
 

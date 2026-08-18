@@ -1,12 +1,60 @@
+using Juweirat.Application.Common.Pagination;
 using Juweirat.Application.DTOs.Clients;
 using Juweirat.Domain.Entities;
 using Juweirat.Infrastructure.Data;
+using Juweirat.Infrastructure.Extensions;
 using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Infrastructure.Services;
 
 public class ClientService(AppDbContext db)
 {
+    public async Task<PagedResult<ClientDto>> GetPagedAsync(ClientFilterParams filter)
+    {
+        var query = db.Clients
+            .Include(c => c.Reservations)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(filter.Search))
+        {
+            var search = filter.Search.Trim().ToLower();
+            query = query.Where(c =>
+                c.FirstName.ToLower().Contains(search) ||
+                c.LastName.ToLower().Contains(search)  ||
+                (c.Email != null && c.Email.ToLower().Contains(search)) ||
+                (c.Phone != null && c.Phone.Contains(search)) ||
+                (c.DocumentNumber != null && c.DocumentNumber.ToLower().Contains(search)) ||
+                (c.City != null && c.City.ToLower().Contains(search)) ||
+                (c.Country != null && c.Country.ToLower().Contains(search)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Nationality))
+            query = query.Where(c => c.Nationality == filter.Nationality);
+
+        if (!string.IsNullOrWhiteSpace(filter.DocumentType))
+            query = query.Where(c => c.DocumentType == filter.DocumentType);
+
+        if (!string.IsNullOrWhiteSpace(filter.City))
+            query = query.Where(c => c.City != null && c.City.ToLower().Contains(filter.City.ToLower()));
+
+        if (!string.IsNullOrWhiteSpace(filter.Country))
+            query = query.Where(c => c.Country != null && c.Country.ToLower().Contains(filter.Country.ToLower()));
+
+        if (filter.HasReservations.HasValue)
+        {
+            query = filter.HasReservations.Value
+                ? query.Where(c => c.Reservations.Any())
+                : query.Where(c => !c.Reservations.Any());
+        }
+
+        if (string.IsNullOrWhiteSpace(filter.SortBy))
+        {
+            query = query.OrderByDescending(c => c.CreatedAt);
+        }
+
+        return await query.ToPagedResultAsync(filter, ToDto);
+    }
+
     public async Task<List<ClientDto>> GetAllAsync(string? search = null)
     {
         var query = db.Clients

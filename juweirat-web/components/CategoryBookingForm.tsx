@@ -3,6 +3,8 @@ import { useState, useRef, useMemo } from 'react'
 import { CheckCircle, User, Mail, Phone, Globe, CreditCard, Smartphone, Lock, ChevronRight, CalendarDays, Users, ScrollText, ArrowLeft } from 'lucide-react'
 import type { Lang } from '@/lib/i18n'
 
+import { calcStayPrice, nightsBetween, formatFCFA } from '@/lib/pricing'
+
 interface Props {
   categoryId:   number
   categorySlug: string
@@ -21,10 +23,6 @@ interface Props {
 
 type PayMethod = 'fedapay' | 'stripe' | null
 
-function formatFCFA(n: number) {
-  return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(n) + ' FCFA'
-}
-
 function formatDate(d: string, lang: Lang) {
   if (!d) return '—'
   return new Date(d + 'T00:00:00').toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', {
@@ -38,26 +36,6 @@ function addDays(dStr: string, n: number) {
   const d = new Date(dStr + 'T00:00:00')
   d.setDate(d.getDate() + n)
   return toDateStr(d)
-}
-
-function nightsBetween(a: string, b: string) {
-  if (!a || !b) return 0
-  const d1 = new Date(a + 'T00:00:00').getTime()
-  const d2 = new Date(b + 'T00:00:00').getTime()
-  return Math.max(0, Math.round((d2 - d1) / 86400000))
-}
-
-function calcPrice(tarifNuit: number, tarifN15: number, tarifN30: number, nights: number) {
-  if (nights <= 0) return { total: 0, savings: 0, rateLabel: '', perNight: tarifNuit }
-  if (nights >= 30 && tarifN30 > 0) {
-    const total = tarifN30 * nights
-    return { total, savings: nights * tarifNuit - total, rateLabel: 'forfait mensuel', perNight: tarifN30 }
-  }
-  if (nights >= 15 && tarifN15 > 0) {
-    const total = tarifN15 * nights
-    return { total, savings: nights * tarifNuit - total, rateLabel: 'forfait 15 jours', perNight: tarifN15 }
-  }
-  return { total: nights * tarifNuit, savings: 0, rateLabel: `${nights} nuit${nights > 1 ? 's' : ''}`, perNight: tarifNuit }
 }
 
 function openPicker(ref: React.RefObject<HTMLInputElement | null>) {
@@ -90,7 +68,7 @@ export default function CategoryBookingForm({
     : addDays(today, 1)
 
   const localNights = useMemo(() => nightsBetween(localCheckIn, localCheckOut), [localCheckIn, localCheckOut])
-  const pricing     = useMemo(() => calcPrice(tarifNuit, tarifN15, tarifN30, localNights), [tarifNuit, tarifN15, tarifN30, localNights])
+  const pricing     = useMemo(() => calcStayPrice(tarifNuit, tarifN15, tarifN30, localNights), [tarifNuit, tarifN15, tarifN30, localNights])
 
   const fr = lang === 'fr'
 
@@ -589,11 +567,11 @@ export default function CategoryBookingForm({
                 <span className="text-charcoal/60 font-light">
                   {formatFCFA(tarifNuit)} × {localNights} {fr ? (localNights > 1 ? 'nuits' : 'nuit') : (localNights > 1 ? 'nights' : 'night')}
                 </span>
-                <span className="text-charcoal font-medium">{formatFCFA(localNights * tarifNuit)}</span>
+                <span className="text-charcoal font-medium">{formatFCFA(pricing.originalTotal)}</span>
               </div>
               {pricing.savings > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-green font-light">{fr ? 'Réduction' : 'Discount'} ({pricing.rateLabel})</span>
+                  <span className="text-green font-light">{fr ? 'Tarif préférentiel' : 'Discounted rate'} ({pricing.rateLabel})</span>
                   <span className="text-green font-semibold">− {formatFCFA(pricing.savings)}</span>
                 </div>
               )}

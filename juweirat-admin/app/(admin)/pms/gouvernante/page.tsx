@@ -89,7 +89,7 @@ export default function GouvernantePage() {
   const hs      = units.filter(u => u.horsService).length;
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className="flex flex-col min-h-full">
       <Header title="Gouvernante" />
       <div className="flex-1 p-6 space-y-6">
         {loading ? (

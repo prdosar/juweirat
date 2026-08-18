@@ -421,7 +421,7 @@ export default function FacturePrintPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 print:bg-white text-charcoal">
+    <div className="min-h-full flex flex-col bg-gray-100 print:bg-white text-charcoal">
       {/* Print styles */}
       <style>{`
         @page {

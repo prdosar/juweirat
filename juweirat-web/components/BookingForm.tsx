@@ -5,6 +5,8 @@ import { CheckCircle, User, Mail, Phone, Globe, CreditCard, Smartphone, Lock, Ch
 import type { Room } from '@/lib/api'
 import type { Lang } from '@/lib/i18n'
 
+import { calcStayPrice, nightsBetween, formatFCFA } from '@/lib/pricing'
+
 interface Props {
   room: Room
   lang: Lang
@@ -15,10 +17,6 @@ interface Props {
 }
 
 type PayMethod = 'fedapay' | 'stripe' | null
-
-function formatFCFA(n: number) {
-  return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(n) + ' FCFA'
-}
 
 function formatDate(d: string, lang: Lang) {
   if (!d) return '—'
@@ -33,26 +31,6 @@ function addDays(dStr: string, n: number) {
   const d = new Date(dStr + 'T00:00:00')
   d.setDate(d.getDate() + n)
   return toDateStr(d)
-}
-
-function nightsBetween(a: string, b: string) {
-  if (!a || !b) return 0
-  const d1 = new Date(a + 'T00:00:00').getTime()
-  const d2 = new Date(b + 'T00:00:00').getTime()
-  return Math.max(0, Math.round((d2 - d1) / 86400000))
-}
-
-function calcPrice(room: Room, nights: number) {
-  if (nights <= 0) return { total: 0, savings: 0, rateLabel: '', perNight: room.pricePerNight }
-  if (nights >= 30 && room.pricePerMonth) {
-    const total = room.pricePerMonth * nights
-    return { total, savings: nights * room.pricePerNight - total, rateLabel: 'forfait mensuel', perNight: room.pricePerMonth }
-  }
-  if (nights >= 15 && room.pricePerWeek) {
-    const total = room.pricePerWeek * nights
-    return { total, savings: nights * room.pricePerNight - total, rateLabel: 'forfait 15 jours', perNight: room.pricePerWeek }
-  }
-  return { total: nights * room.pricePerNight, savings: 0, rateLabel: `${nights} nuit${nights > 1 ? 's' : ''}`, perNight: room.pricePerNight }
 }
 
 function openPicker(ref: React.RefObject<HTMLInputElement | null>) {
@@ -82,7 +60,7 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
 
   /* Dynamic calculations */
   const localNights = useMemo(() => nightsBetween(localCheckIn, localCheckOut), [localCheckIn, localCheckOut])
-  const pricing     = useMemo(() => calcPrice(room, localNights), [room, localNights])
+  const pricing     = useMemo(() => calcStayPrice(room.pricePerNight, room.pricePerWeek, room.pricePerMonth, localNights), [room, localNights])
 
   const fr   = lang === 'fr'
   const name = fr ? room.nameFr : room.nameEn
@@ -596,11 +574,11 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
                 <span className="text-charcoal/60 font-light">
                   {formatFCFA(room.pricePerNight)} × {localNights} {fr ? (localNights > 1 ? 'nuits' : 'nuit') : (localNights > 1 ? 'nights' : 'night')}
                 </span>
-                <span className="text-charcoal font-medium">{formatFCFA(localNights * room.pricePerNight)}</span>
+                <span className="text-charcoal font-medium">{formatFCFA(pricing.originalTotal)}</span>
               </div>
               {pricing.savings > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-green font-light">{fr ? 'Réduction' : 'Discount'} ({pricing.rateLabel})</span>
+                  <span className="text-green font-light">{fr ? 'Tarif préférentiel' : 'Discounted rate'} ({pricing.rateLabel})</span>
                   <span className="text-green font-semibold">− {formatFCFA(pricing.savings)}</span>
                 </div>
               )}

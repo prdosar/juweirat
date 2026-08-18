@@ -35,6 +35,8 @@ export interface FolioDto {
   unitId: number;
   unitLabel: string;
   guest: string | null;
+  guestPhone?: string | null;
+  telephone?: string | null;
   nom: string | null;
   prenom: string | null;
   societe: string | null;

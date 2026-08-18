@@ -188,7 +188,7 @@ export default function RoomFormPage() {
   }
 
   if (loading) return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className="flex flex-col min-h-full">
       <Header title="Chambre" />
       <div className="flex-1 flex items-center justify-center">
         <div className="w-6 h-6 border-2 border-green/30 border-t-green rounded-full animate-spin" />
@@ -197,7 +197,7 @@ export default function RoomFormPage() {
   );
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className="flex flex-col min-h-full">
       <Header title={isNew ? 'Nouvelle chambre' : 'Modifier la chambre'} />
       <div className="flex-1 p-6 max-w-3xl">
         <Link href="/rooms" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-charcoal mb-5">

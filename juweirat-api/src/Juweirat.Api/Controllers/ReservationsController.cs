@@ -14,6 +14,10 @@ public class ReservationsController(ReservationService reservationService) : Con
     public async Task<IActionResult> GetAll([FromQuery] string? status)
         => Ok(await reservationService.GetAllAsync(status));
 
+    [HttpGet("paged")]
+    public async Task<IActionResult> GetPaged([FromQuery] ReservationFilterParams filter)
+        => Ok(await reservationService.GetPagedAsync(filter));
+
     [HttpGet("{id:long}")]
     public async Task<IActionResult> GetById(long id)
     {

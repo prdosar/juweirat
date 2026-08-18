@@ -132,7 +132,7 @@ export default function MessagesPage() {
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col min-h-full md:h-full overflow-hidden">
       <Header title="Messages & Demandes de Contact" />
 
       <div className="flex-1 p-6 flex flex-col min-h-0 max-w-7xl w-full mx-auto space-y-4">
@@ -168,7 +168,7 @@ export default function MessagesPage() {
         </div>
 
         {/* Master-Detail Container */}
-        <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-[500px] md:min-h-0 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           
           {/* ── LEFT PANE: Message List ── */}
           <div className="w-full md:w-80 lg:w-96 border-r border-gray-100 flex flex-col shrink-0 min-h-0">

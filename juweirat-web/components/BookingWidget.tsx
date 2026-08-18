@@ -5,30 +5,11 @@ import { CalendarDays, Users, Baby, ArrowRight, TrendingDown } from 'lucide-reac
 import type { Room } from '@/lib/api'
 import type { Lang } from '@/lib/i18n'
 
+import { calcStayPrice, nightsBetween, formatFCFA } from '@/lib/pricing'
+
 interface Props {
   room: Room
   lang: Lang
-}
-
-function calcPrice(room: Room, nights: number) {
-  if (nights <= 0) return null
-  if (nights >= 28 && room.pricePerMonth) {
-    const months    = Math.floor(nights / 28)
-    const remaining = nights % 28
-    const total     = months * room.pricePerMonth + remaining * room.pricePerNight
-    return { total, rateLabel: months > 1 ? `${months} mois` : '1 mois', savings: nights * room.pricePerNight - total }
-  }
-  if (nights >= 7 && room.pricePerWeek) {
-    const weeks     = Math.floor(nights / 7)
-    const remaining = nights % 7
-    const total     = weeks * room.pricePerWeek + remaining * room.pricePerNight
-    return { total, rateLabel: weeks > 1 ? `${weeks} semaines` : '1 semaine', savings: nights * room.pricePerNight - total }
-  }
-  return { total: nights * room.pricePerNight, rateLabel: `${nights} nuit${nights > 1 ? 's' : ''}`, savings: 0 }
-}
-
-function formatFCFA(n: number) {
-  return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(n) + ' FCFA'
 }
 
 function toDateStr(d: Date) {
@@ -36,12 +17,6 @@ function toDateStr(d: Date) {
 }
 
 function today() { return toDateStr(new Date()) }
-
-function nightsBetween(a: string, b: string) {
-  if (!a || !b) return 0
-  const diff = new Date(b).getTime() - new Date(a).getTime()
-  return Math.max(0, Math.round(diff / 86400000))
-}
 
 function openPicker(ref: React.RefObject<HTMLInputElement | null>) {
   try { ref.current?.showPicker() } catch { ref.current?.focus() }
@@ -59,7 +34,7 @@ export default function BookingWidget({ room, lang }: Props) {
   const [children, setChildren] = useState(0)
 
   const nights = nightsBetween(checkIn, checkOut)
-  const sim    = nights > 0 ? calcPrice(room, nights) : null
+  const sim    = nights > 0 ? calcStayPrice(room.pricePerNight, room.pricePerWeek, room.pricePerMonth, nights) : null
 
   const minCheckOut = checkIn
     ? toDateStr(new Date(new Date(checkIn).getTime() + 86400000))
@@ -181,7 +156,7 @@ export default function BookingWidget({ room, lang }: Props) {
               <span className="text-charcoal/50 font-light">
                 {formatFCFA(room.pricePerNight)} × {nights} {fr ? (nights > 1 ? 'nuits' : 'nuit') : (nights > 1 ? 'nights' : 'night')}
               </span>
-              <span className="text-charcoal/70">{formatFCFA(nights * room.pricePerNight)}</span>
+              <span className="text-charcoal/70">{formatFCFA(sim.originalTotal)}</span>
             </div>
             {sim.savings > 0 && (
               <div className="flex justify-between text-sm items-center">

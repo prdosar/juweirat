@@ -1,7 +1,9 @@
+using Juweirat.Application.Common.Pagination;
 using Juweirat.Application.DTOs.Reservations;
 using Juweirat.Domain.Entities;
 using Juweirat.Domain.Enums;
 using Juweirat.Infrastructure.Data;
+using Juweirat.Infrastructure.Extensions;
 using Microsoft.EntityFrameworkCore;
 using FolioStatus = Juweirat.Domain.Enums.FolioResaStatus;
 
@@ -9,6 +11,71 @@ namespace Juweirat.Infrastructure.Services;
 
 public class ReservationService(AppDbContext db)
 {
+    public async Task<PagedResult<ReservationDto>> GetPagedAsync(ReservationFilterParams filter)
+    {
+        var query = db.Reservations
+            .Include(r => r.Room)
+            .Include(r => r.Category)
+            .Include(r => r.Client)
+            .Include(r => r.Payments)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(filter.Search))
+        {
+            var search = filter.Search.Trim().ToLower();
+            query = query.Where(r =>
+                r.Reference.ToLower().Contains(search) ||
+                r.Client.FirstName.ToLower().Contains(search) ||
+                r.Client.LastName.ToLower().Contains(search) ||
+                (r.Client.Email != null && r.Client.Email.ToLower().Contains(search)) ||
+                (r.Client.Phone != null && r.Client.Phone.Contains(search)) ||
+                (r.Room != null && r.Room.RoomNumber.ToLower().Contains(search)) ||
+                (r.Room != null && r.Room.NameFr.ToLower().Contains(search)) ||
+                (r.Category != null && r.Category.NameFr.ToLower().Contains(search)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Status) && Enum.TryParse<ReservationStatus>(filter.Status, true, out var st))
+        {
+            query = query.Where(r => r.Status == st);
+        }
+
+        if (filter.CategoryId.HasValue)
+            query = query.Where(r => r.CategoryId == filter.CategoryId.Value);
+
+        if (filter.RoomId.HasValue)
+            query = query.Where(r => r.RoomId == filter.RoomId.Value);
+
+        if (filter.ClientId.HasValue)
+            query = query.Where(r => r.ClientId == filter.ClientId.Value);
+
+        if (filter.StartDate.HasValue)
+            query = query.Where(r => r.CheckInDate >= filter.StartDate.Value);
+
+        if (filter.EndDate.HasValue)
+            query = query.Where(r => r.CheckInDate <= filter.EndDate.Value);
+
+        if (!string.IsNullOrWhiteSpace(filter.Source))
+            query = query.Where(r => r.Source != null && r.Source.ToLower() == filter.Source.ToLower());
+
+        if (!string.IsNullOrWhiteSpace(filter.PaymentStatus))
+        {
+            var payStatus = filter.PaymentStatus.ToLower();
+            if (payStatus == "paid")
+                query = query.Where(r => r.Payments.Sum(p => p.Amount) >= r.TotalPrice);
+            else if (payStatus == "partial")
+                query = query.Where(r => r.Payments.Sum(p => p.Amount) > 0 && r.Payments.Sum(p => p.Amount) < r.TotalPrice);
+            else if (payStatus == "unpaid")
+                query = query.Where(r => !r.Payments.Any() || r.Payments.Sum(p => p.Amount) == 0);
+        }
+
+        if (string.IsNullOrWhiteSpace(filter.SortBy))
+        {
+            query = query.OrderByDescending(r => r.CreatedAt);
+        }
+
+        return await query.ToPagedResultAsync(filter, ToDto);
+    }
+
     public async Task<List<ReservationDto>> GetAllAsync(string? status = null)
     {
         var query = db.Reservations
@@ -90,7 +157,7 @@ public class ReservationService(AppDbContext db)
         var reservation = new Reservation
         {
             Reference             = await GenerateReferenceAsync(),
-            CategoryId            = req.CategoryId,
+            CategoryId            = category.Id,
             RoomId                = room?.Id,
             ClientId              = req.ClientId,
             CheckInDate           = req.CheckInDate,

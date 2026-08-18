@@ -10,6 +10,14 @@ namespace Juweirat.Api.Controllers;
 [Authorize]
 public class PaymentsController(PaymentService paymentService) : ControllerBase
 {
+    [HttpGet]
+    public async Task<IActionResult> GetAll()
+        => Ok(await paymentService.GetAllAsync());
+
+    [HttpGet("paged")]
+    public async Task<IActionResult> GetPaged([FromQuery] PaymentFilterParams filter)
+        => Ok(await paymentService.GetPagedAsync(filter));
+
     [HttpGet("reservation/{reservationId:long}")]
     public async Task<IActionResult> GetByReservation(long reservationId)
         => Ok(await paymentService.GetByReservationAsync(reservationId));

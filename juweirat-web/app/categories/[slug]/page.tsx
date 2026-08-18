@@ -6,6 +6,7 @@ import { ArrowLeft, ArrowRight, Users, Home, Zap, Camera, ShieldCheck, Sparkles,
 import { getLang } from '@/lib/lang'
 import { getCategoryBySlug, getRooms } from '@/lib/api'
 import { getCategoryPhotos } from '@/lib/categoryPhotos'
+import CategoryHeroCarousel from '@/components/CategoryHeroCarousel'
 
 interface Props {
   params: Promise<{ slug: string }>
@@ -39,7 +40,7 @@ export default async function CategoryPage({ params }: Props) {
   const gammeLabel = GAMME_LABELS[lang]?.[cat.pmsGamme] ?? cat.pmsGamme
 
   // Real photos mapped specifically to this category
-  const categoryPhotos = getCategoryPhotos(slug)
+  const categoryPhotos = getCategoryPhotos(slug, cat)
   const coverSrc = categoryPhotos.hero
   const galleryImages = categoryPhotos.gallery
 
@@ -63,31 +64,13 @@ export default async function CategoryPage({ params }: Props) {
           {/* LEFT: Info + Photo Gallery */}
           <div className="lg:col-span-3 space-y-8">
 
-            {/* Hero Cover */}
-            <div className="relative h-80 sm:h-96 overflow-hidden rounded-2xl bg-charcoal/5 shadow-md group">
-              <Image
-                src={coverSrc}
-                alt={name}
-                fill
-                className="object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
-                sizes="(max-width: 1024px) 100vw, 60vw"
-                priority
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-charcoal/60 via-transparent to-black/20" />
-              <div className="absolute top-4 left-4 flex gap-2">
-                <span className="text-[10px] tracking-widest uppercase bg-charcoal/80 text-white px-3 py-1 font-semibold rounded-md backdrop-blur-md">
-                  {cat.pmsType}
-                </span>
-                <span className="text-[10px] tracking-widest uppercase bg-green text-charcoal px-3 py-1 font-bold rounded-md shadow-sm">
-                  {gammeLabel}
-                </span>
-              </div>
-              <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-white text-xs">
-                <span className="flex items-center gap-1.5 bg-black/40 px-3 py-1.5 rounded-full backdrop-blur-sm">
-                  <Camera size={13} /> {galleryImages.length} photos disponibles
-                </span>
-              </div>
-            </div>
+            {/* Hero Carousel */}
+            <CategoryHeroCarousel
+              images={galleryImages}
+              name={name}
+              pmsType={cat.pmsType}
+              gammeLabel={gammeLabel}
+            />
 
             {/* Title + description */}
             <div>

@@ -14,6 +14,10 @@ public class ClientsController(ClientService clientService) : ControllerBase
     public async Task<IActionResult> GetAll([FromQuery] string? search)
         => Ok(await clientService.GetAllAsync(search));
 
+    [HttpGet("paged")]
+    public async Task<IActionResult> GetPaged([FromQuery] ClientFilterParams filter)
+        => Ok(await clientService.GetPagedAsync(filter));
+
     [HttpGet("{id:long}")]
     public async Task<IActionResult> GetById(long id)
     {

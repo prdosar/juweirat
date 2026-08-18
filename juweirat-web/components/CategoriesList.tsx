@@ -117,7 +117,7 @@ export default function CategoriesList({ categories, lang }: Props) {
             const desc = fr ? cat.descriptionFr : cat.descriptionEn
             const gammeLabel = GAMME_LABELS[lang]?.[cat.pmsGamme] ?? cat.pmsGamme
             const typeLabel  = TYPE_LABELS[lang]?.[cat.pmsType] ?? cat.pmsType
-            const photos = getCategoryPhotos(cat.slug)
+            const photos = getCategoryPhotos(cat.slug, cat)
 
             return (
               <Link

@@ -107,6 +107,77 @@ public class PmsService(AppDbContext db)
 
     // ── Folios ───────────────────────────────────────────────────────────────
 
+    public async Task<Juweirat.Application.Common.Pagination.PagedResult<FolioDto>> GetPagedFoliosAsync(FolioFilterParams filter)
+    {
+        var query = db.Folios.Include(f => f.Unit).AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(filter.Search))
+        {
+            var search = filter.Search.Trim().ToLower();
+            query = query.Where(f =>
+                f.Number.ToLower().Contains(search) ||
+                (f.Guest != null && f.Guest.ToLower().Contains(search)) ||
+                (f.Nom != null && f.Nom.ToLower().Contains(search)) ||
+                (f.Prenom != null && f.Prenom.ToLower().Contains(search)) ||
+                (f.Societe != null && f.Societe.ToLower().Contains(search)) ||
+                (f.Reservataire != null && f.Reservataire.ToLower().Contains(search)) ||
+                (f.Note != null && f.Note.ToLower().Contains(search)) ||
+                f.Unit.NameFr.ToLower().Contains(search) ||
+                (f.Unit.PmsRoomNo != null && f.Unit.PmsRoomNo.Contains(search)) ||
+                f.Unit.RoomNumber.Contains(search));
+        }
+
+        if (filter.Closed.HasValue)
+            query = query.Where(f => f.Closed == filter.Closed.Value);
+
+        if (filter.UnitId.HasValue)
+            query = query.Where(f => f.UnitId == filter.UnitId.Value);
+
+        if (!string.IsNullOrWhiteSpace(filter.ResaStatus) && Enum.TryParse<FolioStatus>(filter.ResaStatus, true, out var s))
+            query = query.Where(f => f.ResaStatus == s);
+
+        if (!string.IsNullOrWhiteSpace(filter.Segment) && Enum.TryParse<FolioSegment>(filter.Segment, true, out var seg))
+            query = query.Where(f => f.Segment == seg);
+
+        if (filter.ArrivalFrom.HasValue)
+            query = query.Where(f => f.Arrival >= filter.ArrivalFrom.Value);
+
+        if (filter.ArrivalTo.HasValue)
+            query = query.Where(f => f.Arrival <= filter.ArrivalTo.Value);
+
+        if (filter.DepartureFrom.HasValue)
+            query = query.Where(f => f.Departure >= filter.DepartureFrom.Value);
+
+        if (filter.DepartureTo.HasValue)
+            query = query.Where(f => f.Departure <= filter.DepartureTo.Value);
+
+        if (string.IsNullOrWhiteSpace(filter.SortBy))
+        {
+            query = query.OrderByDescending(f => f.CreatedAt);
+        }
+
+        var pagedResult = await Juweirat.Infrastructure.Extensions.QueryableExtensions.ToPagedResultAsync(query, filter, ToFolioDto);
+
+        if (!string.IsNullOrWhiteSpace(filter.BalanceStatus))
+        {
+            var bs = filter.BalanceStatus.ToLower();
+            if (bs == "with_balance")
+            {
+                var filteredItems = pagedResult.Items.Where(f => f.Solde > 0).ToList();
+                return new Juweirat.Application.Common.Pagination.PagedResult<FolioDto>(
+                    filteredItems, pagedResult.TotalCount, pagedResult.PageNumber, pagedResult.PageSize);
+            }
+            else if (bs == "settled")
+            {
+                var filteredItems = pagedResult.Items.Where(f => f.Solde == 0).ToList();
+                return new Juweirat.Application.Common.Pagination.PagedResult<FolioDto>(
+                    filteredItems, pagedResult.TotalCount, pagedResult.PageNumber, pagedResult.PageSize);
+            }
+        }
+
+        return pagedResult;
+    }
+
     public async Task<List<FolioDto>> GetFoliosAsync(bool? closed = null, long? unitId = null, string? resaStatus = null)
     {
         var query = db.Folios.Include(f => f.Unit).AsQueryable();

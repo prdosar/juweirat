@@ -64,6 +64,10 @@ public class PmsController(PmsService pms, ClotureService cloture, FactureServic
         [FromQuery] string? status = null)
         => Ok(await pms.GetFoliosAsync(closed, unitId, status));
 
+    [HttpGet("folios/paged")]
+    public async Task<IActionResult> GetPagedFolios([FromQuery] FolioFilterParams filter)
+        => Ok(await pms.GetPagedFoliosAsync(filter));
+
     [HttpGet("folios/{id:long}")]
     public async Task<IActionResult> GetFolio(long id)
     {

@@ -38,7 +38,7 @@ export default function CloturePage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className="flex flex-col min-h-full">
       <Header title="Clôture journalière" />
       <div className="flex-1 p-6 space-y-5 max-w-3xl">
         {loading ? (

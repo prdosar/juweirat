@@ -33,6 +33,8 @@ export interface RoomCategory {
   tarifN15: number
   tarifN30: number
   roomCount: number
+  images?: RoomImage[]
+  coverImage?: string | null
 }
 
 export interface Room {

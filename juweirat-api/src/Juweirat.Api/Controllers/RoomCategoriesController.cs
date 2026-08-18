@@ -7,8 +7,10 @@ namespace Juweirat.Api.Controllers;
 
 [ApiController]
 [Route("api/room-categories")]
-public class RoomCategoriesController(RoomCategoryService svc) : ControllerBase
+public class RoomCategoriesController(RoomCategoryService svc, IWebHostEnvironment env) : ControllerBase
 {
+    private string UploadsPath => Path.Combine(env.ContentRootPath, "uploads");
+
     [HttpGet]
     public async Task<IActionResult> GetAll() => Ok(await svc.GetAllAsync());
 
@@ -52,4 +54,52 @@ public class RoomCategoriesController(RoomCategoryService svc) : ControllerBase
         var cat = await svc.UpdateAsync(id, req);
         return cat is null ? NotFound() : Ok(cat);
     }
+
+    // ── Images ────────────────────────────────────────────────────────────────
+
+    [Authorize]
+    [HttpPost("{id:long}/images")]
+    [RequestSizeLimit(20_000_000)]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UploadImage(long id, [FromForm] IFormFile? file)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { error = "Aucun fichier fourni" });
+
+        var allowed = new[] { ".jpg", ".jpeg", ".png", ".webp" };
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!allowed.Contains(ext))
+            return BadRequest(new { error = "Formats acceptés : JPG, PNG, WEBP" });
+
+        var image = await svc.UploadImageAsync(id, file.OpenReadStream(), ext, UploadsPath);
+        return image is null ? NotFound() : Ok(image);
+    }
+
+    [Authorize]
+    [HttpDelete("{id:long}/images/{imageId:long}")]
+    public async Task<IActionResult> DeleteImage(long id, long imageId)
+    {
+        var deleted = await svc.DeleteImageAsync(id, imageId, UploadsPath);
+        return deleted ? NoContent() : NotFound();
+    }
+
+    [Authorize]
+    [HttpPatch("{id:long}/images/{imageId:long}/cover")]
+    public async Task<IActionResult> SetCover(long id, long imageId)
+    {
+        var ok = await svc.SetCoverAsync(id, imageId);
+        return ok ? NoContent() : NotFound();
+    }
+
+    [Authorize]
+    [HttpPut("{id:long}/images/reorder")]
+    public async Task<IActionResult> ReorderImages(long id, [FromBody] ReorderImagesRequest req)
+    {
+        if (req.ImageIds == null || req.ImageIds.Count == 0)
+            return BadRequest(new { error = "ImageIds list cannot be empty" });
+
+        var ok = await svc.ReorderImagesAsync(id, req.ImageIds);
+        return ok ? NoContent() : NotFound();
+    }
 }
+

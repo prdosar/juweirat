@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard, BedDouble, Users, CalendarCheck,
+  LayoutDashboard, LayoutGrid, BedDouble, Users, CalendarCheck,
   CreditCard, LogOut, CalendarDays, Building2,
   ClipboardList, Wrench, Receipt, FileText, Settings,
   BarChart2, Printer, Mail,
@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 
 const navItems = [
   { href: '/dashboard',    label: 'Tableau de bord', icon: LayoutDashboard },
+  { href: '/categories',   label: 'Catégories',      icon: LayoutGrid      },
   { href: '/rooms',        label: 'Chambres',         icon: BedDouble       },
   { href: '/clients',      label: 'Clients',          icon: Users           },
   { href: '/reservations', label: 'Réservations',     icon: CalendarCheck   },

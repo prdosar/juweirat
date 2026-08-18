@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { auth } from '@/lib/api';
 import { saveAuth } from '@/lib/auth';
@@ -30,7 +31,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-charcoal relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-charcoal relative overflow-y-auto py-8 px-4">
       {/* Subtle background decoration */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-0 right-0 w-96 h-96 bg-green/5 rounded-full -translate-y-1/2 translate-x-1/2" />
@@ -39,13 +40,15 @@ export default function LoginPage() {
 
       <div className="w-full max-w-sm relative z-10">
         {/* Logo */}
-        <div className="flex flex-col items-center mb-6">
-          <div className="bg-white px-6 py-3.5 rounded-2xl shadow-xl border border-gray-100 flex items-center justify-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+        <div className="flex flex-col items-center mb-6 text-center">
+          <div className="relative h-14 w-48 flex items-center justify-center">
+            <Image
               src="/img/logo.png"
               alt="Résidence Juweirat"
+              width={180}
+              height={70}
               className="h-12 w-auto object-contain"
+              priority
             />
           </div>
           <p className="text-white/40 text-[9.5px] tracking-[0.35em] mt-3 uppercase font-semibold">

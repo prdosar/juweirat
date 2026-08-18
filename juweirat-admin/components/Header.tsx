@@ -22,7 +22,7 @@ export default function Header({ title }: Props) {
     .toUpperCase() ?? '';
 
   return (
-    <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-between px-6 shrink-0">
+    <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-between px-6 shrink-0 sticky top-0 z-10">
       <div className="flex items-center gap-3">
         <div className="w-0.5 h-5 bg-green rounded-full shrink-0" />
         <h1 className="text-sm font-semibold text-charcoal tracking-wide">{title}</h1>

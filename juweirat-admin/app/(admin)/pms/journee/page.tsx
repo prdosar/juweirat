@@ -98,7 +98,7 @@ export default function JourneePage() {
   const toClean   = folios.filter(f => f.checkedIn && !f.closed); // placeholder
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className="flex flex-col min-h-full">
       <Header title="Écran journée" />
       <div className="flex-1 p-6 space-y-5">
         {loading ? (

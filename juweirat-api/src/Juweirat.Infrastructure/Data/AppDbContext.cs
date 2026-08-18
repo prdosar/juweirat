@@ -74,6 +74,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasOne(i => i.Room)
              .WithMany(r => r.Images)
              .HasForeignKey(i => i.RoomId)
+             .IsRequired(false)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(i => i.Category)
+             .WithMany(c => c.Images)
+             .HasForeignKey(i => i.CategoryId)
+             .IsRequired(false)
              .OnDelete(DeleteBehavior.Cascade);
         });
 

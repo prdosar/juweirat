@@ -14,7 +14,9 @@ public record RoomCategoryDto(
     int TarifNuit,
     int TarifN15,
     int TarifN30,
-    int RoomCount
+    int RoomCount,
+    List<RoomImageDto> Images,
+    string? CoverImage
 );
 
 public record CreateRoomCategoryRequest(
@@ -29,4 +31,8 @@ public record CreateRoomCategoryRequest(
     int TarifNuit,
     int TarifN15,
     int TarifN30
+);
+
+public record ReorderImagesRequest(
+    List<long> ImageIds
 );

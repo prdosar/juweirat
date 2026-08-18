@@ -1,8 +1,10 @@
 using Juweirat.Application.DTOs.Clients;
 using Juweirat.Application.DTOs.Reservations;
+using Juweirat.Infrastructure.Data;
 using Juweirat.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Api.Controllers;
 
@@ -10,6 +12,7 @@ namespace Juweirat.Api.Controllers;
 [Route("api/[controller]")]
 [AllowAnonymous]
 public class PublicController(
+    AppDbContext db,
     ClientService clientService,
     ReservationService reservationService,
     RoomCategoryService categorySvc,
@@ -26,23 +29,48 @@ public class PublicController(
     [HttpPost("booking")]
     public async Task<IActionResult> CreateBooking([FromBody] PublicBookingRequest req)
     {
-        var clients = await clientService.GetAllAsync(req.Email ?? req.Phone);
-        var client = clients.FirstOrDefault(c => c.Email == req.Email || c.Phone == req.Phone);
+        string? emailTrim = req.Email?.Trim();
+        string? phoneTrim = req.Phone?.Trim();
+
+        var client = await db.Clients.FirstOrDefaultAsync(c =>
+            (!string.IsNullOrEmpty(emailTrim) && c.Email != null && c.Email.ToLower() == emailTrim.ToLower()) ||
+            (!string.IsNullOrEmpty(phoneTrim) && c.Phone != null && c.Phone == phoneTrim));
 
         if (client == null)
         {
-            var (newClient, errClient) = await clientService.CreateAsync(new CreateClientRequest(
-                req.FirstName, req.LastName, req.Email, req.Phone, req.Nationality, null, null, null, null, null
-            ));
-            
-            if (errClient != null) return Conflict(new { error = errClient });
+            var newClient = new Juweirat.Domain.Entities.Client
+            {
+                FirstName   = string.IsNullOrWhiteSpace(req.FirstName) ? "Client" : req.FirstName.Trim(),
+                LastName    = string.IsNullOrWhiteSpace(req.LastName) ? "Web" : req.LastName.Trim(),
+                Email       = emailTrim,
+                Phone       = phoneTrim,
+                Nationality = req.Nationality,
+            };
+            db.Clients.Add(newClient);
+            await db.SaveChangesAsync();
             client = newClient;
         }
 
+        // If RoomId is passed, resolve CategoryId if it was not explicitly provided
+        long categoryId = req.CategoryId;
+        if (categoryId <= 0 && req.RoomId.HasValue)
+        {
+            var r = await db.Rooms.FindAsync(req.RoomId.Value);
+            if (r?.CategoryId.HasValue == true)
+            {
+                categoryId = r.CategoryId.Value;
+            }
+        }
+        if (categoryId <= 0)
+        {
+            var firstCat = await db.RoomCategories.FirstOrDefaultAsync();
+            if (firstCat != null) categoryId = firstCat.Id;
+        }
+
         var createRes = new CreateReservationRequest(
-            CategoryId: req.CategoryId,
+            CategoryId: categoryId,
             RoomId: req.RoomId,
-            ClientId: client!.Id,
+            ClientId: client.Id,
             CheckInDate: req.CheckInDate,
             CheckOutDate: req.CheckOutDate,
             Adults: req.Adults,

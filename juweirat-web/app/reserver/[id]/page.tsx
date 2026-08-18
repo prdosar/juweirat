@@ -19,36 +19,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: `Réserver ${room.nameFr} — Résidence Juweirat` }
 }
 
-function nightsBetween(a: string, b: string) {
-  const diff = new Date(b).getTime() - new Date(a).getTime()
-  return Math.max(0, Math.round(diff / 86400000))
-}
-
-function calcPrice(room: Awaited<ReturnType<typeof getRoomById>>, nights: number) {
-  if (!room || nights <= 0) return { total: 0, savings: 0, rateLabel: '' }
-  if (nights >= 30 && room.pricePerMonth) {
-    const total   = room.pricePerMonth * nights
-    const savings = nights * room.pricePerNight - total
-    return { total, savings, rateLabel: 'forfait mensuel' }
-  }
-  if (nights >= 15 && room.pricePerWeek) {
-    const total   = room.pricePerWeek * nights
-    const savings = nights * room.pricePerNight - total
-    return { total, savings, rateLabel: 'forfait 15 jours' }
-  }
-  return { total: nights * room.pricePerNight, savings: 0, rateLabel: `${nights} nuit${nights > 1 ? 's' : ''}` }
-}
-
-function formatFCFA(n: number) {
-  return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(n) + ' FCFA'
-}
-
-function formatDate(d: string, lang: 'fr' | 'en') {
-  return new Date(d).toLocaleDateString(lang === 'fr' ? 'fr-FR' : 'en-GB', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  })
-}
-
 function toDateStr(d: Date) { return d.toISOString().split('T')[0] }
 
 export default async function ReserverPage({ params, searchParams }: Props) {

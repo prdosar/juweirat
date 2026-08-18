@@ -22,4 +22,5 @@ public class RoomCategory
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<Room> Rooms { get; set; } = [];
+    public ICollection<RoomImage> Images { get; set; } = [];
 }

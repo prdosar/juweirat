@@ -155,7 +155,7 @@ export default function NewReservationPage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className="flex flex-col min-h-full">
       <Header title="Création de Réservation PMS" />
       <div className="flex-1 p-6 max-w-4xl mx-auto w-full space-y-6">
         

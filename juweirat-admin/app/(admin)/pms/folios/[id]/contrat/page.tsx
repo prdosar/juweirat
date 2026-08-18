@@ -615,7 +615,7 @@ export default function ContratPage() {
   const isLongStay = data.nights >= 30;
 
   return (
-    <div className="min-h-screen bg-gray-100 print:bg-white">
+    <div className="min-h-full flex flex-col bg-gray-100 print:bg-white">
       {/* Print styles */}
       <style>{`
         @page {

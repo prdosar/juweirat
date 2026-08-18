@@ -169,7 +169,7 @@ export default function FolioDetailPage() {
   const avoir = Math.max(0, f.paid + f.arrhes - f.totalGeneral);
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className="flex flex-col min-h-full">
       <Header title={`Folio ${f.number}`} />
       <div className="flex-1 p-6 max-w-3xl space-y-5">
 
