@@ -43,4 +43,13 @@ public class PrestationsController(PrestationAnnexeService svc) : ControllerBase
         var deleted = await svc.DeleteAsync(id);
         return deleted ? NoContent() : NotFound();
     }
+
+    [Authorize]
+    [HttpGet("{id:long}/consumptions")]
+    public async Task<IActionResult> GetConsumptions(long id, [FromQuery] DateOnly from, [FromQuery] DateOnly to)
+    {
+        if (from > to) return BadRequest(new { error = "'from' must be earlier than 'to'." });
+        var list = await svc.GetConsumptionsAsync(id, from, to);
+        return Ok(list);
+    }
 }

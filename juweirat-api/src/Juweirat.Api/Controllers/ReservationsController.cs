@@ -48,4 +48,30 @@ public class ReservationsController(ReservationService reservationService) : Con
         if (error is not null) return BadRequest(new { error });
         return dto is null ? NotFound() : Ok(dto);
     }
+
+    public record ProcessCancellationRequest(string? Reason = null);
+
+    [HttpPost("{id:long}/process-cancellation")]
+    public async Task<IActionResult> ProcessCancellation(long id, [FromBody] ProcessCancellationRequest? req)
+    {
+        var (dto, error) = await reservationService.ProcessCancellationAsync(id, req?.Reason);
+        if (error is not null) return BadRequest(new { error });
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    [HttpPatch("{id:long}")]
+    public async Task<IActionResult> Update(long id, [FromBody] UpdateReservationRequest req)
+    {
+        var (dto, error) = await reservationService.UpdateAsync(id, req);
+        if (error is not null) return BadRequest(new { error });
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    [HttpGet("tarif-preview")]
+    public async Task<IActionResult> GetTarifPreview([FromQuery] long clientId, [FromQuery] long categoryId, [FromQuery] int nights = 1)
+    {
+        if (clientId <= 0 || categoryId <= 0) return BadRequest(new { error = "clientId and categoryId are required" });
+        var dto = await reservationService.GetTarifPreviewAsync(clientId, categoryId, nights);
+        return dto is null ? NotFound(new { error = "Category not found" }) : Ok(dto);
+    }
 }

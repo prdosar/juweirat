@@ -66,6 +66,62 @@ public class PrestationAnnexeService(AppDbContext db)
         return true;
     }
 
+    public async Task<List<PrestationConsumptionDto>> GetConsumptionsAsync(long prestationId, DateOnly from, DateOnly to)
+    {
+        // Prestations rattachées à une réservation : la "date de consommation" est le check-in
+        // (la prestation est facturée sur toute la durée du séjour à partir de cette date).
+        // Bornes en UTC : Npgsql refuse les DateTime Kind=Unspecified pour timestamptz.
+        var fromDt = from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var toDt   = to.ToDateTime(TimeOnly.MaxValue,   DateTimeKind.Utc);
+
+        var fromReservations = await db.Set<ReservationPrestation>()
+            .Include(rp => rp.Reservation).ThenInclude(r => r.Client)
+            .Include(rp => rp.Reservation).ThenInclude(r => r.Room)
+            .Where(rp => rp.PrestationId == prestationId)
+            .Where(rp => rp.Reservation.CheckInDate <= to && rp.Reservation.CheckOutDate >= from)
+            .Select(rp => new PrestationConsumptionDto(
+                "Reservation",
+                rp.Reservation.Id,
+                rp.Reservation.Reference,
+                rp.Reservation.CheckInDate,
+                rp.Reservation.ClientId,
+                rp.Reservation.Client.FullName,
+                rp.Reservation.RoomId,
+                rp.Reservation.Room != null ? rp.Reservation.Room.RoomNumber : null,
+                rp.Reservation.Room != null ? rp.Reservation.Room.NameFr    : null,
+                rp.Quantite,
+                rp.PrixUnitaireSnapshot,
+                rp.TotalLigne
+            ))
+            .ToListAsync();
+
+        // Ventes directes : la date de consommation est CreatedAt.
+        var fromDirectSales = await db.Set<VenteDirecte>()
+            .Include(v => v.Client)
+            .Include(v => v.Folio).ThenInclude(f => f!.Unit)
+            .Where(v => v.PrestationId == prestationId)
+            .Where(v => v.CreatedAt >= fromDt && v.CreatedAt <= toDt)
+            .Select(v => new PrestationConsumptionDto(
+                "VenteDirecte",
+                v.Id,
+                v.Folio != null ? v.Folio.Number : null,
+                DateOnly.FromDateTime(v.CreatedAt),
+                v.ClientId,
+                v.Client != null ? v.Client.FullName : v.ClientNom,
+                v.Folio != null ? (long?)v.Folio.UnitId : null,
+                v.Folio != null ? v.Folio.Unit.RoomNumber : null,
+                v.Folio != null ? v.Folio.Unit.NameFr    : null,
+                v.Quantite,
+                v.PrixUnitaireSnapshot,
+                v.Total
+            ))
+            .ToListAsync();
+
+        return fromReservations.Concat(fromDirectSales)
+            .OrderByDescending(c => c.Date)
+            .ToList();
+    }
+
     private static PrestationAnnexeDto ToDto(PrestationAnnexe p) => new(
         p.Id, p.NameFr, p.NameEn, p.Icon, p.Mode,
         p.PrixInclus, p.PrixSeule, p.IsActive, p.SortOrder

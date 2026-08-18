@@ -1,6 +1,8 @@
+using Juweirat.Application.Common.Pagination;
 using Juweirat.Application.DTOs.Companies;
 using Juweirat.Domain.Entities;
 using Juweirat.Infrastructure.Data;
+using Juweirat.Infrastructure.Extensions;
 using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Infrastructure.Services;
@@ -14,6 +16,32 @@ public class CompanyService(AppDbContext db)
             .OrderBy(c => c.Name)
             .ToListAsync();
         return list.Select(ToDto).ToList();
+    }
+
+    public async Task<PagedResult<CompanyDto>> GetPagedAsync(CompanyFilterParams filter)
+    {
+        var query = db.Companies
+            .Include(c => c.Clients)
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(filter.Search))
+        {
+            var search = filter.Search.Trim().ToLower();
+            query = query.Where(c =>
+                c.Name.ToLower().Contains(search) ||
+                (c.ResponsableNom != null && c.ResponsableNom.ToLower().Contains(search)) ||
+                (c.Ville          != null && c.Ville.ToLower().Contains(search)) ||
+                (c.Email          != null && c.Email.ToLower().Contains(search)) ||
+                (c.Phone          != null && c.Phone.ToLower().Contains(search)));
+        }
+
+        if (filter.IsActive.HasValue)
+            query = query.Where(c => c.IsActive == filter.IsActive.Value);
+
+        if (string.IsNullOrWhiteSpace(filter.SortBy))
+            query = query.OrderBy(c => c.Name);
+
+        return await query.ToPagedResultAsync(filter, ToDto);
     }
 
     public async Task<CompanyDetailDto?> GetByIdAsync(long id)
@@ -115,6 +143,47 @@ public class CompanyService(AppDbContext db)
         client.CompanyId = null;
         await db.SaveChangesAsync();
         return (true, null);
+    }
+
+    public async Task<List<CompanyStayDto>> GetStaysAsync(long companyId, DateOnly from, DateOnly to)
+    {
+        // Séjours réels (occupation confirmée / en cours / passée) qui chevauchent la période demandée.
+        var stays = await db.Reservations
+            .Include(r => r.Client)
+            .Include(r => r.Category)
+            .Include(r => r.Room)
+            .Where(r => r.Client.CompanyId == companyId)
+            .Where(r =>
+                r.Status == Juweirat.Domain.Enums.ReservationStatus.Confirmed ||
+                r.Status == Juweirat.Domain.Enums.ReservationStatus.CheckedIn ||
+                r.Status == Juweirat.Domain.Enums.ReservationStatus.CheckedOut)
+            .Where(r => r.CheckInDate <= to && r.CheckOutDate >= from)
+            .OrderByDescending(r => r.CheckInDate)
+            .ToListAsync();
+
+        return stays.Select(r =>
+        {
+            var overlapStart = r.CheckInDate  > from ? r.CheckInDate  : from;
+            var overlapEnd   = r.CheckOutDate < to   ? r.CheckOutDate : to;
+            var nightsInPeriod = Math.Max(0, overlapEnd.DayNumber - overlapStart.DayNumber);
+
+            return new CompanyStayDto(
+                r.Id,
+                r.Reference,
+                r.ClientId,
+                r.Client.FullName,
+                r.RoomId,
+                r.Room?.RoomNumber,
+                r.Room?.NameFr,
+                r.CategoryId,
+                r.Category.NameFr,
+                r.CheckInDate,
+                r.CheckOutDate,
+                r.Nights,
+                nightsInPeriod,
+                r.Status.ToString()
+            );
+        }).ToList();
     }
 
     private static CompanyDto ToDto(Company c) => new(

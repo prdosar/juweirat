@@ -14,6 +14,10 @@ public class CompaniesController(CompanyService companyService) : ControllerBase
     public async Task<IActionResult> GetAll()
         => Ok(await companyService.GetAllAsync());
 
+    [HttpGet("paged")]
+    public async Task<IActionResult> GetPaged([FromQuery] CompanyFilterParams filter)
+        => Ok(await companyService.GetPagedAsync(filter));
+
     [HttpGet("{id:long}")]
     public async Task<IActionResult> GetById(long id)
     {
@@ -57,5 +61,13 @@ public class CompaniesController(CompanyService companyService) : ControllerBase
         var (success, error) = await companyService.RemoveClientAsync(id, clientId);
         if (!success) return NotFound(new { error });
         return NoContent();
+    }
+
+    [HttpGet("{id:long}/stays")]
+    public async Task<IActionResult> GetStays(long id, [FromQuery] DateOnly from, [FromQuery] DateOnly to)
+    {
+        if (from > to) return BadRequest(new { error = "'from' must be earlier than 'to'." });
+        var stays = await companyService.GetStaysAsync(id, from, to);
+        return Ok(stays);
     }
 }

@@ -53,3 +53,19 @@ public record ReservationPrestationDto(
     decimal PrixUnitaireSnapshot,
     decimal TotalLigne
 );
+
+// Ligne de consommation d'une prestation sur une période donnée (source réservation ou vente directe).
+public record PrestationConsumptionDto(
+    string Source,             // "Reservation" | "VenteDirecte"
+    long SourceId,
+    string? Reference,
+    DateOnly Date,
+    long? ClientId,
+    string? ClientName,
+    long? RoomId,
+    string? RoomNumber,
+    string? RoomNameFr,
+    int Quantite,
+    decimal PrixUnitaireSnapshot,
+    decimal Total
+);

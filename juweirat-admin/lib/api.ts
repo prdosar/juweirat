@@ -155,6 +155,21 @@ export const reservations = {
     request<import('./types').ReservationDto>(`/api/reservations/${id}/status`, { method: 'PATCH', body: JSON.stringify(body) }),
   processNoShow: (id: number) =>
     request<import('./types').NoShowBillingResultDto>(`/api/reservations/${id}/process-noshow`, { method: 'POST' }),
+  getTarifPreview: (clientId: number, categoryId: number, nights: number) =>
+    request<import('./types').TarifPreviewDto>(
+      `/api/reservations/tarif-preview?clientId=${clientId}&categoryId=${categoryId}&nights=${nights}`,
+    ),
+  processCancellation: (id: number, reason?: string) =>
+    request<import('./types').CancellationBillingResultDto>(
+      `/api/reservations/${id}/process-cancellation`,
+      { method: 'POST', body: JSON.stringify({ reason: reason ?? null }) },
+    ),
+  update: (id: number, body: Partial<{
+    source: string; specialRequests: string; internalNotes: string;
+    adults: number; children: number;
+    garantieType: string; garantieMontantCash: number;
+    carteNom: string; carteSuffix: string; carteExpiration: string;
+  }>) => request<import('./types').ReservationDto>(`/api/reservations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 };
 
 // ── Room Images ───────────────────────────────────────────────────────────────
@@ -224,6 +239,10 @@ export const ventesDirectes = {
 export const prestations = {
   getAll: (activeOnly = false) =>
     request<import('./types').PrestationAnnexeDto[]>(`/api/prestations?activeOnly=${activeOnly}`),
+  getById: (id: number) =>
+    request<import('./types').PrestationAnnexeDto>(`/api/prestations/${id}`),
+  getConsumptions: (id: number, from: string, to: string) =>
+    request<import('./types').PrestationConsumptionDto[]>(`/api/prestations/${id}/consumptions?from=${from}&to=${to}`),
   create: (body: {
     nameFr: string; nameEn: string; icon?: string;
     mode?: string; prixInclus: number; prixSeule: number; sortOrder?: number;
@@ -238,6 +257,16 @@ export const prestations = {
 // ── Companies ─────────────────────────────────────────────────────────────────
 export const companies = {
   getAll: () => request<import('./types').CompanyDto[]>('/api/companies'),
+  getPaged: (params?: import('./types').CompanyFilterParams) => {
+    const qs = new URLSearchParams();
+    if (params?.pageNumber)                qs.set('pageNumber',   String(params.pageNumber));
+    if (params?.pageSize)                  qs.set('pageSize',     String(params.pageSize));
+    if (params?.search)                    qs.set('search',       params.search);
+    if (params?.sortBy)                    qs.set('sortBy',       params.sortBy);
+    if (params?.isDescending !== undefined) qs.set('isDescending', String(params.isDescending));
+    if (params?.isActive !== undefined)    qs.set('isActive',     String(params.isActive));
+    return request<import('./types').PagedResult<import('./types').CompanyDto>>(`/api/companies/paged?${qs}`);
+  },
   getById: (id: number) => request<import('./types').CompanyDetailDto>(`/api/companies/${id}`),
   create: (body: { name: string; responsableNom?: string; phone?: string; email?: string; adresse?: string; ville?: string; notes?: string }) =>
     request<import('./types').CompanyDto>('/api/companies', { method: 'POST', body: JSON.stringify(body) }),
@@ -249,6 +278,8 @@ export const companies = {
     request<void>(`/api/companies/${id}/clients`, { method: 'POST', body: JSON.stringify({ clientId }) }),
   removeClient: (id: number, clientId: number) =>
     request<void>(`/api/companies/${id}/clients/${clientId}`, { method: 'DELETE' }),
+  getStays: (id: number, from: string, to: string) =>
+    request<import('./types').CompanyStayDto[]>(`/api/companies/${id}/stays?from=${from}&to=${to}`),
 };
 
 // ── Contact Messages ──────────────────────────────────────────────────────────

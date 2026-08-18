@@ -120,6 +120,23 @@ export interface CompanyDetailDto extends CompanyDto {
   tarifs: CompanyTarifDto[];
 }
 
+export interface CompanyStayDto {
+  reservationId: number;
+  reference: string;
+  clientId: number;
+  clientFullName: string;
+  roomId: number | null;
+  roomNumber: string | null;
+  roomNameFr: string | null;
+  categoryId: number;
+  categoryNameFr: string;
+  checkInDate: string;
+  checkOutDate: string;
+  nights: number;
+  nightsInPeriod: number;
+  status: string;
+}
+
 export interface FolioActifDto {
   folioId: number;
   folioNumber: string;
@@ -156,6 +173,21 @@ export interface PrestationAnnexeDto {
   prixSeule: number;
   isActive: boolean;
   sortOrder: number;
+}
+
+export interface PrestationConsumptionDto {
+  source: 'Reservation' | 'VenteDirecte';
+  sourceId: number;
+  reference: string | null;
+  date: string;
+  clientId: number | null;
+  clientName: string | null;
+  roomId: number | null;
+  roomNumber: string | null;
+  roomNameFr: string | null;
+  quantite: number;
+  prixUnitaireSnapshot: number;
+  total: number;
 }
 
 export interface ReservationPrestationDto {
@@ -235,6 +267,26 @@ export interface NoShowBillingResultDto {
   reservation: ReservationDto;
 }
 
+export interface CancellationBillingResultDto {
+  reservationId: number;
+  penaltyNights: number;
+  penaltyAmount: number;
+  currency: string;
+  deadlineLabel: string;
+  reservation: ReservationDto;
+}
+
+export interface TarifPreviewDto {
+  pricePerNight: number;
+  tarifNuit: number;
+  tarifN15: number;
+  tarifN30: number;
+  tier: 'Nuitee' | 'N15Nuits' | 'N30Nuits' | string;
+  source: 'company' | 'category' | 'room' | 'default' | string;
+  companyName: string | null;
+  totalHebergement: number;
+}
+
 export interface DashboardStats {
   totalRooms: number;
   availableRooms: number;
@@ -295,6 +347,10 @@ export interface ReservationFilterParams extends PaginationFilterParams {
   endDate?: string;
   source?: string;
   paymentStatus?: string;
+}
+
+export interface CompanyFilterParams extends PaginationFilterParams {
+  isActive?: boolean;
 }
 
 export interface PaymentFilterParams extends PaginationFilterParams {

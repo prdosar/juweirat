@@ -79,3 +79,20 @@ public record SetCompanyTarifRequest(
 public record AssignClientRequest(
     [Required] long ClientId
 );
+
+public record CompanyStayDto(
+    long ReservationId,
+    string Reference,
+    long ClientId,
+    string ClientFullName,
+    long? RoomId,
+    string? RoomNumber,
+    string? RoomNameFr,
+    long CategoryId,
+    string CategoryNameFr,
+    DateOnly CheckInDate,
+    DateOnly CheckOutDate,
+    int Nights,
+    int NightsInPeriod,
+    string Status
+);

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import { clients, prestations, ventesDirectes } from '@/lib/api';
 import type { ClientDto, FolioActifDto, PrestationAnnexeDto, VenteDirecteDto } from '@/lib/types';
@@ -23,6 +24,9 @@ function fmtTime(iso: string) {
 }
 
 export default function VentesDirectesPage() {
+  const searchParams = useSearchParams();
+  const preselectedClientId = Number(searchParams.get('clientId')) || 0;
+
   // ── Catalogue & historique ─────────────────────────────────────────────────
   const [prestationList, setPrestationList] = useState<PrestationAnnexeDto[]>([]);
   const [history, setHistory]               = useState<VenteDirecteDto[]>([]);
@@ -68,6 +72,15 @@ export default function VentesDirectesPage() {
     prestations.getAll(true).then(setPrestationList);
     loadHistory();
   }, []);
+
+  // Preselect client if provided in URL (?clientId=…)
+  useEffect(() => {
+    if (!preselectedClientId) return;
+    clients.getById(preselectedClientId)
+      .then(c => selectClient(c))
+      .catch(() => { /* silently ignore */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectedClientId]);
 
   // Client search debounce
   useEffect(() => {

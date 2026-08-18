@@ -1,52 +1,75 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { companies, categories as categoriesApi } from '@/lib/api';
-import type { CompanyDetailDto, RoomCategoryDto } from '@/lib/types';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import Header from '@/components/Header';
+import { companies, categories as categoriesApi, clients as clientsApi } from '@/lib/api';
+import type { ClientDto, CompanyDetailDto, CompanyStayDto, RoomCategoryDto } from '@/lib/types';
+
+const COUNTRIES  = ["Côte d'Ivoire", 'Sénégal', 'Burkina Faso', 'France', 'Togo', 'Bénin', 'Ghana', 'Autre'];
+const DOC_TYPES  = ['Passeport', "Carte d'identité", 'Carte de séjour', 'Permis de conduire'];
+
+/* Small helper to render a form label with an optional red asterisk for required fields. */
+function Req({ children, required }: { children: React.ReactNode; required?: boolean }) {
+  return (
+    <span>
+      {children}
+      {required && <span className="text-red-600 font-bold ml-0.5">*</span>}
+    </span>
+  );
+}
 import {
   Building2, Phone, Mail, MapPin, User, ArrowLeft,
-  Plus, Trash2, Save, PencilLine, Users, Tag,
+  Plus, Trash2, Save, PencilLine, Users, Tag, CalendarRange,
+  Search, X, RotateCcw,
 } from 'lucide-react';
 
-type Tab = 'info' | 'clients' | 'tarifs';
+type Tab = 'info' | 'clients' | 'stays' | 'tarifs';
+const TABS: [Tab, string, React.ComponentType<{ size?: number; className?: string }>][] = [
+  ['info',    'Informations', Building2],
+  ['clients', 'Clients',      Users],
+  ['stays',   'Séjours',      CalendarRange],
+  ['tarifs',  'Tarifs',       Tag],
+];
+
+function iso(d: Date) {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+function fmtDate(d: string) {
+  const dt = new Date(d);
+  return isNaN(dt.getTime()) ? d : dt.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
+  Pending:    { label: 'En attente', cls: 'bg-amber-100 text-amber-800'      },
+  Confirmed:  { label: 'Confirmée',  cls: 'bg-green/20 text-green-dark'      },
+  CheckedIn:  { label: 'Arrivé',     cls: 'bg-green text-white'              },
+  CheckedOut: { label: 'Parti',      cls: 'bg-charcoal/10 text-charcoal/60'  },
+  Cancelled:  { label: 'Annulée',    cls: 'bg-red-100 text-red-700'          },
+  NoShow:     { label: 'No Show',    cls: 'bg-charcoal/15 text-charcoal/50'  },
+};
 
 export default function CompanyDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const router   = useRouter();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const companyId = Number(id);
 
-  const [company, setCompany]       = useState<CompanyDetailDto | null>(null);
-  const [cats, setCats]             = useState<RoomCategoryDto[]>([]);
-  const [tab, setTab]               = useState<Tab>('info');
-  const [loading, setLoading]       = useState(true);
-  const [editMode, setEditMode]     = useState(false);
-  const [saving, setSaving]         = useState(false);
-  const [error, setError]           = useState('');
+  const initialTab: Tab = ((): Tab => {
+    const q = searchParams.get('tab');
+    return q === 'clients' || q === 'tarifs' || q === 'stays' ? q : 'info';
+  })();
 
-  // Info edit form
-  const [form, setForm] = useState({
-    name: '', responsableNom: '', phone: '', email: '',
-    adresse: '', ville: '', notes: '', isActive: true,
-  });
+  const [company, setCompany] = useState<CompanyDetailDto | null>(null);
+  const [cats, setCats]       = useState<RoomCategoryDto[]>([]);
+  const [tab, setTab]         = useState<Tab>(initialTab);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  // Client assignment
-  const [clientSearch, setClientSearch] = useState('');
-  const [clientIdInput, setClientIdInput] = useState('');
-  const [clientMsg, setClientMsg]         = useState('');
-
-  // Tarif form
-  const [tarifCatId, setTarifCatId]   = useState('');
-  const [tarifNuit, setTarifNuit]     = useState('');
-  const [tarifN15, setTarifN15]       = useState('');
-  const [tarifN30, setTarifN30]       = useState('');
-  const [tarifMsg, setTarifMsg]       = useState('');
-  const [tarifSaving, setTarifSaving] = useState(false);
-
-  useEffect(() => { load(); }, [companyId]);
-
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const [c, catList] = await Promise.all([
         companies.getById(companyId),
@@ -54,34 +77,132 @@ export default function CompanyDetailPage() {
       ]);
       setCompany(c);
       setCats(catList);
-      setForm({
-        name: c.name, responsableNom: c.responsableNom ?? '',
-        phone: c.phone ?? '', email: c.email ?? '',
-        adresse: c.adresse ?? '', ville: c.ville ?? '',
-        notes: c.notes ?? '', isActive: c.isActive,
-      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setLoadError(msg === 'Failed to fetch' ? "Impossible de joindre l'API. Vérifiez que le backend est démarré." : msg);
     } finally {
       setLoading(false);
     }
-  }
+  }, [companyId]);
 
-  async function handleSaveInfo(e: React.FormEvent) {
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return (
+    <div className="flex flex-col h-full overflow-auto">
+      <Header title="Compagnie" />
+      <div className="flex-1 flex items-center justify-center">
+        <div className="w-5 h-5 border-2 border-green/30 border-t-green rounded-full animate-spin" />
+      </div>
+    </div>
+  );
+
+  if (loadError || !company) return (
+    <div className="flex flex-col h-full overflow-auto">
+      <Header title="Compagnie" />
+      <div className="flex-1 p-6">
+        <button onClick={() => router.push('/companies')} className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-charcoal mb-4">
+          <ArrowLeft size={14} /> Retour
+        </button>
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+          {loadError || 'Compagnie introuvable.'}
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col h-full overflow-auto">
+      <Header title="Compagnie" />
+      <div className="flex-1 p-6 space-y-4">
+        <button onClick={() => router.push('/companies')} className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-charcoal">
+          <ArrowLeft size={13} /> Retour aux compagnies
+        </button>
+
+        {/* Company header card */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-green/15 flex items-center justify-center shrink-0">
+            <Building2 size={22} className="text-green-dark" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-lg font-bold text-charcoal truncate">{company.name}</h1>
+              {company.isActive ? (
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-green/20 text-green-dark">Actif</span>
+              ) : (
+                <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-charcoal/10 text-charcoal/60">Inactif</span>
+              )}
+            </div>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {company.clientCount} client{company.clientCount !== 1 ? 's' : ''} · Créée le {fmtDate(company.createdAt)}
+            </p>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <nav className="flex border-b border-gray-100">
+            {TABS.map(([t, label, Icon]) => {
+              const on = tab === t;
+              return (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className={`flex items-center gap-2 px-5 py-3 text-xs font-bold uppercase tracking-wider transition-colors ${
+                    on ? 'text-green-dark border-b-2 border-green -mb-px' : 'text-gray-400 hover:text-charcoal'
+                  }`}
+                >
+                  <Icon size={13} />
+                  {label}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="p-5">
+            {tab === 'info'    && <InfoTab company={company} onSaved={load} />}
+            {tab === 'clients' && <ClientsTab company={company} onChanged={load} />}
+            {tab === 'stays'   && <StaysTab companyId={companyId} />}
+            {tab === 'tarifs'  && <TarifsTab company={company} cats={cats} onChanged={load} />}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ──────────────────── INFO TAB ──────────────────── */
+function InfoTab({ company, onSaved }: { company: CompanyDetailDto; onSaved: () => void | Promise<void> }) {
+  const [editMode, setEditMode] = useState(false);
+  const [form, setForm] = useState({
+    name:           company.name,
+    responsableNom: company.responsableNom ?? '',
+    phone:          company.phone ?? '',
+    email:          company.email ?? '',
+    adresse:        company.adresse ?? '',
+    ville:          company.ville ?? '',
+    notes:          company.notes ?? '',
+    isActive:       company.isActive,
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
+
+  async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) { setError('Le nom est obligatoire.'); return; }
     setSaving(true); setError('');
     try {
-      await companies.update(companyId, {
-        name: form.name.trim(),
+      await companies.update(company.id, {
+        name:           form.name.trim(),
         responsableNom: form.responsableNom || undefined,
-        phone: form.phone || undefined,
-        email: form.email || undefined,
-        adresse: form.adresse || undefined,
-        ville: form.ville || undefined,
-        notes: form.notes || undefined,
-        isActive: form.isActive,
+        phone:          form.phone || undefined,
+        email:          form.email || undefined,
+        adresse:        form.adresse || undefined,
+        ville:          form.ville || undefined,
+        notes:          form.notes || undefined,
+        isActive:       form.isActive,
       });
       setEditMode(false);
-      await load();
+      await onSaved();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erreur');
     } finally {
@@ -89,362 +210,743 @@ export default function CompanyDetailPage() {
     }
   }
 
-  async function handleAssignClient(e: React.FormEvent) {
-    e.preventDefault();
-    const cid = Number(clientIdInput.trim());
-    if (!cid) { setClientMsg('Entrez un ID client valide.'); return; }
-    setClientMsg('');
-    try {
-      await companies.assignClient(companyId, cid);
-      setClientIdInput('');
-      setClientMsg('Client ajouté.');
-      await load();
-    } catch (err: unknown) {
-      setClientMsg(err instanceof Error ? err.message : 'Erreur');
-    }
-  }
-
-  async function handleRemoveClient(clientId: number) {
-    if (!confirm('Retirer ce client de la compagnie ?')) return;
-    try {
-      await companies.removeClient(companyId, clientId);
-      await load();
-    } catch { /* ignore */ }
-  }
-
-  async function handleSetTarif(e: React.FormEvent) {
-    e.preventDefault();
-    if (!tarifCatId) { setTarifMsg('Sélectionnez une catégorie.'); return; }
-    setTarifSaving(true); setTarifMsg('');
-    try {
-      await companies.setTarif(companyId, {
-        categoryId: Number(tarifCatId),
-        tarifNuit: Number(tarifNuit) || 0,
-        tarifN15: Number(tarifN15) || 0,
-        tarifN30: Number(tarifN30) || 0,
-      });
-      setTarifCatId(''); setTarifNuit(''); setTarifN15(''); setTarifN30('');
-      setTarifMsg('Tarif enregistré.');
-      await load();
-    } catch (err: unknown) {
-      setTarifMsg(err instanceof Error ? err.message : 'Erreur');
-    } finally {
-      setTarifSaving(false);
-    }
-  }
-
-  function startEditTarif(t: { categoryId: number; tarifNuit: number; tarifN15: number; tarifN30: number }) {
-    setTarifCatId(String(t.categoryId));
-    setTarifNuit(String(t.tarifNuit));
-    setTarifN15(String(t.tarifN15));
-    setTarifN30(String(t.tarifN30));
-    setTarifMsg('');
-  }
-
-  const filteredClients = company?.clients.filter(c =>
-    c.fullName.toLowerCase().includes(clientSearch.toLowerCase()) ||
-    (c.email ?? '').toLowerCase().includes(clientSearch.toLowerCase())
-  ) ?? [];
-
-  if (loading) return <div className="p-8 text-white/30 text-sm">Chargement…</div>;
-  if (!company) return <div className="p-8 text-white/40 text-sm">Compagnie introuvable.</div>;
-
-  return (
-    <div className="p-8 max-w-4xl mx-auto">
-      {/* Back + header */}
-      <button onClick={() => router.push('/companies')} className="flex items-center gap-2 text-white/40 hover:text-white text-sm mb-6 transition-colors">
-        <ArrowLeft size={14} />
-        Retour aux compagnies
-      </button>
-
-      <div className="flex items-start justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center">
-            <Building2 size={22} className="text-blue-400" />
+  if (editMode) {
+    const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green/30 focus:border-green/40';
+    const labelCls = 'block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5';
+    return (
+      <form onSubmit={handleSave} className="space-y-4">
+        {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5 rounded-lg">{error}</div>}
+        <div>
+          <label className={labelCls}>Nom *</label>
+          <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className={inputCls} />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className={labelCls}>Responsable</label>
+            <input value={form.responsableNom} onChange={e => setForm(f => ({ ...f, responsableNom: e.target.value }))} className={inputCls} />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-white">{company.name}</h1>
-            <div className="flex items-center gap-2 mt-0.5">
-              {!company.isActive && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/40">Inactif</span>
-              )}
-              <span className="text-xs text-white/35">{company.clientCount} client{company.clientCount !== 1 ? 's' : ''}</span>
-            </div>
+            <label className={labelCls}>Téléphone</label>
+            <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Email</label>
+            <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>Ville</label>
+            <input value={form.ville} onChange={e => setForm(f => ({ ...f, ville: e.target.value }))} className={inputCls} />
           </div>
         </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-white/10 mb-6">
-        {([['info', 'Informations'], ['clients', 'Clients'], ['tarifs', 'Tarifs']] as [Tab, string][]).map(([t, label]) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              tab === t ? 'border-green text-white' : 'border-transparent text-white/40 hover:text-white/70'
-            }`}
-          >
-            {label}
+        <div>
+          <label className={labelCls}>Adresse</label>
+          <input value={form.adresse} onChange={e => setForm(f => ({ ...f, adresse: e.target.value }))} className={inputCls} />
+        </div>
+        <div>
+          <label className={labelCls}>Notes</label>
+          <textarea rows={3} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className={`${inputCls} resize-none`} />
+        </div>
+        <label className="flex items-center gap-2 text-sm text-charcoal">
+          <input type="checkbox" checked={form.isActive} onChange={e => setForm(f => ({ ...f, isActive: e.target.checked }))} className="accent-green" />
+          Compagnie active
+        </label>
+        <div className="flex items-center gap-2 pt-1">
+          <button type="submit" disabled={saving} className="inline-flex items-center gap-2 px-4 py-2 bg-charcoal text-white text-sm font-medium rounded-lg hover:bg-charcoal-800 transition-colors disabled:opacity-60">
+            <Save size={14} />
+            {saving ? 'Enregistrement…' : 'Enregistrer'}
           </button>
+          <button type="button" onClick={() => setEditMode(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-charcoal transition-colors">
+            Annuler
+          </button>
+        </div>
+      </form>
+    );
+  }
+
+  const rows: { label: string; value: string | null; Icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
+    { label: 'Responsable', value: company.responsableNom, Icon: User },
+    { label: 'Téléphone',   value: company.phone,          Icon: Phone },
+    { label: 'Email',       value: company.email,          Icon: Mail },
+    { label: 'Ville',       value: company.ville,          Icon: MapPin },
+    { label: 'Adresse',     value: company.adresse,        Icon: MapPin },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {rows.map(({ label, value, Icon }) => (
+          <div key={label} className="bg-gray-50/60 rounded-lg p-3">
+            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5 mb-1">
+              <Icon size={11} /> {label}
+            </p>
+            <p className="text-sm text-charcoal">{value || <span className="text-gray-300">Non renseigné</span>}</p>
+          </div>
         ))}
       </div>
+      {company.notes && (
+        <div className="bg-gray-50/60 rounded-lg p-3">
+          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Notes internes</p>
+          <p className="text-sm text-charcoal whitespace-pre-wrap">{company.notes}</p>
+        </div>
+      )}
+      <button
+        onClick={() => setEditMode(true)}
+        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-charcoal border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+      >
+        <PencilLine size={14} /> Modifier
+      </button>
+    </div>
+  );
+}
 
-      {/* ─── INFO TAB ─── */}
-      {tab === 'info' && (
-        <div>
-          {!editMode ? (
-            <div>
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                {company.responsableNom && (
-                  <div className="bg-white/5 rounded-xl p-4">
-                    <p className="text-xs text-white/35 mb-1 flex items-center gap-1.5"><User size={11} />Responsable</p>
-                    <p className="text-sm text-white">{company.responsableNom}</p>
-                  </div>
-                )}
-                {company.phone && (
-                  <div className="bg-white/5 rounded-xl p-4">
-                    <p className="text-xs text-white/35 mb-1 flex items-center gap-1.5"><Phone size={11} />Téléphone</p>
-                    <p className="text-sm text-white">{company.phone}</p>
-                  </div>
-                )}
-                {company.email && (
-                  <div className="bg-white/5 rounded-xl p-4">
-                    <p className="text-xs text-white/35 mb-1 flex items-center gap-1.5"><Mail size={11} />Email</p>
-                    <p className="text-sm text-white">{company.email}</p>
-                  </div>
-                )}
-                {company.ville && (
-                  <div className="bg-white/5 rounded-xl p-4">
-                    <p className="text-xs text-white/35 mb-1 flex items-center gap-1.5"><MapPin size={11} />Ville</p>
-                    <p className="text-sm text-white">{company.ville}</p>
-                  </div>
-                )}
-                {company.adresse && (
-                  <div className="bg-white/5 rounded-xl p-4">
-                    <p className="text-xs text-white/35 mb-1 flex items-center gap-1.5"><MapPin size={11} />Adresse</p>
-                    <p className="text-sm text-white">{company.adresse}</p>
-                  </div>
-                )}
-                {company.notes && (
-                  <div className="col-span-2 bg-white/5 rounded-xl p-4">
-                    <p className="text-xs text-white/35 mb-1">Notes</p>
-                    <p className="text-sm text-white/70 whitespace-pre-wrap">{company.notes}</p>
-                  </div>
-                )}
+/* ──────────────────── CLIENTS TAB ──────────────────── */
+function ClientsTab({ company, onChanged }: { company: CompanyDetailDto; onChanged: () => void | Promise<void> }) {
+  const [search, setSearch] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const filtered = company.clients.filter(c => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return c.fullName.toLowerCase().includes(q)
+      || (c.email ?? '').toLowerCase().includes(q)
+      || (c.phone ?? '').toLowerCase().includes(q);
+  });
+
+  const currentClientIds = new Set(company.clients.map(c => c.id));
+
+  async function remove(clientId: number) {
+    if (!confirm('Retirer ce client de la compagnie ?')) return;
+    try { await companies.removeClient(company.id, clientId); await onChanged(); } catch { /* ignore */ }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 max-w-xs">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Rechercher dans les clients…"
+            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green/30 focus:border-green/40 bg-white"
+          />
+        </div>
+        <button
+          onClick={() => setModalOpen(true)}
+          className="inline-flex items-center gap-2 bg-charcoal text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-charcoal-800 transition-colors ml-auto"
+        >
+          <Plus size={15} /> Ajouter un client
+        </button>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="text-center py-10 text-gray-400 text-sm">Aucun client rattaché.</div>
+      ) : (
+        <div className="divide-y divide-gray-100 border border-gray-100 rounded-lg overflow-hidden">
+          {filtered.map(c => (
+            <div key={c.id} className="flex items-center justify-between gap-3 p-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-full bg-charcoal/5 flex items-center justify-center shrink-0">
+                  <span className="text-[11px] font-bold text-charcoal/70">
+                    {c.fullName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-charcoal truncate">{c.fullName}</p>
+                  <p className="text-xs text-gray-400 truncate">{c.email ?? c.phone ?? `#${c.id}`}</p>
+                </div>
               </div>
               <button
-                onClick={() => setEditMode(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-white/8 text-white/60 rounded-lg text-sm hover:bg-white/12 transition-colors"
+                onClick={() => remove(c.id)}
+                title="Retirer"
+                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
               >
-                <PencilLine size={14} />
-                Modifier
+                <Trash2 size={15} />
               </button>
             </div>
-          ) : (
-            <form onSubmit={handleSaveInfo}>
-              {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="col-span-2">
-                  <label className="block text-xs text-white/50 mb-1">Nom *</label>
-                  <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                    className="w-full bg-white/8 border border-white/12 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-green" />
-                </div>
-                <div>
-                  <label className="block text-xs text-white/50 mb-1">Responsable</label>
-                  <input value={form.responsableNom} onChange={e => setForm(f => ({ ...f, responsableNom: e.target.value }))}
-                    className="w-full bg-white/8 border border-white/12 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-green" />
-                </div>
-                <div>
-                  <label className="block text-xs text-white/50 mb-1">Téléphone</label>
-                  <input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                    className="w-full bg-white/8 border border-white/12 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-green" />
-                </div>
-                <div>
-                  <label className="block text-xs text-white/50 mb-1">Email</label>
-                  <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                    className="w-full bg-white/8 border border-white/12 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-green" />
-                </div>
-                <div>
-                  <label className="block text-xs text-white/50 mb-1">Ville</label>
-                  <input value={form.ville} onChange={e => setForm(f => ({ ...f, ville: e.target.value }))}
-                    className="w-full bg-white/8 border border-white/12 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-green" />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs text-white/50 mb-1">Adresse</label>
-                  <input value={form.adresse} onChange={e => setForm(f => ({ ...f, adresse: e.target.value }))}
-                    className="w-full bg-white/8 border border-white/12 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-green" />
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-xs text-white/50 mb-1">Notes</label>
-                  <textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={3}
-                    className="w-full bg-white/8 border border-white/12 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-green resize-none" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" id="isActive" checked={form.isActive} onChange={e => setForm(f => ({ ...f, isActive: e.target.checked }))}
-                    className="rounded" />
-                  <label htmlFor="isActive" className="text-sm text-white/60">Compagnie active</label>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <button type="submit" disabled={saving}
-                  className="flex items-center gap-2 px-5 py-2 bg-green text-charcoal rounded-lg text-sm font-semibold hover:bg-green/90 disabled:opacity-50 transition-colors">
-                  <Save size={14} />
-                  {saving ? 'Enregistrement…' : 'Enregistrer'}
-                </button>
-                <button type="button" onClick={() => setEditMode(false)}
-                  className="px-5 py-2 bg-white/8 text-white/60 rounded-lg text-sm hover:bg-white/12 transition-colors">
-                  Annuler
-                </button>
-              </div>
-            </form>
-          )}
+          ))}
         </div>
       )}
 
-      {/* ─── CLIENTS TAB ─── */}
-      {tab === 'clients' && (
-        <div>
-          {/* Assign form */}
-          <form onSubmit={handleAssignClient} className="bg-white/5 border border-white/10 rounded-xl p-4 mb-5">
-            <p className="text-xs text-white/50 mb-3">Ajouter un client existant à cette compagnie par son ID</p>
-            <div className="flex gap-3">
-              <input
-                value={clientIdInput} onChange={e => setClientIdInput(e.target.value)}
-                placeholder="ID du client"
-                className="flex-1 bg-white/8 border border-white/12 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-green"
-              />
-              <button type="submit"
-                className="flex items-center gap-2 px-4 py-2 bg-green text-charcoal rounded-lg text-sm font-semibold hover:bg-green/90 transition-colors">
-                <Plus size={14} />
-                Ajouter
-              </button>
-            </div>
-            {clientMsg && (
-              <p className={`text-xs mt-2 ${clientMsg.includes('ajouté') ? 'text-green' : 'text-red-400'}`}>{clientMsg}</p>
-            )}
-          </form>
+      {modalOpen && (
+        <AddClientToCompanyModal
+          companyId={company.id}
+          companyName={company.name}
+          disabledClientIds={currentClientIds}
+          onClose={() => setModalOpen(false)}
+          onDone={async () => { setModalOpen(false); await onChanged(); }}
+        />
+      )}
+    </div>
+  );
+}
 
-          {/* Search */}
-          <div className="relative mb-4">
-            <input
-              value={clientSearch} onChange={e => setClientSearch(e.target.value)}
-              placeholder="Rechercher…"
-              className="w-full pl-4 pr-4 py-2.5 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder-white/25 outline-none focus:border-white/25"
-            />
+/* ──────────────────── Add-client modal (create or link existing) ──────────────────── */
+function AddClientToCompanyModal({
+  companyId, companyName, disabledClientIds, onClose, onDone,
+}: {
+  companyId: number;
+  companyName: string;
+  disabledClientIds: Set<number>;
+  onClose: () => void;
+  onDone: () => void | Promise<void>;
+}) {
+  const [mode, setMode] = useState<'new' | 'existing'>('new');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Create-client form
+  const [form, setForm] = useState({
+    firstName: '', lastName: '', email: '', phone: '',
+    documentType: '', documentNumber: '',
+    city: '', country: '', notes: '',
+  });
+
+  // Existing-client picker
+  const [pickerQuery, setPickerQuery] = useState('');
+  const [pickerResults, setPickerResults] = useState<ClientDto[]>([]);
+
+  useEffect(() => {
+    function onEsc(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', onEsc);
+    document.body.style.overflow = 'hidden';
+    return () => { document.removeEventListener('keydown', onEsc); document.body.style.overflow = ''; };
+  }, [onClose]);
+
+  useEffect(() => {
+    if (mode !== 'existing') return;
+    const t = setTimeout(() => {
+      clientsApi.getAll(pickerQuery || undefined)
+        .then(setPickerResults)
+        .catch(() => setPickerResults([]));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [mode, pickerQuery]);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.firstName.trim()) { setError('Le prénom est obligatoire.'); return; }
+    if (!form.lastName.trim())  { setError('Le nom est obligatoire.'); return; }
+    setSaving(true); setError('');
+    try {
+      await clientsApi.create({
+        firstName:      form.firstName.trim(),
+        lastName:       form.lastName.trim(),
+        email:          form.email.trim() || null,
+        phone:          form.phone.trim() || null,
+        nationality:    null,
+        documentType:   form.documentType || null,
+        documentNumber: form.documentNumber.trim() || null,
+        city:           form.city.trim() || null,
+        country:        form.country || null,
+        notes:          form.notes.trim() || null,
+        companyId:      companyId,
+      });
+      await onDone();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg === 'Failed to fetch' ? "Impossible de joindre l'API. Vérifiez que le backend est démarré." : msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function assignExisting(clientId: number) {
+    setSaving(true); setError('');
+    try {
+      await companies.assignClient(companyId, clientId);
+      await onDone();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erreur');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green/30 focus:border-green/40';
+  const labelCls = 'block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5';
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-green/15 flex items-center justify-center">
+              <User size={16} className="text-green-dark" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-charcoal">Ajouter un client</h2>
+              <p className="text-xs text-gray-400">Rattaché à la compagnie <span className="font-semibold text-charcoal">{companyName}</span></p>
+            </div>
           </div>
-
-          {filteredClients.length === 0 ? (
-            <div className="text-center py-12 text-white/25">
-              <Users size={32} className="mx-auto mb-3 opacity-30" />
-              <p className="text-sm">Aucun client</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {filteredClients.map(c => (
-                <div key={c.id} className="flex items-center justify-between p-3 bg-white/5 border border-white/8 rounded-xl">
-                  <div>
-                    <p className="text-sm font-medium text-white">{c.fullName}</p>
-                    <p className="text-xs text-white/35 mt-0.5">{c.email ?? c.phone ?? `#${c.id}`}</p>
-                  </div>
-                  <button onClick={() => handleRemoveClient(c.id)}
-                    className="p-2 text-white/25 hover:text-red-400 transition-colors rounded-lg hover:bg-white/5">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+          <button type="button" onClick={onClose} className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-charcoal transition-colors flex items-center justify-center" aria-label="Fermer">
+            <X size={16} />
+          </button>
         </div>
-      )}
 
-      {/* ─── TARIFS TAB ─── */}
-      {tab === 'tarifs' && (
-        <div>
-          {/* Tarif upsert form */}
-          <form onSubmit={handleSetTarif} className="bg-white/5 border border-white/10 rounded-xl p-5 mb-5">
-            <p className="text-xs text-white/50 mb-3">
-              Définir ou modifier un tarif préférentiel par catégorie. Tous les montants sont en FCFA/nuit.
-            </p>
-            <div className="grid grid-cols-4 gap-3 mb-3">
-              <div className="col-span-4 sm:col-span-1">
-                <label className="block text-xs text-white/50 mb-1">Catégorie</label>
-                <select value={tarifCatId} onChange={e => setTarifCatId(e.target.value)}
-                  className="w-full bg-white/8 border border-white/12 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-green">
-                  <option value="">— choisir —</option>
-                  {cats.map(c => (
-                    <option key={c.id} value={c.id}>{c.nameFr}</option>
-                  ))}
-                </select>
+        {/* Tabs */}
+        <div className="px-6 pt-3 border-b border-gray-100">
+          <div className="inline-flex p-1 gap-1 bg-gray-100 rounded-lg mb-3">
+            {([
+              ['new', 'Nouveau client'],
+              ['existing', 'Client existant'],
+            ] as const).map(([m, label]) => {
+              const on = mode === m;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => { setMode(m); setError(''); }}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                    on ? 'bg-white text-charcoal shadow-sm' : 'text-gray-500 hover:text-charcoal'
+                  }`}
+                >{label}</button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Body */}
+        {mode === 'new' ? (
+          <form onSubmit={handleCreate} className="flex-1 overflow-auto">
+            <div className="p-6 space-y-4">
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5 rounded-lg">
+                  {error}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls}><Req required>Prénom</Req></label>
+                  <input
+                    autoFocus
+                    value={form.firstName}
+                    onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))}
+                    placeholder="Jean"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}><Req required>Nom</Req></label>
+                  <input
+                    value={form.lastName}
+                    onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))}
+                    placeholder="Dupont"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}><Req>Téléphone</Req></label>
+                  <input
+                    value={form.phone}
+                    onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                    placeholder="+228 90 00 00 00"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}><Req>E-mail</Req></label>
+                  <input
+                    type="email"
+                    value={form.email}
+                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                    placeholder="jean@exemple.com"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}><Req>Type de pièce</Req></label>
+                  <select
+                    value={form.documentType}
+                    onChange={e => setForm(f => ({ ...f, documentType: e.target.value }))}
+                    className={inputCls}
+                  >
+                    <option value="">— Sélectionner —</option>
+                    {DOC_TYPES.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelCls}><Req>N° de pièce</Req></label>
+                  <input
+                    value={form.documentNumber}
+                    onChange={e => setForm(f => ({ ...f, documentNumber: e.target.value }))}
+                    placeholder="AB123456"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}><Req>Ville</Req></label>
+                  <input
+                    value={form.city}
+                    onChange={e => setForm(f => ({ ...f, city: e.target.value }))}
+                    placeholder="Lomé"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}><Req>Pays</Req></label>
+                  <select
+                    value={form.country}
+                    onChange={e => setForm(f => ({ ...f, country: e.target.value }))}
+                    className={inputCls}
+                  >
+                    <option value="">— Sélectionner —</option>
+                    {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
               </div>
+
               <div>
-                <label className="block text-xs text-white/50 mb-1">&lt;15 nuits/nuit</label>
-                <input type="number" min={0} value={tarifNuit} onChange={e => setTarifNuit(e.target.value)}
-                  className="w-full bg-white/8 border border-white/12 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-green" />
-              </div>
-              <div>
-                <label className="block text-xs text-white/50 mb-1">15-29 nuits/nuit</label>
-                <input type="number" min={0} value={tarifN15} onChange={e => setTarifN15(e.target.value)}
-                  className="w-full bg-white/8 border border-white/12 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-green" />
-              </div>
-              <div>
-                <label className="block text-xs text-white/50 mb-1">≥30 nuits/nuit</label>
-                <input type="number" min={0} value={tarifN30} onChange={e => setTarifN30(e.target.value)}
-                  className="w-full bg-white/8 border border-white/12 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-green" />
+                <label className={labelCls}><Req>Notes internes</Req></label>
+                <textarea
+                  rows={2}
+                  value={form.notes}
+                  onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Observations, préférences…"
+                  className={`${inputCls} resize-none`}
+                />
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <button type="submit" disabled={tarifSaving}
-                className="flex items-center gap-2 px-4 py-2 bg-green text-charcoal rounded-lg text-sm font-semibold hover:bg-green/90 disabled:opacity-50 transition-colors">
-                <Save size={14} />
-                {tarifSaving ? 'Enregistrement…' : 'Enregistrer le tarif'}
+
+            <div className="flex items-center justify-end gap-2 px-6 py-3 border-t border-gray-100 bg-gray-50/50">
+              <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:text-charcoal transition-colors">
+                Annuler
               </button>
-              {tarifMsg && (
-                <p className={`text-xs ${tarifMsg.includes('enregistré') ? 'text-green' : 'text-red-400'}`}>{tarifMsg}</p>
+              <button type="submit" disabled={saving} className="inline-flex items-center gap-2 px-4 py-2 bg-charcoal text-white text-sm font-medium rounded-lg hover:bg-charcoal-800 transition-colors disabled:opacity-60">
+                {saving ? 'Création…' : 'Créer et rattacher'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-gray-100 shrink-0">
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  autoFocus
+                  value={pickerQuery}
+                  onChange={e => setPickerQuery(e.target.value)}
+                  placeholder="Rechercher un client par nom, téléphone, email…"
+                  className={`${inputCls} pl-9`}
+                />
+              </div>
+              {error && (
+                <div className="mt-3 bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">
+                  {error}
+                </div>
               )}
             </div>
-          </form>
+            <div className="flex-1 overflow-auto divide-y divide-gray-50">
+              {pickerResults.length === 0 ? (
+                <div className="text-center py-10 text-gray-400 text-sm">Aucun client trouvé.</div>
+              ) : pickerResults.map(c => {
+                const disabled = disabledClientIds.has(c.id);
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    disabled={disabled || saving}
+                    onClick={() => assignExisting(c.id)}
+                    className={`w-full flex items-center justify-between gap-3 p-3 text-left transition-colors ${
+                      disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-green/5'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-full bg-charcoal/5 flex items-center justify-center shrink-0">
+                        <span className="text-[11px] font-bold text-charcoal/70">
+                          {c.fullName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-charcoal truncate">{c.fullName}</p>
+                        <p className="text-xs text-gray-400 truncate">{c.email ?? c.phone ?? `#${c.id}`}</p>
+                      </div>
+                    </div>
+                    {disabled ? (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-charcoal/10 text-charcoal/60 shrink-0">Déjà rattaché</span>
+                    ) : (
+                      <Plus size={15} className="text-charcoal/60 shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
-          {/* Existing tarifs */}
-          {company.tarifs.length === 0 ? (
-            <div className="text-center py-12 text-white/25">
-              <Tag size={32} className="mx-auto mb-3 opacity-30" />
-              <p className="text-sm">Aucun tarif configuré</p>
-            </div>
-          ) : (
-            <div className="overflow-hidden rounded-xl border border-white/10">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-white/8">
-                    <th className="text-left text-xs text-white/35 font-medium px-4 py-3">Catégorie</th>
-                    <th className="text-right text-xs text-white/35 font-medium px-4 py-3">&lt;15 nuits</th>
-                    <th className="text-right text-xs text-white/35 font-medium px-4 py-3">15-29 nuits</th>
-                    <th className="text-right text-xs text-white/35 font-medium px-4 py-3">≥30 nuits</th>
-                    <th className="px-4 py-3"></th>
+/* ──────────────────── STAYS TAB ──────────────────── */
+function StaysTab({ companyId }: { companyId: number }) {
+  const now = new Date();
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const [from, setFrom] = useState(iso(firstOfMonth));
+  const [to, setTo]     = useState(iso(now));
+  const [stays, setStays] = useState<CompanyStayDto[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const list = await companies.getStays(companyId, from, to);
+      setStays(list);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg === 'Failed to fetch' ? "Impossible de joindre l'API." : msg);
+      setStays([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [companyId, from, to]);
+
+  useEffect(() => { load(); }, [load]);
+
+  function applyPreset(kind: 'this-month' | 'last-month' | 'ytd' | 'last-30') {
+    const today = new Date();
+    if (kind === 'this-month') {
+      setFrom(iso(new Date(today.getFullYear(), today.getMonth(), 1)));
+      setTo(iso(today));
+    } else if (kind === 'last-month') {
+      setFrom(iso(new Date(today.getFullYear(), today.getMonth() - 1, 1)));
+      setTo(iso(new Date(today.getFullYear(), today.getMonth(), 0)));
+    } else if (kind === 'ytd') {
+      setFrom(iso(new Date(today.getFullYear(), 0, 1)));
+      setTo(iso(today));
+    } else {
+      const d = new Date(today); d.setDate(d.getDate() - 30);
+      setFrom(iso(d)); setTo(iso(today));
+    }
+  }
+
+  const totals = useMemo(() => {
+    const totalNights = stays.reduce((s, r) => s + r.nightsInPeriod, 0);
+    const uniqueRooms = new Set(stays.map(s => s.roomNumber ?? `cat-${s.categoryId}`)).size;
+    const uniqueGuests = new Set(stays.map(s => s.clientId)).size;
+    return { totalNights, uniqueRooms, uniqueGuests };
+  }, [stays]);
+
+  const inputCls = 'border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green/30 focus:border-green/40';
+
+  return (
+    <div className="space-y-4">
+      {/* Period picker */}
+      <div className="flex items-end gap-3 flex-wrap">
+        <div>
+          <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Du</label>
+          <input type="date" value={from} onChange={e => setFrom(e.target.value)} className={inputCls} />
+        </div>
+        <div>
+          <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Au</label>
+          <input type="date" value={to} min={from} onChange={e => setTo(e.target.value)} className={inputCls} />
+        </div>
+        <div className="flex items-center gap-1.5 pb-0.5">
+          {([
+            ['this-month', 'Ce mois'],
+            ['last-month', 'Mois dernier'],
+            ['last-30',    '30 derniers jours'],
+            ['ytd',        'Année en cours'],
+          ] as const).map(([k, label]) => (
+            <button key={k} type="button" onClick={() => applyPreset(k)}
+              className="px-2.5 py-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-charcoal transition-colors">
+              {label}
+            </button>
+          ))}
+        </div>
+        <button type="button" onClick={() => load()}
+          className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-charcoal border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+          <RotateCcw size={13} /> Rafraîchir
+        </button>
+      </div>
+
+      {/* Totals */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <StatCard label="Nuitées sur la période" value={totals.totalNights.toString()} />
+        <StatCard label="Chambres occupées"      value={totals.uniqueRooms.toString()} />
+        <StatCard label="Clients logés"          value={totals.uniqueGuests.toString()} />
+      </div>
+
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">{error}</div>}
+
+      {/* Table */}
+      {loading ? (
+        <div className="flex items-center justify-center h-24">
+          <div className="w-5 h-5 border-2 border-green/30 border-t-green rounded-full animate-spin" />
+        </div>
+      ) : stays.length === 0 ? (
+        <div className="text-center py-10 text-gray-400 text-sm">Aucun séjour sur cette période.</div>
+      ) : (
+        <div className="border border-gray-100 rounded-lg overflow-hidden overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b border-gray-100 bg-gray-50/60">
+              <tr className="text-[11px] text-gray-400 uppercase tracking-wider">
+                <th className="px-4 py-2.5 text-left font-medium">Réf.</th>
+                <th className="px-4 py-2.5 text-left font-medium">Client</th>
+                <th className="px-4 py-2.5 text-left font-medium">Chambre</th>
+                <th className="px-4 py-2.5 text-left font-medium">Arrivée</th>
+                <th className="px-4 py-2.5 text-left font-medium">Départ</th>
+                <th className="px-4 py-2.5 text-right font-medium">Nuits</th>
+                <th className="px-4 py-2.5 text-right font-medium">Nuits sur période</th>
+                <th className="px-4 py-2.5 text-left font-medium">Statut</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {stays.map(s => {
+                const st = STATUS_CONFIG[s.status] ?? { label: s.status, cls: 'bg-gray-100 text-gray-600' };
+                return (
+                  <tr key={s.reservationId} className="hover:bg-gray-50/70">
+                    <td className="px-4 py-2.5 font-mono text-xs text-green-dark font-bold">{s.reference}</td>
+                    <td className="px-4 py-2.5 font-medium text-charcoal">{s.clientFullName}</td>
+                    <td className="px-4 py-2.5">
+                      <span className="font-medium text-charcoal">{s.categoryNameFr}</span>
+                      {s.roomNumber && <span className="text-xs text-gray-400 ml-1">· Apt {s.roomNumber}</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-gray-500">{fmtDate(s.checkInDate)}</td>
+                    <td className="px-4 py-2.5 text-gray-500">{fmtDate(s.checkOutDate)}</td>
+                    <td className="px-4 py-2.5 text-right text-gray-500">{s.nights}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-charcoal">{s.nightsInPeriod}</td>
+                    <td className="px-4 py-2.5">
+                      <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${st.cls}`}>{st.label}</span>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {company.tarifs.map(t => (
-                    <tr key={t.id} className="border-b border-white/5 last:border-0">
-                      <td className="px-4 py-3">
-                        <p className="text-sm font-medium text-white">{t.categoryNameFr}</p>
-                        <p className="text-xs text-white/30">{t.categorySlug}</p>
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm text-white">{t.tarifNuit.toLocaleString('fr')} FCFA</td>
-                      <td className="px-4 py-3 text-right text-sm text-white">{t.tarifN15.toLocaleString('fr')} FCFA</td>
-                      <td className="px-4 py-3 text-right text-sm text-white">{t.tarifN30.toLocaleString('fr')} FCFA</td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => startEditTarif(t)}
-                          className="p-1.5 text-white/25 hover:text-white transition-colors rounded">
-                          <PencilLine size={13} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-gray-50/60 rounded-lg p-3 border border-gray-100">
+      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">{label}</p>
+      <p className="text-2xl font-bold text-charcoal mt-0.5">{value}</p>
+    </div>
+  );
+}
+
+/* ──────────────────── TARIFS TAB ──────────────────── */
+function TarifsTab({ company, cats, onChanged }: { company: CompanyDetailDto; cats: RoomCategoryDto[]; onChanged: () => void | Promise<void> }) {
+  const [catId, setCatId]     = useState('');
+  const [tarifNuit, setTN]    = useState('');
+  const [tarifN15, setTN15]   = useState('');
+  const [tarifN30, setTN30]   = useState('');
+  const [msg, setMsg]         = useState('');
+  const [saving, setSaving]   = useState(false);
+
+  function startEdit(t: { categoryId: number; tarifNuit: number; tarifN15: number; tarifN30: number }) {
+    setCatId(String(t.categoryId));
+    setTN(String(t.tarifNuit));
+    setTN15(String(t.tarifN15));
+    setTN30(String(t.tarifN30));
+    setMsg('');
+  }
+
+  async function handleSet(e: React.FormEvent) {
+    e.preventDefault();
+    if (!catId) { setMsg('Sélectionnez une catégorie.'); return; }
+    setSaving(true); setMsg('');
+    try {
+      await companies.setTarif(company.id, {
+        categoryId: Number(catId),
+        tarifNuit: Number(tarifNuit) || 0,
+        tarifN15:  Number(tarifN15)  || 0,
+        tarifN30:  Number(tarifN30)  || 0,
+      });
+      setCatId(''); setTN(''); setTN15(''); setTN30('');
+      setMsg('Tarif enregistré.');
+      await onChanged();
+    } catch (err: unknown) {
+      setMsg(err instanceof Error ? err.message : 'Erreur');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green/30 focus:border-green/40';
+  const labelCls = 'block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5';
+
+  return (
+    <div className="space-y-5">
+      {/* Upsert form */}
+      <form onSubmit={handleSet} className="bg-gray-50/60 border border-gray-100 rounded-lg p-4 space-y-3">
+        <p className="text-xs text-gray-500">
+          Définir ou modifier un tarif préférentiel par catégorie. Montants en FCFA / nuit.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <div>
+            <label className={labelCls}>Catégorie</label>
+            <select value={catId} onChange={e => setCatId(e.target.value)} className={inputCls}>
+              <option value="">— Choisir —</option>
+              {cats.map(c => <option key={c.id} value={c.id}>{c.nameFr}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>&lt; 15 nuits</label>
+            <input type="number" min={0} value={tarifNuit} onChange={e => setTN(e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>15–29 nuits</label>
+            <input type="number" min={0} value={tarifN15} onChange={e => setTN15(e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>≥ 30 nuits</label>
+            <input type="number" min={0} value={tarifN30} onChange={e => setTN30(e.target.value)} className={inputCls} />
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <button type="submit" disabled={saving} className="inline-flex items-center gap-2 px-4 py-2 bg-charcoal text-white text-sm font-medium rounded-lg hover:bg-charcoal-800 transition-colors disabled:opacity-60">
+            <Save size={14} /> {saving ? 'Enregistrement…' : 'Enregistrer le tarif'}
+          </button>
+          {msg && <span className={`text-xs ${msg.includes('enregistré') ? 'text-green-dark' : 'text-red-600'}`}>{msg}</span>}
+        </div>
+      </form>
+
+      {/* Existing tarifs */}
+      {company.tarifs.length === 0 ? (
+        <div className="text-center py-10 text-gray-400 text-sm">Aucun tarif configuré pour cette compagnie.</div>
+      ) : (
+        <div className="border border-gray-100 rounded-lg overflow-hidden overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b border-gray-100 bg-gray-50/60">
+              <tr className="text-[11px] text-gray-400 uppercase tracking-wider">
+                <th className="px-4 py-2.5 text-left font-medium">Catégorie</th>
+                <th className="px-4 py-2.5 text-right font-medium">&lt; 15 nuits</th>
+                <th className="px-4 py-2.5 text-right font-medium">15–29 nuits</th>
+                <th className="px-4 py-2.5 text-right font-medium">≥ 30 nuits</th>
+                <th className="px-4 py-2.5 text-right font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {company.tarifs.map(t => (
+                <tr key={t.id} className="hover:bg-gray-50/70">
+                  <td className="px-4 py-2.5">
+                    <p className="font-semibold text-charcoal">{t.categoryNameFr}</p>
+                    <p className="text-xs text-gray-400">{t.categorySlug}</p>
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-charcoal">{t.tarifNuit.toLocaleString('fr')} <span className="text-xs text-gray-400">FCFA</span></td>
+                  <td className="px-4 py-2.5 text-right text-charcoal">{t.tarifN15.toLocaleString('fr')}  <span className="text-xs text-gray-400">FCFA</span></td>
+                  <td className="px-4 py-2.5 text-right text-charcoal">{t.tarifN30.toLocaleString('fr')}  <span className="text-xs text-gray-400">FCFA</span></td>
+                  <td className="px-4 py-2.5 text-right">
+                    <button onClick={() => startEdit(t)} title="Modifier"
+                      className="p-1.5 text-gray-400 hover:text-charcoal hover:bg-gray-100 rounded-lg transition-colors">
+                      <PencilLine size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

@@ -150,22 +150,17 @@ public class ReservationService(AppDbContext db)
         }
 
         // Tarification selon le palier — priorité : tarif compagnie > tarif catégorie > tarif chambre
-        var client = await db.Clients.FindAsync(req.ClientId);
-        CompanyTarif? companyTarif = null;
-        if (client?.CompanyId is not null)
-        {
-            companyTarif = await db.CompanyTarifs.FirstOrDefaultAsync(
-                t => t.CompanyId == client.CompanyId && t.CategoryId == category.Id);
-        }
+        var client = await db.Clients
+            .Include(c => c.Company)
+            .FirstOrDefaultAsync(c => c.Id == req.ClientId);
+        var resolved = await ResolveTarifAsync(client, category, room);
 
-        var tarifNuit = companyTarif?.TarifNuit > 0 ? companyTarif.TarifNuit
-                      : (category.TarifNuit > 0 ? category.TarifNuit : (room != null ? room.TarifNuit : 30000));
-        var tarifN15  = companyTarif?.TarifN15 > 0 ? companyTarif.TarifN15
-                      : (category.TarifN15 > 0 ? category.TarifN15 : (room != null ? room.TarifN15 : 200000));
-        var tarifN30  = companyTarif?.TarifN30 > 0 ? companyTarif.TarifN30
-                      : (category.TarifN30 > 0 ? category.TarifN30 : (room != null ? room.TarifN30 : 300000));
+        Console.WriteLine(
+            $"[TARIF] reservation.create clientId={req.ClientId} clientCompanyId={client?.CompanyId?.ToString() ?? "none"} " +
+            $"catId={category.Id} catName={category.NameFr} → source={resolved.Source} " +
+            $"tarifNuit={resolved.TarifNuit} tarifN15={resolved.TarifN15} tarifN30={resolved.TarifN30} nights={nights}");
 
-        var tarifResult   = TarifEngine.ForStay(tarifNuit, tarifN15, tarifN30, nights);
+        var tarifResult   = TarifEngine.ForStay(resolved.TarifNuit, resolved.TarifN15, resolved.TarifN30, nights);
         var totalHeb      = (decimal)tarifResult.PerNight * nights;
 
         // Résoudre les prestations demandées
@@ -287,10 +282,21 @@ public class ReservationService(AppDbContext db)
             .FirstOrDefaultAsync(r => r.Id == id);
 
         if (r is null) return (null, "Réservation introuvable");
-        if (r.Status != ReservationStatus.NoShow) return (null, "Cette réservation n'est pas en statut No Show");
+
+        // No Show ne peut être appliqué que le jour où le séjour est censé commencer
+        // et uniquement si la réservation n'est pas déjà terminée / annulée.
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        if (r.Status is ReservationStatus.Cancelled or ReservationStatus.CheckedIn or ReservationStatus.CheckedOut)
+            return (null, "Cette réservation ne peut plus être marquée No Show");
+        if (r.CheckInDate != today)
+            return (null, "Le No Show ne peut être appliqué que le jour prévu de l'arrivée");
 
         var alreadyBilled = r.Payments.Any(p => p.Notes != null && p.Notes.StartsWith("Retenue No Show"));
         if (alreadyBilled) return (null, "Une retenue No Show a déjà été appliquée");
+
+        // Passage automatique en statut NoShow si nécessaire
+        if (r.Status != ReservationStatus.NoShow)
+            r.Status = ReservationStatus.NoShow;
 
         var penaltyNights = r.Nights < 15 ? 1 : r.Nights < 30 ? 2 : 4;
         var penaltyAmount = penaltyNights * r.PricePerNightSnapshot;
@@ -316,6 +322,176 @@ public class ReservationService(AppDbContext db)
             .FirstAsync(r => r.Id == id);
 
         return (new NoShowBillingResultDto(updated.Id, penaltyNights, penaltyAmount, updated.Currency, ToDto(updated)), null);
+    }
+
+    /// <summary>
+    /// Annule une réservation en appliquant, si nécessaire, une retenue selon la règle métier :
+    ///   - Séjour < 15 nuits  : gratuit si annulation avant 18h la veille de l'arrivée, sinon 1 nuitée
+    ///   - Séjour 15-29 nuits : gratuit si annulation ≥ 4 jours avant l'arrivée, sinon 2 nuitées
+    ///   - Séjour ≥ 30 nuits  : gratuit si annulation ≥ 7 jours avant l'arrivée, sinon 4 nuitées
+    /// </summary>
+    public async Task<(CancellationBillingResultDto? dto, string? error)> ProcessCancellationAsync(long id, string? reason = null)
+    {
+        var r = await db.Reservations
+            .Include(r => r.Room)
+            .Include(r => r.Category)
+            .Include(r => r.Client)
+            .Include(r => r.Payments)
+            .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
+            .FirstOrDefaultAsync(r => r.Id == id);
+
+        if (r is null) return (null, "Réservation introuvable");
+        if (r.Status is ReservationStatus.Cancelled or ReservationStatus.CheckedOut or ReservationStatus.NoShow)
+            return (null, "Cette réservation ne peut plus être annulée");
+
+        var (penaltyNights, deadlineLabel, deadlinePassed) = ComputeCancellationPenalty(r.Nights, r.CheckInDate, DateTime.UtcNow);
+        var penaltyAmount = penaltyNights * r.PricePerNightSnapshot;
+
+        var alreadyBilled = r.Payments.Any(p => p.Notes != null && p.Notes.StartsWith("Retenue annulation"));
+        if (deadlinePassed && penaltyNights > 0 && !alreadyBilled)
+        {
+            db.Payments.Add(new Payment
+            {
+                ReservationId = r.Id,
+                Amount        = penaltyAmount,
+                Currency      = r.Currency,
+                Method        = PaymentMethod.Cash,
+                Status        = PaymentStatus.Completed,
+                PaidAt        = DateTime.UtcNow,
+                Notes         = $"Retenue annulation — {penaltyNights} nuit{(penaltyNights > 1 ? "s" : "")} ({deadlineLabel})",
+            });
+        }
+
+        r.Status             = ReservationStatus.Cancelled;
+        r.CancelledAt        = DateTime.UtcNow;
+        r.CancellationReason = reason;
+
+        await db.SaveChangesAsync();
+
+        var updated = await db.Reservations
+            .Include(r => r.Room)
+            .Include(r => r.Category)
+            .Include(r => r.Client)
+            .Include(r => r.Payments)
+            .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
+            .FirstAsync(r => r.Id == id);
+
+        return (new CancellationBillingResultDto(
+            updated.Id,
+            deadlinePassed ? penaltyNights : 0,
+            deadlinePassed ? penaltyAmount : 0,
+            updated.Currency,
+            deadlineLabel,
+            ToDto(updated)
+        ), null);
+    }
+
+    /// <summary>
+    /// Calcule le tier applicable et si la deadline est déjà passée.
+    /// Utilisée pour l'affichage préalable (frontend) et pour la facturation effective.
+    /// </summary>
+    public static (int penaltyNights, string deadlineLabel, bool deadlinePassed) ComputeCancellationPenalty(int nights, DateOnly checkIn, DateTime nowUtc)
+    {
+        var checkInAt00 = checkIn.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+
+        if (nights < 15)
+        {
+            var deadline = checkInAt00.AddDays(-1).AddHours(18); // 18h la veille de l'arrivée
+            return (1, "avant 18h la veille de l'arrivée", nowUtc > deadline);
+        }
+        if (nights < 30)
+        {
+            var deadline = checkInAt00.AddDays(-4);              // 4 jours avant
+            return (2, "au plus tard 4 jours avant l'arrivée", nowUtc > deadline);
+        }
+        {
+            var deadline = checkInAt00.AddDays(-7);              // 1 semaine avant
+            return (4, "au plus tard 1 semaine avant l'arrivée", nowUtc > deadline);
+        }
+    }
+
+    /// <summary>
+    /// Retourne le tarif effectivement applicable pour un client + catégorie donnés
+    /// selon le waterfall : tarif compagnie > tarif catégorie > tarif chambre > défaut.
+    /// </summary>
+    public async Task<TarifPreviewDto?> GetTarifPreviewAsync(long clientId, long categoryId, int nights)
+    {
+        if (nights <= 0) nights = 1;
+
+        var category = await db.RoomCategories.FindAsync(categoryId);
+        if (category is null) return null;
+
+        var client = await db.Clients
+            .Include(c => c.Company)
+            .FirstOrDefaultAsync(c => c.Id == clientId);
+
+        var resolved = await ResolveTarifAsync(client, category, room: null);
+        var tarifResult = TarifEngine.ForStay(resolved.TarifNuit, resolved.TarifN15, resolved.TarifN30, nights);
+
+        return new TarifPreviewDto(
+            tarifResult.PerNight,
+            resolved.TarifNuit, resolved.TarifN15, resolved.TarifN30,
+            tarifResult.Tier.ToString(),
+            resolved.Source,
+            resolved.Source == "company" ? client?.Company?.Name : null,
+            tarifResult.PerNight * nights
+        );
+    }
+
+    private async Task<(int TarifNuit, int TarifN15, int TarifN30, string Source)> ResolveTarifAsync(Client? client, RoomCategory category, Room? room)
+    {
+        CompanyTarif? companyTarif = null;
+        if (client?.CompanyId is not null)
+        {
+            companyTarif = await db.CompanyTarifs.FirstOrDefaultAsync(
+                t => t.CompanyId == client.CompanyId && t.CategoryId == category.Id);
+        }
+
+        var usingCompany = companyTarif != null &&
+                           (companyTarif.TarifNuit > 0 || companyTarif.TarifN15 > 0 || companyTarif.TarifN30 > 0);
+
+        var tarifNuit = companyTarif?.TarifNuit > 0 ? companyTarif.TarifNuit
+                      : (category.TarifNuit > 0 ? category.TarifNuit : (room != null ? room.TarifNuit : 30000));
+        var tarifN15  = companyTarif?.TarifN15 > 0 ? companyTarif.TarifN15
+                      : (category.TarifN15 > 0 ? category.TarifN15 : (room != null ? room.TarifN15 : 200000));
+        var tarifN30  = companyTarif?.TarifN30 > 0 ? companyTarif.TarifN30
+                      : (category.TarifN30 > 0 ? category.TarifN30 : (room != null ? room.TarifN30 : 300000));
+
+        var source = usingCompany ? "company"
+                   : (category.TarifNuit > 0 || category.TarifN15 > 0 || category.TarifN30 > 0) ? "category"
+                   : (room != null) ? "room"
+                   : "default";
+
+        return (tarifNuit, tarifN15, tarifN30, source);
+    }
+
+    public async Task<(ReservationDto? dto, string? error)> UpdateAsync(long id, UpdateReservationRequest req)
+    {
+        var r = await db.Reservations
+            .Include(r => r.Room)
+            .Include(r => r.Category)
+            .Include(r => r.Client)
+            .Include(r => r.Payments)
+            .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
+            .FirstOrDefaultAsync(r => r.Id == id);
+
+        if (r is null) return (null, "Réservation introuvable");
+        if (r.Status is ReservationStatus.Cancelled or ReservationStatus.CheckedOut or ReservationStatus.NoShow)
+            return (null, "Une réservation terminée/annulée ne peut plus être modifiée");
+
+        if (req.Source is not null)               r.Source              = req.Source;
+        if (req.SpecialRequests is not null)      r.SpecialRequests     = req.SpecialRequests;
+        if (req.InternalNotes is not null)        r.InternalNotes       = req.InternalNotes;
+        if (req.Adults.HasValue)                  r.Adults              = req.Adults.Value;
+        if (req.Children.HasValue)                r.Children            = req.Children.Value;
+        if (req.GarantieType is not null)         r.GarantieType        = req.GarantieType;
+        if (req.GarantieMontantCash.HasValue)     r.GarantieMontantCash = req.GarantieMontantCash;
+        if (req.CarteNom is not null)             r.CarteNom            = req.CarteNom;
+        if (req.CarteSuffix is not null)          r.CarteSuffix         = req.CarteSuffix;
+        if (req.CarteExpiration is not null)      r.CarteExpiration     = req.CarteExpiration;
+
+        await db.SaveChangesAsync();
+        return (ToDto(r), null);
     }
 
     private async Task<bool> CheckOverlapAsync(long roomId, DateOnly checkIn, DateOnly checkOut)

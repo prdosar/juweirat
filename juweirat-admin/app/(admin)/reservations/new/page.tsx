@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { categories, clients, companies, rooms, reservations, prestations } from '@/lib/api';
-import type { ClientDto, CompanyDto, PrestationAnnexeDto, RoomCategoryDto, RoomDto } from '@/lib/types';
+import type { ClientDto, CompanyDto, CompanyTarifDto, PrestationAnnexeDto, RoomCategoryDto, RoomDto, TarifPreviewDto } from '@/lib/types';
 
 /* ────────────────────────── Design tokens ───────────────────────── */
 const C = {
@@ -94,6 +94,8 @@ function initials(name: string): string {
 /* ────────────────────────── Component ───────────────────────── */
 export default function NewReservationPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const preselectedClientId = Number(searchParams.get('clientId')) || 0;
 
   // ── Data ──
   const [categoryList, setCategoryList]     = useState<RoomCategoryDto[]>([]);
@@ -107,6 +109,20 @@ export default function NewReservationPage() {
   useEffect(() => { prestations.getAll(true).then(setPrestationList); }, []);
   useEffect(() => { companies.getAll().then(setCompanyList).catch(() => setCompanyList([])); }, []);
 
+  // ── Preselect client if provided in URL ──
+  useEffect(() => {
+    if (!preselectedClientId) return;
+    clients.getById(preselectedClientId)
+      .then(c => {
+        setClientMode('existing');
+        setClientId(c.id);
+        setSelectedClient(c);
+        setClientQuery(c.fullName);
+      })
+      .catch(() => { /* silently ignore */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectedClientId]);
+
   // ── Wizard state ──
   const [step, setStep] = useState(0);
 
@@ -115,6 +131,7 @@ export default function NewReservationPage() {
   const [clientQuery, setClientQuery] = useState('');
   const [clientId, setClientId] = useState(0);
   const [selectedClient, setSelectedClient] = useState<ClientDto | null>(null);
+  const [filterCompanyId, setFilterCompanyId] = useState(0); // 0 = tous
   const [newClient, setNewClient] = useState({
     fullName: '', phone: '', email: '', idDoc: '',
     country: COUNTRIES[0], type: CLIENT_TYPES[0],
@@ -154,6 +171,29 @@ export default function NewReservationPage() {
     return () => clearTimeout(t);
   }, [clientQuery]);
 
+  // ── Fetch full company tarifs when a client with a company is selected ──
+  // These are used to override the default category prices in the category picker.
+  const [companyTarifs, setCompanyTarifs] = useState<CompanyTarifDto[]>([]);
+  useEffect(() => {
+    setCompanyTarifs([]);
+    if (!selectedClient?.companyId) return;
+    let cancelled = false;
+    companies.getById(selectedClient.companyId)
+      .then(detail => { if (!cancelled) setCompanyTarifs(detail.tarifs ?? []); })
+      .catch(() => { if (!cancelled) setCompanyTarifs([]); });
+    return () => { cancelled = true; };
+  }, [selectedClient?.companyId]);
+
+  /**
+   * Returns the effective per-night rate a client would pay for a given category
+   * — mirrors the backend waterfall (company tarif > category default).
+   */
+  function effectiveNightRate(cat: RoomCategoryDto): { rate: number; source: 'company' | 'category' } {
+    const t = companyTarifs.find(x => x.categoryId === cat.id);
+    if (t && t.tarifNuit > 0) return { rate: t.tarifNuit, source: 'company' };
+    return { rate: cat.tarifNuit, source: 'category' };
+  }
+
   // ── Submit ──
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
@@ -162,8 +202,23 @@ export default function NewReservationPage() {
   const nights   = nightsBetween(checkIn, checkOut);
   const totalPax = Math.max(1, adults + kids);
   const selectedCat = categoryList.find(c => c.id === categoryId) ?? null;
-  const tier        = selectedCat && nights > 0 ? tierFor(nights, selectedCat) : null;
-  const hebergement = tier ? tier.rate * nights : 0;
+
+  // ── Tarif preview effectif (compagnie / catégorie / défaut) ──
+  const [tarifPreview, setTarifPreview] = useState<TarifPreviewDto | null>(null);
+  useEffect(() => {
+    setTarifPreview(null);
+    if (!clientId || !categoryId || nights <= 0) return;
+    let cancelled = false;
+    reservations.getTarifPreview(clientId, categoryId, nights)
+      .then(res => { if (!cancelled) setTarifPreview(res); })
+      .catch(() => { if (!cancelled) setTarifPreview(null); });
+    return () => { cancelled = true; };
+  }, [clientId, categoryId, nights]);
+
+  const tier = selectedCat && nights > 0 ? tierFor(nights, selectedCat) : null;
+  // Prefer the backend-computed tariff (which correctly applies the company waterfall).
+  const effectivePricePerNight = tarifPreview?.pricePerNight ?? (tier ? tier.rate : 0);
+  const hebergement = effectivePricePerNight * nights;
 
   const categoryRooms = useMemo(
     () => roomList.filter(r => r.categoryId === categoryId && r.status === 'Available'),
@@ -172,13 +227,16 @@ export default function NewReservationPage() {
 
   const filteredClients = clientList
     .filter(c => {
+      // Filtre par compagnie (si sélectionnée)
+      if (filterCompanyId > 0 && c.companyId !== filterCompanyId) return false;
+      // Recherche textuelle
       if (!clientQuery) return true;
       const q = clientQuery.toLowerCase();
       return c.fullName.toLowerCase().includes(q)
         || (c.phone ?? '').toLowerCase().includes(q)
         || (c.email ?? '').toLowerCase().includes(q);
     })
-    .slice(0, 8);
+    .slice(0, 12);
 
   function quantityFor(p: PrestationAnnexeDto): number {
     const override = selectedPrestations.get(p.id);
@@ -466,15 +524,64 @@ export default function NewReservationPage() {
 
               {clientMode === 'existing' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                    <span style={fieldLabel}>Rechercher un client *</span>
-                    <input
-                      value={clientQuery}
-                      onChange={e => setClientQuery(e.target.value)}
-                      placeholder="Rechercher par nom, téléphone ou email…"
-                      style={fieldInput}
-                    />
-                  </label>
+                  {selectedClient && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 14px', borderRadius: 10,
+                      background: selectedClient.companyId ? '#eef6ff' : C.accentSoft,
+                      border: `1px solid ${selectedClient.companyId ? '#bfdcff' : C.accent}`,
+                    }}>
+                      <span style={{
+                        width: 28, height: 28, borderRadius: 999,
+                        display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700,
+                        background: selectedClient.companyId ? '#1e6bd6' : C.accent, color: '#fff',
+                      }}>{initials(selectedClient.fullName)}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: C.ink }}>
+                          {selectedClient.fullName}
+                        </div>
+                        {selectedClient.companyId && selectedClient.companyName ? (
+                          <div style={{ fontSize: 11, color: '#1e6bd6', fontWeight: 500, marginTop: 2 }}>
+                            🏢 {selectedClient.companyName} — tarif entreprise appliqué (si défini pour cette catégorie)
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 11, color: C.ink4, marginTop: 2 }}>
+                            Client particulier
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 240px', gap: 12 }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
+                      <span style={fieldLabel}>Rechercher un client *</span>
+                      <input
+                        value={clientQuery}
+                        onChange={e => setClientQuery(e.target.value)}
+                        placeholder="Nom, téléphone ou email…"
+                        style={fieldInput}
+                      />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 7, minWidth: 0 }}>
+                      <span style={fieldLabel}>Filtrer par compagnie</span>
+                      <select
+                        value={filterCompanyId}
+                        onChange={e => setFilterCompanyId(Number(e.target.value))}
+                        style={fieldInput}
+                      >
+                        <option value={0}>— Tous les clients —</option>
+                        {companyList.map(co => (
+                          <option key={co.id} value={co.id}>{co.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  {filterCompanyId > 0 && (
+                    <p style={{ margin: 0, fontSize: 11, color: '#1e6bd6', fontWeight: 500 }}>
+                      🏢 Liste filtrée sur les clients rattachés à cette compagnie.
+                    </p>
+                  )}
                   <div style={{ border: `1px solid ${C.sep}`, borderRadius: 12, overflow: 'hidden' }}>
                     {filteredClients.length === 0 ? (
                       <div style={{ padding: '20px 16px', fontSize: 13, color: C.ink4, textAlign: 'center' }}>
@@ -515,13 +622,27 @@ export default function NewReservationPage() {
                                 fontSize: 11, color: C.ink4,
                                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                               }}>{meta}</span>
+                              {c.companyId && c.companyName && (
+                                <span style={{
+                                  fontSize: 10, color: '#1e6bd6', fontWeight: 600, marginTop: 1,
+                                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                }}>🏢 {c.companyName}</span>
+                              )}
                             </span>
                           </span>
-                          <span style={{
-                            flex: '0 0 auto', fontSize: 11, padding: '3px 9px', borderRadius: 999,
-                            background: on ? C.accent   : C.neutral,
-                            color:      on ? '#fff'      : C.ink3,
-                          }}>{tag}</span>
+                          <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flex: '0 0 auto' }}>
+                            <span style={{
+                              fontSize: 11, padding: '3px 9px', borderRadius: 999,
+                              background: on ? C.accent   : C.neutral,
+                              color:      on ? '#fff'      : C.ink3,
+                            }}>{tag}</span>
+                            {c.companyId && (
+                              <span style={{
+                                fontSize: 9, padding: '2px 7px', borderRadius: 999,
+                                background: '#eef6ff', color: '#1e6bd6', fontWeight: 600,
+                              }}>Compagnie</span>
+                            )}
+                          </span>
                         </button>
                       );
                     })}
@@ -671,6 +792,9 @@ export default function NewReservationPage() {
                 {categoryList.map(cat => {
                   const on = cat.id === categoryId;
                   const detail = `${cat.pmsType} ${GAMME_LABELS[cat.pmsGamme] ?? cat.pmsGamme} · ${cat.capacityAdults} adulte${cat.capacityAdults > 1 ? 's' : ''}`;
+                  const priced = effectiveNightRate(cat);
+                  const isCompanyRate = priced.source === 'company';
+                  const savings = isCompanyRate ? cat.tarifNuit - priced.rate : 0;
                   return (
                     <button
                       key={cat.id}
@@ -684,13 +808,34 @@ export default function NewReservationPage() {
                         textAlign: 'left',
                       }}
                     >
-                      <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        <span style={{ fontSize: 13, fontWeight: 500 }}>{cat.nameFr}</span>
+                      <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ fontSize: 13, fontWeight: 500 }}>{cat.nameFr}</span>
+                          {isCompanyRate && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 999,
+                              background: '#eef6ff', color: '#1e6bd6',
+                              whiteSpace: 'nowrap',
+                            }}>🏢 Tarif entreprise</span>
+                          )}
+                        </span>
                         <span style={{ fontSize: 11, color: C.ink4 }}>{detail}</span>
                       </span>
                       <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
-                        <span style={{ fontSize: 13, fontWeight: 500 }}>{fcfa(cat.tarifNuit)}</span>
-                        <span style={{ fontSize: 11, color: C.ink4 }}>par nuit</span>
+                        <span style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                          {isCompanyRate && (
+                            <span style={{ fontSize: 11, color: C.ink4, textDecoration: 'line-through' }}>
+                              {fcfa(cat.tarifNuit)}
+                            </span>
+                          )}
+                          <span style={{
+                            fontSize: 13, fontWeight: 600,
+                            color: isCompanyRate ? '#1e6bd6' : C.ink,
+                          }}>{fcfa(priced.rate)}</span>
+                        </span>
+                        <span style={{ fontSize: 11, color: C.ink4 }}>
+                          par nuit{savings > 0 && ` · − ${fcfa(savings)}`}
+                        </span>
                       </span>
                     </button>
                   );
@@ -897,6 +1042,21 @@ export default function NewReservationPage() {
               <Row label="Dates" value={checkIn && checkOut ? `${fmtDateShort(checkIn)} → ${fmtDateShort(checkOut)}` : '—'} />
               <Row label="Logement" value={summaryRoomLabel} />
               <Row label="Hébergement" value={hebergement ? fcfa(hebergement) : '—'} />
+              {tarifPreview && (
+                <div style={{
+                  fontSize: 11, padding: '4px 8px', borderRadius: 8,
+                  background: tarifPreview.source === 'company' ? 'rgba(30,107,214,.25)' : 'rgba(255,255,255,.05)',
+                  color: tarifPreview.source === 'company' ? '#a7d0ff' : C.darkLabel,
+                  border: tarifPreview.source === 'company' ? '1px solid rgba(30,107,214,.5)' : '1px solid transparent',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}>
+                  {tarifPreview.source === 'company'
+                    ? <>🏢 Tarif entreprise <b style={{ color: '#eaf3ff' }}>{tarifPreview.companyName}</b> · {fcfa(tarifPreview.pricePerNight)}/nuit</>
+                    : tarifPreview.source === 'category'
+                      ? <>Tarif catégorie standard · {fcfa(tarifPreview.pricePerNight)}/nuit</>
+                      : <>Tarif par défaut · {fcfa(tarifPreview.pricePerNight)}/nuit</>}
+                </div>
+              )}
               <Row label="Prestations" value={extrasTotal ? fcfa(extrasTotal) : '—'} />
               <Row label="Remise" value={discountNum ? `− ${fcfa(discountNum)}` : '—'} />
             </div>

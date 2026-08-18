@@ -1,41 +1,87 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import { companies } from '@/lib/api';
-import type { CompanyDto } from '@/lib/types';
-import { Plus, Search, Building2, X } from 'lucide-react';
+import type { CompanyDto, PagedResult } from '@/lib/types';
+import {
+  Plus, Search, Building2, X, Pencil, Eye,
+  Trash2, RotateCcw, ChevronLeft, ChevronRight,
+  Tag, UserPlus,
+} from 'lucide-react';
+
+const PAGE_SIZE_DEFAULT = 10;
+const ACTIVE_FILTERS: Array<{ value: 'all' | 'active' | 'inactive'; label: string }> = [
+  { value: 'all',      label: 'Tous les statuts' },
+  { value: 'active',   label: 'Actifs uniquement' },
+  { value: 'inactive', label: 'Inactifs uniquement' },
+];
 
 export default function CompaniesPage() {
-  const [list, setList]         = useState<CompanyDto[]>([]);
-  const [search, setSearch]     = useState('');
-  const [loading, setLoading]   = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const [modalOpen, setModalOpen] = useState(false);
+  const router = useRouter();
+
+  const [page, setPage]                 = useState<PagedResult<CompanyDto> | null>(null);
+  const [pageNumber, setPageNumber]     = useState(1);
+  const [pageSize, setPageSize]         = useState(PAGE_SIZE_DEFAULT);
+  const [search, setSearch]             = useState('');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
+
+  const [loading, setLoading]           = useState(true);
+  const [loadError, setLoadError]       = useState('');
+  const [modalTarget, setModalTarget]   = useState<CompanyDto | 'new' | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError('');
     try {
-      setList(await companies.getAll());
+      const isActiveParam = activeFilter === 'all' ? undefined : activeFilter === 'active';
+      const res = await companies.getPaged({
+        pageNumber, pageSize,
+        search: search.trim() || undefined,
+        sortBy: 'Name',
+        isDescending: false,
+        isActive: isActiveParam,
+      });
+      setPage(res);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setLoadError(msg === 'Failed to fetch' ? "Impossible de joindre l'API. Vérifiez que le backend est démarré." : msg);
+      setPage(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pageNumber, pageSize, search, activeFilter]);
 
-  useEffect(() => { load(); }, [load]);
+  // Debounced reload on search/filter/page change
+  useEffect(() => {
+    const t = setTimeout(load, 250);
+    return () => clearTimeout(t);
+  }, [load]);
 
-  const filtered = list.filter(c => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return c.name.toLowerCase().includes(q)
-      || (c.responsableNom ?? '').toLowerCase().includes(q)
-      || (c.ville ?? '').toLowerCase().includes(q)
-      || (c.email ?? '').toLowerCase().includes(q);
-  });
+  // Reset page when search / filter / pageSize changes
+  useEffect(() => { setPageNumber(1); }, [search, activeFilter, pageSize]);
+
+  const items = page?.items ?? [];
+  const totalPages = page?.totalPages ?? 0;
+  const totalCount = page?.totalCount ?? 0;
+
+  const rangeLabel = useMemo(() => {
+    if (!page || totalCount === 0) return '0 résultat';
+    const from = (page.pageNumber - 1) * page.pageSize + 1;
+    const to   = Math.min(page.pageNumber * page.pageSize, page.totalCount);
+    return `${from}–${to} sur ${page.totalCount}`;
+  }, [page, totalCount]);
+
+  async function toggleActive(c: CompanyDto) {
+    try {
+      await companies.update(c.id, { isActive: !c.isActive });
+      await load();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setLoadError(msg === 'Failed to fetch' ? "Impossible de joindre l'API. Vérifiez que le backend est démarré." : msg);
+    }
+  }
 
   return (
     <div className="flex flex-col h-full overflow-auto">
@@ -53,8 +99,15 @@ export default function CompaniesPage() {
               className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green/30 focus:border-green/40 bg-white"
             />
           </div>
+          <select
+            value={activeFilter}
+            onChange={e => setActiveFilter(e.target.value as typeof activeFilter)}
+            className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-green/30 focus:border-green/40"
+          >
+            {ACTIVE_FILTERS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+          </select>
           <button
-            onClick={() => setModalOpen(true)}
+            onClick={() => setModalTarget('new')}
             className="flex items-center gap-2 bg-charcoal text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-charcoal-800 transition-colors ml-auto"
           >
             <Plus size={15} /> Nouvelle compagnie
@@ -85,28 +138,25 @@ export default function CompaniesPage() {
                     <th className="px-5 py-3.5 text-left font-medium">Email</th>
                     <th className="px-5 py-3.5 text-right font-medium">Clients</th>
                     <th className="px-5 py-3.5 text-left font-medium">Statut</th>
+                    <th className="px-5 py-3.5 text-right font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {filtered.map(c => (
-                    <tr
-                      key={c.id}
-                      className="hover:bg-gray-50/70 transition-colors cursor-pointer"
-                      onClick={() => window.location.href = `/companies/${c.id}`}
-                    >
+                  {items.map(c => (
+                    <tr key={c.id} className={`transition-colors ${c.isActive ? 'hover:bg-gray-50/70' : 'bg-gray-50/40 text-gray-500'}`}>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-charcoal/5 flex items-center justify-center shrink-0">
-                            <Building2 size={15} className="text-charcoal/70" />
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${c.isActive ? 'bg-charcoal/5' : 'bg-charcoal/[.03]'}`}>
+                            <Building2 size={15} className={c.isActive ? 'text-charcoal/70' : 'text-gray-400'} />
                           </div>
-                          <span className="font-semibold text-charcoal">{c.name}</span>
+                          <span className={`font-semibold ${c.isActive ? 'text-charcoal' : 'text-gray-500'}`}>{c.name}</span>
                         </div>
                       </td>
-                      <td className="px-5 py-3.5 text-gray-500">{c.responsableNom || <span className="text-gray-300">—</span>}</td>
-                      <td className="px-5 py-3.5 text-gray-500">{c.ville || <span className="text-gray-300">—</span>}</td>
-                      <td className="px-5 py-3.5 text-gray-500">{c.phone || <span className="text-gray-300">—</span>}</td>
-                      <td className="px-5 py-3.5 text-gray-500">{c.email || <span className="text-gray-300">—</span>}</td>
-                      <td className="px-5 py-3.5 text-right font-semibold text-charcoal">
+                      <td className="px-5 py-3.5">{c.responsableNom || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-5 py-3.5">{c.ville || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-5 py-3.5">{c.phone || <span className="text-gray-300">—</span>}</td>
+                      <td className="px-5 py-3.5">{c.email || <span className="text-gray-300">—</span>}</td>
+                      <td className={`px-5 py-3.5 text-right font-semibold ${c.isActive ? 'text-charcoal' : 'text-gray-400'}`}>
                         {c.clientCount}
                       </td>
                       <td className="px-5 py-3.5">
@@ -116,12 +166,61 @@ export default function CompaniesPage() {
                           <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-charcoal/10 text-charcoal/60">Inactif</span>
                         )}
                       </td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => setModalTarget(c)}
+                            title="Modifier"
+                            className="p-1.5 text-gray-400 hover:text-charcoal hover:bg-gray-100 rounded-lg transition-colors"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            onClick={() => router.push(`/companies/${c.id}`)}
+                            title="Détails"
+                            className="p-1.5 text-gray-400 hover:text-charcoal hover:bg-gray-100 rounded-lg transition-colors"
+                          >
+                            <Eye size={15} />
+                          </button>
+                          <button
+                            onClick={() => router.push(`/companies/${c.id}?tab=tarifs`)}
+                            title="Éditer la liste de prix"
+                            className="p-1.5 text-gray-400 hover:text-charcoal hover:bg-gray-100 rounded-lg transition-colors"
+                          >
+                            <Tag size={15} />
+                          </button>
+                          <button
+                            onClick={() => router.push(`/companies/${c.id}?tab=clients`)}
+                            title="Ajouter un client"
+                            className="p-1.5 text-gray-400 hover:text-charcoal hover:bg-gray-100 rounded-lg transition-colors"
+                          >
+                            <UserPlus size={15} />
+                          </button>
+                          {c.isActive ? (
+                            <button
+                              onClick={() => toggleActive(c)}
+                              title="Désactiver"
+                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => toggleActive(c)}
+                              title="Restaurer"
+                              className="p-1.5 text-gray-400 hover:text-green-dark hover:bg-green/10 rounded-lg transition-colors"
+                            >
+                              <RotateCcw size={15} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
-                  {filtered.length === 0 && (
+                  {items.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-5 py-12 text-center text-gray-400 text-sm">
-                        Aucune compagnie
+                      <td colSpan={8} className="px-5 py-12 text-center text-gray-400 text-sm">
+                        Aucune compagnie trouvée.
                       </td>
                     </tr>
                   )}
@@ -129,13 +228,54 @@ export default function CompaniesPage() {
               </table>
             </div>
           )}
+
+          {/* Pagination footer */}
+          {!loading && page && totalCount > 0 && (
+            <div className="flex items-center justify-between gap-4 px-5 py-3 border-t border-gray-100 text-xs text-gray-500 flex-wrap">
+              <div className="flex items-center gap-3">
+                <span>{rangeLabel}</span>
+                <label className="flex items-center gap-1.5">
+                  <span className="text-gray-400">Par page :</span>
+                  <select
+                    value={pageSize}
+                    onChange={e => setPageSize(Number(e.target.value))}
+                    className="border border-gray-200 rounded px-1.5 py-0.5 bg-white text-charcoal focus:outline-none focus:ring-1 focus:ring-green/30"
+                  >
+                    {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  disabled={!page.hasPreviousPage}
+                  onClick={() => setPageNumber(n => Math.max(1, n - 1))}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                  aria-label="Page précédente"
+                >
+                  <ChevronLeft size={15} />
+                </button>
+                <span className="px-2 font-medium text-charcoal">
+                  Page {page.pageNumber} / {totalPages}
+                </span>
+                <button
+                  disabled={!page.hasNextPage}
+                  onClick={() => setPageNumber(n => Math.min(totalPages, n + 1))}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+                  aria-label="Page suivante"
+                >
+                  <ChevronRight size={15} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {modalOpen && (
-        <NewCompanyModal
-          onClose={() => setModalOpen(false)}
-          onCreated={async () => { setModalOpen(false); await load(); }}
+      {modalTarget && (
+        <CompanyModal
+          initial={modalTarget === 'new' ? null : modalTarget}
+          onClose={() => setModalTarget(null)}
+          onSaved={async () => { setModalTarget(null); await load(); }}
         />
       )}
     </div>
@@ -143,9 +283,24 @@ export default function CompaniesPage() {
 }
 
 /* ─────────────────────── Modal ─────────────────────── */
-function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void | Promise<void> }) {
+function CompanyModal({
+  initial,
+  onClose,
+  onSaved,
+}: {
+  initial: CompanyDto | null;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+}) {
+  const isEdit = initial !== null;
   const [form, setForm] = useState({
-    name: '', responsableNom: '', phone: '', email: '', adresse: '', ville: '', notes: '',
+    name:           initial?.name           ?? '',
+    responsableNom: initial?.responsableNom ?? '',
+    phone:          initial?.phone          ?? '',
+    email:          initial?.email          ?? '',
+    adresse:        initial?.adresse        ?? '',
+    ville:          initial?.ville          ?? '',
+    notes:          initial?.notes          ?? '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
@@ -166,16 +321,21 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
     setSaving(true);
     setError('');
     try {
-      await companies.create({
-        name: form.name.trim(),
+      const body = {
+        name:           form.name.trim(),
         responsableNom: form.responsableNom || undefined,
         phone:          form.phone || undefined,
         email:          form.email || undefined,
         adresse:        form.adresse || undefined,
         ville:          form.ville || undefined,
         notes:          form.notes || undefined,
-      });
-      await onCreated();
+      };
+      if (isEdit && initial) {
+        await companies.update(initial.id, body);
+      } else {
+        await companies.create(body);
+      }
+      await onSaved();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg === 'Failed to fetch' ? "Impossible de joindre l'API. Vérifiez que le backend est démarré." : msg);
@@ -200,8 +360,12 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
               <Building2 size={16} className="text-green-dark" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-charcoal">Nouvelle compagnie</h2>
-              <p className="text-xs text-gray-400">Créer une fiche entreprise partenaire</p>
+              <h2 className="text-sm font-bold text-charcoal">
+                {isEdit ? `Modifier — ${initial?.name}` : 'Nouvelle compagnie'}
+              </h2>
+              <p className="text-xs text-gray-400">
+                {isEdit ? 'Modifier la fiche de la compagnie' : 'Créer une fiche entreprise partenaire'}
+              </p>
             </div>
           </div>
           <button
@@ -306,7 +470,7 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
               disabled={saving}
               className="inline-flex items-center gap-2 px-4 py-2 bg-charcoal text-white text-sm font-medium rounded-lg hover:bg-charcoal-800 transition-colors disabled:opacity-60"
             >
-              {saving ? 'Enregistrement…' : 'Créer la compagnie'}
+              {saving ? 'Enregistrement…' : (isEdit ? 'Mettre à jour' : 'Créer la compagnie')}
             </button>
           </div>
         </form>
@@ -314,4 +478,3 @@ function NewCompanyModal({ onClose, onCreated }: { onClose: () => void; onCreate
     </div>
   );
 }
-

@@ -86,3 +86,36 @@ public record NoShowBillingResultDto(
     string Currency,
     ReservationDto Reservation
 );
+
+public record CancellationBillingResultDto(
+    long ReservationId,
+    int PenaltyNights,     // 0 if cancellation is free
+    decimal PenaltyAmount,
+    string Currency,
+    string DeadlineLabel,  // Human-readable deadline that applied (or was passed)
+    ReservationDto Reservation
+);
+
+public record TarifPreviewDto(
+    int PricePerNight,     // tarif effectivement appliqué selon la durée
+    int TarifNuit,
+    int TarifN15,
+    int TarifN30,
+    string Tier,           // "Nuitee" | "N15Nuits" | "N30Nuits"
+    string Source,         // "company" | "category" | "room" | "default"
+    string? CompanyName,   // libellé si tarif compagnie appliqué
+    int TotalHebergement
+);
+
+public record UpdateReservationRequest(
+    string? Source                = null,
+    string? SpecialRequests       = null,
+    string? InternalNotes         = null,
+    int? Adults                   = null,
+    int? Children                 = null,
+    string? GarantieType          = null,
+    decimal? GarantieMontantCash  = null,
+    string? CarteNom              = null,
+    string? CarteSuffix           = null,
+    string? CarteExpiration       = null
+);

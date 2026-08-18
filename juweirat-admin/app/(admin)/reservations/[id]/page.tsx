@@ -289,12 +289,15 @@ export default function ReservationDetailPage() {
                   <span className="text-gray-500">Hébergement</span>
                   <span className="font-medium text-charcoal">{r.totalHebergement.toLocaleString('fr')} {r.currency}</span>
                 </div>
-                {r.totalPrestations > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Prestations</span>
-                    <span className="font-medium text-gold">+{r.totalPrestations.toLocaleString('fr')} {r.currency}</span>
-                  </div>
-                )}
+                {r.prestations.map(p => {
+                  const label = p.nameFr.length > 17 ? `${p.nameFr.slice(0, 17)}…` : p.nameFr;
+                  return (
+                    <div key={p.id} className="flex justify-between">
+                      <span className="text-gray-500" title={p.nameFr}>{label}</span>
+                      <span className="font-medium text-gold">+{p.totalLigne.toLocaleString('fr')} {r.currency}</span>
+                    </div>
+                  );
+                })}
                 <div className="flex justify-between border-t border-gray-100 pt-1.5">
                   <span className="text-gray-500">Total</span>
                   <span className="font-bold text-charcoal">{r.totalPrice.toLocaleString('fr')} {r.currency}</span>

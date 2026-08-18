@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import { prestations } from '@/lib/api';
 import type { PrestationAnnexeDto } from '@/lib/types';
-import { Plus, Search, CheckCircle2, XCircle, Trash2, X, Sparkles } from 'lucide-react';
+import { Plus, Search, CheckCircle2, XCircle, Trash2, X, Sparkles, Eye, PencilLine } from 'lucide-react';
 
 const MODES: Record<string, { label: string; desc: string }> = {
   ParPersonneParNuit: { label: 'Par personne / nuit',    desc: 'Exemple : Petit-Déjeuner' },
@@ -15,14 +16,15 @@ const MODES: Record<string, { label: string; desc: string }> = {
 const ICONS = ['coffee', 'car', 'utensils', 'wine', 'dumbbell', 'sparkles', 'ship', 'gift', 'baby', 'paw-print'];
 
 export default function PrestationsPage() {
+  const router = useRouter();
   const [list, setList]       = useState<PrestationAnnexeDto[]>([]);
   const [search, setSearch]   = useState('');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [modalTarget, setModalTarget] = useState<PrestationAnnexeDto | 'new' | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setLoading(true);
     setLoadError('');
     try {
       setList(await prestations.getAll(false));
@@ -30,7 +32,7 @@ export default function PrestationsPage() {
       const msg = err instanceof Error ? err.message : String(err);
       setLoadError(msg === 'Failed to fetch' ? "Impossible de joindre l'API. Vérifiez que le backend est démarré." : msg);
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, []);
 
@@ -42,15 +44,33 @@ export default function PrestationsPage() {
     return p.nameFr.toLowerCase().includes(q) || p.nameEn.toLowerCase().includes(q);
   });
 
+  // Optimistic update: apply the saved item to the local list immediately (no visible reload).
+  function upsertLocal(saved: PrestationAnnexeDto) {
+    setList(prev => {
+      const idx = prev.findIndex(p => p.id === saved.id);
+      if (idx === -1) return [saved, ...prev];
+      const next = prev.slice();
+      next[idx] = saved;
+      return next;
+    });
+  }
+
   async function toggleActive(p: PrestationAnnexeDto) {
-    try { await prestations.update(p.id, { isActive: !p.isActive }); } catch { /* ignored, reload will show current state */ }
-    await load();
+    // Optimistic UI: flip immediately, roll back on failure.
+    const optimistic = { ...p, isActive: !p.isActive };
+    upsertLocal(optimistic);
+    try {
+      const updated = await prestations.update(p.id, { isActive: !p.isActive });
+      upsertLocal(updated);
+    } catch {
+      upsertLocal(p); // rollback
+    }
   }
 
   async function handleDelete(p: PrestationAnnexeDto) {
     if (!confirm(`Supprimer "${p.nameFr}" ? Cette action est irréversible.`)) return;
-    try { await prestations.delete(p.id); } catch { /* ignored */ }
-    await load();
+    setList(prev => prev.filter(x => x.id !== p.id)); // optimistic remove
+    try { await prestations.delete(p.id); } catch { await load({ silent: true }); /* rollback via reload */ }
   }
 
   return (
@@ -107,7 +127,7 @@ export default function PrestationsPage() {
                     <tr
                       key={p.id}
                       className="hover:bg-gray-50/70 transition-colors cursor-pointer"
-                      onClick={() => setModalTarget(p)}
+                      onClick={() => router.push(`/prestations/${p.id}`)}
                     >
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
@@ -141,14 +161,30 @@ export default function PrestationsPage() {
                           }
                         </button>
                       </td>
-                      <td className="px-5 py-3.5 text-right">
-                        <button
-                          onClick={e => { e.stopPropagation(); handleDelete(p); }}
-                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Supprimer"
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={e => { e.stopPropagation(); router.push(`/prestations/${p.id}`); }}
+                            title="Détails"
+                            className="p-1.5 text-gray-400 hover:text-charcoal hover:bg-gray-100 rounded-lg transition-colors"
+                          >
+                            <Eye size={15} />
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); setModalTarget(p); }}
+                            title="Modifier"
+                            className="p-1.5 text-gray-400 hover:text-charcoal hover:bg-gray-100 rounded-lg transition-colors"
+                          >
+                            <PencilLine size={15} />
+                          </button>
+                          <button
+                            onClick={e => { e.stopPropagation(); handleDelete(p); }}
+                            title="Supprimer"
+                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -170,7 +206,7 @@ export default function PrestationsPage() {
         <PrestationModal
           initial={modalTarget === 'new' ? null : modalTarget}
           onClose={() => setModalTarget(null)}
-          onSaved={async () => { setModalTarget(null); await load(); }}
+          onSaved={(saved) => { upsertLocal(saved); setModalTarget(null); }}
         />
       )}
     </div>
@@ -185,7 +221,7 @@ function PrestationModal({
 }: {
   initial: PrestationAnnexeDto | null;
   onClose: () => void;
-  onSaved: () => void | Promise<void>;
+  onSaved: (saved: PrestationAnnexeDto) => void;
 }) {
   const isEdit = initial !== null;
 
@@ -230,12 +266,10 @@ function PrestationModal({
         prixSeule:  Number(form.prixSeule) || 0,
         sortOrder:  Number(form.sortOrder) || 0,
       };
-      if (isEdit && initial) {
-        await prestations.update(initial.id, body);
-      } else {
-        await prestations.create(body);
-      }
-      await onSaved();
+      const saved = isEdit && initial
+        ? await prestations.update(initial.id, body)
+        : await prestations.create(body);
+      onSaved(saved);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg === 'Failed to fetch' ? "Impossible de joindre l'API. Vérifiez que le backend est démarré." : msg);
