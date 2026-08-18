@@ -1,210 +1,92 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Header from '@/components/Header';
 import { prestations } from '@/lib/api';
 import type { PrestationAnnexeDto } from '@/lib/types';
-import { Plus, Pencil, Trash2, CheckCircle2, XCircle } from 'lucide-react';
+import { Plus, Search, CheckCircle2, XCircle, Trash2, X, Sparkles } from 'lucide-react';
 
 const MODES: Record<string, { label: string; desc: string }> = {
-  ParPersonneParNuit: { label: 'Par personne / nuit',  desc: 'Exemple : Petit-Déjeuner' },
+  ParPersonneParNuit: { label: 'Par personne / nuit',    desc: 'Exemple : Petit-Déjeuner' },
   ParPersonne:        { label: 'Par personne (forfait)', desc: 'Exemple : Transfert aéroport' },
   Forfait:            { label: 'Forfait fixe',           desc: 'Exemple : Parking du séjour' },
 };
 
 const ICONS = ['coffee', 'car', 'utensils', 'wine', 'dumbbell', 'sparkles', 'ship', 'gift', 'baby', 'paw-print'];
 
-const EMPTY_FORM = {
-  nameFr: '', nameEn: '', icon: 'coffee',
-  mode: 'ParPersonneParNuit', prixInclus: '', prixSeule: '', sortOrder: '0',
-};
-
 export default function PrestationsPage() {
   const [list, setList]       = useState<PrestationAnnexeDto[]>([]);
+  const [search, setSearch]   = useState('');
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState<PrestationAnnexeDto | null>(null);
-  const [form, setForm]       = useState({ ...EMPTY_FORM });
-  const [saving, setSaving]   = useState(false);
-  const [error, setError]     = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [modalTarget, setModalTarget] = useState<PrestationAnnexeDto | 'new' | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
-    const data = await prestations.getAll(false);
-    setList(data);
-    setLoading(false);
-  }
-
-  useEffect(() => { load(); }, []);
-
-  function openCreate() {
-    setEditing(null);
-    setForm({ ...EMPTY_FORM });
-    setError('');
-    setShowForm(true);
-  }
-
-  function openEdit(p: PrestationAnnexeDto) {
-    setEditing(p);
-    setForm({
-      nameFr: p.nameFr, nameEn: p.nameEn, icon: p.icon ?? 'coffee',
-      mode: p.mode, prixInclus: String(p.prixInclus), prixSeule: String(p.prixSeule),
-      sortOrder: String(p.sortOrder),
-    });
-    setError('');
-    setShowForm(true);
-  }
-
-  function set(field: string, value: string) {
-    setForm(prev => ({ ...prev, [field]: value }));
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.nameFr.trim()) { setError('Le nom français est requis.'); return; }
-    setSaving(true);
-    setError('');
+    setLoadError('');
     try {
-      const body = {
-        nameFr: form.nameFr.trim(),
-        nameEn: form.nameEn.trim() || form.nameFr.trim(),
-        icon: form.icon || undefined,
-        mode: form.mode,
-        prixInclus: Number(form.prixInclus) || 0,
-        prixSeule:  Number(form.prixSeule) || 0,
-        sortOrder:  Number(form.sortOrder) || 0,
-      };
-      if (editing) {
-        await prestations.update(editing.id, body);
-      } else {
-        await prestations.create(body);
-      }
-      setShowForm(false);
-      await load();
+      setList(await prestations.getAll(false));
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erreur');
+      const msg = err instanceof Error ? err.message : String(err);
+      setLoadError(msg === 'Failed to fetch' ? "Impossible de joindre l'API. Vérifiez que le backend est démarré." : msg);
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = list.filter(p => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return p.nameFr.toLowerCase().includes(q) || p.nameEn.toLowerCase().includes(q);
+  });
 
   async function toggleActive(p: PrestationAnnexeDto) {
-    await prestations.update(p.id, { isActive: !p.isActive });
+    try { await prestations.update(p.id, { isActive: !p.isActive }); } catch { /* ignored, reload will show current state */ }
     await load();
   }
 
   async function handleDelete(p: PrestationAnnexeDto) {
     if (!confirm(`Supprimer "${p.nameFr}" ? Cette action est irréversible.`)) return;
-    await prestations.delete(p.id);
+    try { await prestations.delete(p.id); } catch { /* ignored */ }
     await load();
   }
 
   return (
     <div className="flex flex-col h-full overflow-auto">
       <Header title="Prestations Annexes" />
-      <div className="flex-1 p-6 space-y-5">
+      <div className="flex-1 p-6 space-y-4">
 
         {/* Toolbar */}
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500">
-            Catalogue des services facturables proposés aux clients à la réservation.
-          </p>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="relative flex-1 max-w-xs">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Nom français ou anglais…"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green/30 focus:border-green/40 bg-white"
+            />
+          </div>
           <button
-            onClick={openCreate}
-            className="flex items-center gap-2 bg-charcoal text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-charcoal/90 transition-colors"
+            onClick={() => setModalTarget('new')}
+            className="flex items-center gap-2 bg-charcoal text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-charcoal-800 transition-colors ml-auto"
           >
             <Plus size={15} /> Nouvelle prestation
           </button>
         </div>
 
-        {/* Form */}
-        {showForm && (
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
-            <h2 className="text-sm font-bold text-charcoal uppercase tracking-wider">
-              {editing ? `Modifier — ${editing.nameFr}` : 'Nouvelle prestation annexe'}
-            </h2>
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2 rounded-lg">{error}</div>
-            )}
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Nom français *</label>
-                  <input required value={form.nameFr} onChange={e => set('nameFr', e.target.value)}
-                    placeholder="Ex : Petit Déjeuner"
-                    className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-green/20 focus:border-green" />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Nom anglais</label>
-                  <input value={form.nameEn} onChange={e => set('nameEn', e.target.value)}
-                    placeholder="Ex : Breakfast"
-                    className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-green/20 focus:border-green" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Mode de facturation</label>
-                  <select value={form.mode} onChange={e => set('mode', e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-green/20 focus:border-green">
-                    {Object.entries(MODES).map(([k, v]) => (
-                      <option key={k} value={k}>{v.label}</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-400">{MODES[form.mode]?.desc}</p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Prix inclus (FCFA)</label>
-                  <input type="number" min="0" step="100" value={form.prixInclus}
-                    onChange={e => set('prixInclus', e.target.value)}
-                    placeholder="3 500"
-                    className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-green/20 focus:border-green" />
-                  <p className="text-xs text-gray-400">Tarif à la réservation</p>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Prix seule (FCFA)</label>
-                  <input type="number" min="0" step="100" value={form.prixSeule}
-                    onChange={e => set('prixSeule', e.target.value)}
-                    placeholder="4 000"
-                    className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-green/20 focus:border-green" />
-                  <p className="text-xs text-gray-400">Tarif en prestation seule</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Icône</label>
-                  <select value={form.icon} onChange={e => set('icon', e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-green/20 focus:border-green">
-                    {ICONS.map(ic => <option key={ic} value={ic}>{ic}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Ordre d'affichage</label>
-                  <input type="number" min="0" value={form.sortOrder}
-                    onChange={e => set('sortOrder', e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-green/20 focus:border-green" />
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button type="submit" disabled={saving}
-                  className="bg-gold text-white font-bold px-6 py-2.5 rounded-lg text-sm hover:bg-gold/90 disabled:opacity-60 transition-colors">
-                  {saving ? 'Enregistrement…' : (editing ? 'Mettre à jour' : 'Créer la prestation')}
-                </button>
-                <button type="button" onClick={() => setShowForm(false)}
-                  className="px-5 py-2.5 text-sm text-gray-500 hover:text-charcoal transition-colors">
-                  Annuler
-                </button>
-              </div>
-            </form>
+        {loadError && (
+          <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+            {loadError}
           </div>
         )}
 
         {/* Table */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           {loading ? (
-            <div className="flex items-center justify-center h-32">
+            <div className="flex items-center justify-center h-40">
               <div className="w-5 h-5 border-2 border-green/30 border-t-green rounded-full animate-spin" />
             </div>
           ) : (
@@ -221,11 +103,24 @@ export default function PrestationsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {list.map(p => (
-                    <tr key={p.id} className="hover:bg-gray-50/60 transition-colors">
+                  {filtered.map(p => (
+                    <tr
+                      key={p.id}
+                      className="hover:bg-gray-50/70 transition-colors cursor-pointer"
+                      onClick={() => setModalTarget(p)}
+                    >
                       <td className="px-5 py-3.5">
-                        <div className="font-semibold text-charcoal">{p.nameFr}</div>
-                        {p.nameEn !== p.nameFr && <div className="text-xs text-gray-400">{p.nameEn}</div>}
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-charcoal/5 flex items-center justify-center shrink-0">
+                            <Sparkles size={14} className="text-charcoal/70" />
+                          </div>
+                          <div>
+                            <div className="font-semibold text-charcoal">{p.nameFr}</div>
+                            {p.nameEn && p.nameEn !== p.nameFr && (
+                              <div className="text-xs text-gray-400">{p.nameEn}</div>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td className="px-5 py-3.5 text-gray-500 text-xs">{MODES[p.mode]?.label ?? p.mode}</td>
                       <td className="px-5 py-3.5 text-right font-semibold text-charcoal">
@@ -235,31 +130,32 @@ export default function PrestationsPage() {
                         {p.prixSeule.toLocaleString('fr')} <span className="text-gray-400">FCFA</span>
                       </td>
                       <td className="px-5 py-3.5 text-center">
-                        <button onClick={() => toggleActive(p)} title={p.isActive ? 'Désactiver' : 'Activer'}>
+                        <button
+                          onClick={e => { e.stopPropagation(); toggleActive(p); }}
+                          title={p.isActive ? 'Désactiver' : 'Activer'}
+                          className="inline-flex"
+                        >
                           {p.isActive
-                            ? <CheckCircle2 size={18} className="text-green mx-auto" />
-                            : <XCircle size={18} className="text-gray-300 mx-auto" />
+                            ? <CheckCircle2 size={18} className="text-green" />
+                            : <XCircle size={18} className="text-gray-300" />
                           }
                         </button>
                       </td>
                       <td className="px-5 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <button onClick={() => openEdit(p)}
-                            className="p-1.5 text-gray-400 hover:text-charcoal hover:bg-gray-100 rounded-lg transition-colors">
-                            <Pencil size={15} />
-                          </button>
-                          <button onClick={() => handleDelete(p)}
-                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
+                        <button
+                          onClick={e => { e.stopPropagation(); handleDelete(p); }}
+                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Supprimer"
+                        >
+                          <Trash2 size={15} />
+                        </button>
                       </td>
                     </tr>
                   ))}
-                  {list.length === 0 && (
+                  {filtered.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-5 py-12 text-center text-gray-400 text-sm">
-                        Aucune prestation créée. Cliquez sur «&nbsp;Nouvelle prestation&nbsp;» pour commencer.
+                        Aucune prestation trouvée.
                       </td>
                     </tr>
                   )}
@@ -268,6 +164,219 @@ export default function PrestationsPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {modalTarget && (
+        <PrestationModal
+          initial={modalTarget === 'new' ? null : modalTarget}
+          onClose={() => setModalTarget(null)}
+          onSaved={async () => { setModalTarget(null); await load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─────────────────────── Modal ─────────────────────── */
+function PrestationModal({
+  initial,
+  onClose,
+  onSaved,
+}: {
+  initial: PrestationAnnexeDto | null;
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+}) {
+  const isEdit = initial !== null;
+
+  const [form, setForm] = useState({
+    nameFr:     initial?.nameFr     ?? '',
+    nameEn:     initial?.nameEn     ?? '',
+    icon:       initial?.icon       ?? 'coffee',
+    mode:       initial?.mode       ?? 'ParPersonneParNuit',
+    prixInclus: initial ? String(initial.prixInclus) : '',
+    prixSeule:  initial ? String(initial.prixSeule)  : '',
+    sortOrder:  initial ? String(initial.sortOrder)  : '0',
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
+
+  useEffect(() => {
+    function onEsc(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', onEsc);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onEsc);
+      document.body.style.overflow = '';
+    };
+  }, [onClose]);
+
+  function set(field: string, value: string) {
+    setForm(prev => ({ ...prev, [field]: value }));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.nameFr.trim()) { setError('Le nom français est requis.'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      const body = {
+        nameFr:     form.nameFr.trim(),
+        nameEn:     form.nameEn.trim() || form.nameFr.trim(),
+        icon:       form.icon || undefined,
+        mode:       form.mode,
+        prixInclus: Number(form.prixInclus) || 0,
+        prixSeule:  Number(form.prixSeule) || 0,
+        sortOrder:  Number(form.sortOrder) || 0,
+      };
+      if (isEdit && initial) {
+        await prestations.update(initial.id, body);
+      } else {
+        await prestations.create(body);
+      }
+      await onSaved();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg === 'Failed to fetch' ? "Impossible de joindre l'API. Vérifiez que le backend est démarré." : msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green/30 focus:border-green/40';
+  const labelCls = 'block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5';
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Modal header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-green/15 flex items-center justify-center">
+              <Sparkles size={16} className="text-green-dark" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-charcoal">
+                {isEdit ? `Modifier — ${initial?.nameFr}` : 'Nouvelle prestation annexe'}
+              </h2>
+              <p className="text-xs text-gray-400">
+                {isEdit ? 'Ajuster les paramètres de la prestation' : 'Ajouter un service facturable au catalogue'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-charcoal transition-colors flex items-center justify-center"
+            aria-label="Fermer"
+          ><X size={16} /></button>
+        </div>
+
+        {/* Modal body */}
+        <form onSubmit={handleSubmit} className="flex-1 overflow-auto">
+          <div className="p-6 space-y-4">
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5 rounded-lg">
+                {error}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Nom français *</label>
+                <input
+                  value={form.nameFr}
+                  onChange={e => set('nameFr', e.target.value)}
+                  placeholder="Ex : Petit-déjeuner"
+                  className={inputCls}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Nom anglais</label>
+                <input
+                  value={form.nameEn}
+                  onChange={e => set('nameEn', e.target.value)}
+                  placeholder="Ex : Breakfast"
+                  className={inputCls}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className={labelCls}>Mode de facturation</label>
+              <select value={form.mode} onChange={e => set('mode', e.target.value)} className={inputCls}>
+                {Object.entries(MODES).map(([k, v]) => (
+                  <option key={k} value={k}>{v.label}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">{MODES[form.mode]?.desc}</p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Prix inclus (FCFA)</label>
+                <input
+                  type="number" min="0" step="100"
+                  value={form.prixInclus}
+                  onChange={e => set('prixInclus', e.target.value)}
+                  placeholder="3 500"
+                  className={inputCls}
+                />
+                <p className="text-xs text-gray-400 mt-1">Tarif à la réservation</p>
+              </div>
+              <div>
+                <label className={labelCls}>Prix seule (FCFA)</label>
+                <input
+                  type="number" min="0" step="100"
+                  value={form.prixSeule}
+                  onChange={e => set('prixSeule', e.target.value)}
+                  placeholder="4 000"
+                  className={inputCls}
+                />
+                <p className="text-xs text-gray-400 mt-1">Tarif en prestation seule</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Icône</label>
+                <select value={form.icon} onChange={e => set('icon', e.target.value)} className={inputCls}>
+                  {ICONS.map(ic => <option key={ic} value={ic}>{ic}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Ordre d'affichage</label>
+                <input
+                  type="number" min="0"
+                  value={form.sortOrder}
+                  onChange={e => set('sortOrder', e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Modal footer */}
+          <div className="flex items-center justify-end gap-2 px-6 py-3 border-t border-gray-100 bg-gray-50/50">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-gray-500 hover:text-charcoal transition-colors"
+            >Annuler</button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-charcoal text-white text-sm font-medium rounded-lg hover:bg-charcoal-800 transition-colors disabled:opacity-60"
+            >
+              {saving ? 'Enregistrement…' : (isEdit ? 'Mettre à jour' : 'Créer la prestation')}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

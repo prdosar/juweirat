@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Header from '@/components/Header';
-import { clients } from '@/lib/api';
-import type { ClientDto } from '@/lib/types';
+import { clients, companies } from '@/lib/api';
+import type { ClientDto, CompanyDto } from '@/lib/types';
 import { ArrowLeft, Save } from 'lucide-react';
 import Link from 'next/link';
 
@@ -22,8 +22,13 @@ export default function ClientFormPage() {
   const [form, setForm] = useState({
     firstName: '', lastName: '', email: '', phone: '',
     nationality: '', documentType: '', documentNumber: '',
-    city: '', country: '', notes: '',
+    city: '', country: '', notes: '', companyId: 0,
   });
+  const [companyList, setCompanyList] = useState<CompanyDto[]>([]);
+
+  useEffect(() => {
+    companies.getAll().then(setCompanyList).catch(() => setCompanyList([]));
+  }, []);
 
   useEffect(() => {
     if (!isNew) {
@@ -34,12 +39,13 @@ export default function ClientFormPage() {
           nationality: c.nationality ?? '', documentType: c.documentType ?? '',
           documentNumber: c.documentNumber ?? '', city: c.city ?? '',
           country: c.country ?? '', notes: c.notes ?? '',
+          companyId: c.companyId ?? 0,
         });
       }).finally(() => setLoading(false));
     }
   }, [id, isNew]);
 
-  function set(field: string, value: string) {
+  function set(field: string, value: string | number) {
     setForm(prev => ({ ...prev, [field]: value }));
   }
 
@@ -59,6 +65,7 @@ export default function ClientFormPage() {
         city: form.city || null,
         country: form.country || null,
         notes: form.notes || null,
+        companyId: form.companyId > 0 ? form.companyId : null,
       };
       if (isNew) {
         await clients.create(body);
@@ -164,6 +171,35 @@ export default function ClientFormPage() {
                 <input value={form.documentNumber} onChange={e => set('documentNumber', e.target.value)}
                   placeholder="AB123456" className="input" />
               </div>
+            </div>
+          </div>
+
+          {/* Compagnie */}
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-4">
+            <h2 className="text-sm font-semibold text-charcoal">Compagnie de rattachement</h2>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-500">Compagnie (optionnel)</label>
+              <select
+                value={form.companyId}
+                onChange={e => set('companyId', Number(e.target.value))}
+                className="input"
+                disabled={companyList.length === 0}
+              >
+                <option value={0}>— Aucune compagnie —</option>
+                {companyList.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              {companyList.length === 0 && (
+                <p className="text-xs text-gray-400">
+                  Aucune compagnie configurée. Créez-en une depuis le menu Compagnies.
+                </p>
+              )}
+              {form.companyId > 0 && (
+                <p className="text-xs text-green-dark font-medium">
+                  Ce client bénéficiera du tarif entreprise associé à sa compagnie.
+                </p>
+              )}
             </div>
           </div>
 

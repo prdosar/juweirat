@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { categories, clients, rooms, reservations, prestations } from '@/lib/api';
-import type { ClientDto, PrestationAnnexeDto, RoomCategoryDto, RoomDto } from '@/lib/types';
+import { categories, clients, companies, rooms, reservations, prestations } from '@/lib/api';
+import type { ClientDto, CompanyDto, PrestationAnnexeDto, RoomCategoryDto, RoomDto } from '@/lib/types';
 
 /* ────────────────────────── Design tokens ───────────────────────── */
 const C = {
@@ -100,10 +100,12 @@ export default function NewReservationPage() {
   const [roomList, setRoomList]             = useState<RoomDto[]>([]);
   const [clientList, setClientList]         = useState<ClientDto[]>([]);
   const [prestationList, setPrestationList] = useState<PrestationAnnexeDto[]>([]);
+  const [companyList, setCompanyList]       = useState<CompanyDto[]>([]);
 
   useEffect(() => { categories.getAll().then(setCategoryList); }, []);
   useEffect(() => { rooms.getAll().then(setRoomList); }, []);
   useEffect(() => { prestations.getAll(true).then(setPrestationList); }, []);
+  useEffect(() => { companies.getAll().then(setCompanyList).catch(() => setCompanyList([])); }, []);
 
   // ── Wizard state ──
   const [step, setStep] = useState(0);
@@ -115,7 +117,8 @@ export default function NewReservationPage() {
   const [selectedClient, setSelectedClient] = useState<ClientDto | null>(null);
   const [newClient, setNewClient] = useState({
     fullName: '', phone: '', email: '', idDoc: '',
-    country: COUNTRIES[0], type: CLIENT_TYPES[0], saveToDirectory: true,
+    country: COUNTRIES[0], type: CLIENT_TYPES[0],
+    companyId: 0, saveToDirectory: true,
   });
 
   // Step 2 — dates
@@ -282,6 +285,7 @@ export default function NewReservationPage() {
           city:           null,
           country:        newClient.country || null,
           notes:          notesParts.length ? notesParts.join(' — ') : null,
+          companyId:      newClient.companyId > 0 ? newClient.companyId : null,
         });
         finalClientId = created.id;
       }
@@ -366,8 +370,8 @@ export default function NewReservationPage() {
 
       {/* Body */}
       <div style={{
-        maxWidth: 1200, margin: '0 auto', padding: '32px 36px 72px',
-        display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 324px', gap: 32, alignItems: 'start',
+        maxWidth: 1440, margin: '0 auto', padding: '28px 36px 64px',
+        display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 340px', gap: 28, alignItems: 'start',
       }}>
         {/* Main column */}
         <main style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 22 }}>
@@ -561,6 +565,25 @@ export default function NewReservationPage() {
                     <select value={newClient.type} onChange={e => setNewClient(v => ({ ...v, type: e.target.value }))} style={fieldInput}>
                       {CLIENT_TYPES.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
+                  </label>
+                  <label style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    <span style={fieldLabel}>Compagnie de rattachement (optionnel)</span>
+                    <select
+                      value={newClient.companyId}
+                      onChange={e => setNewClient(v => ({ ...v, companyId: Number(e.target.value) }))}
+                      style={fieldInput}
+                      disabled={companyList.length === 0}
+                    >
+                      <option value={0}>— Aucune compagnie —</option>
+                      {companyList.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                    {companyList.length === 0 && (
+                      <span style={{ fontSize: 11, color: C.ink4 }}>
+                        Aucune compagnie configurée. Créez-en une depuis le menu Compagnies.
+                      </span>
+                    )}
                   </label>
                   <label style={{
                     gridColumn: '1 / -1', display: 'flex', alignItems: 'flex-start', gap: 10,
