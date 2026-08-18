@@ -118,6 +118,7 @@ export default function DashboardPage() {
                       <th className="px-6 py-3 text-right font-medium">Montant</th>
                     </tr>
                   </thead>
+                  <tbody className="divide-y divide-gray-50">
                     {recent.map(r => (
                       <tr
                         key={r.id}

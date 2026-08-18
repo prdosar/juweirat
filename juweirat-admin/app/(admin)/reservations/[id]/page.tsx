@@ -169,6 +169,7 @@ export default function ReservationDetailPage() {
             {r.clientEmail && <p className="text-sm text-gray-500">{r.clientEmail}</p>}
             {r.clientPhone && <p className="text-sm text-gray-500">{r.clientPhone}</p>}
           </div>
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-2">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Logement</h3>
             <p className="font-semibold text-charcoal">
               {r.roomNameFr ? (
