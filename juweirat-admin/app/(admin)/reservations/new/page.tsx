@@ -3,15 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
-import { categories, clients, rooms, reservations } from '@/lib/api';
-import type { ClientDto, RoomCategoryDto, RoomDto } from '@/lib/types';
-import { ArrowLeft, Save, Search, Zap, Coffee, Calendar, Users, Home, UserCheck, CheckCircle2, ChevronRight } from 'lucide-react';
+import { categories, clients, rooms, reservations, prestations } from '@/lib/api';
+import type { ClientDto, PrestationAnnexeDto, RoomCategoryDto, RoomDto } from '@/lib/types';
+import { ArrowLeft, Save, Search, Zap, Calendar, Users, Home, CheckCircle2, Shield, Banknote, CreditCard, Package, Briefcase } from 'lucide-react';
 import Link from 'next/link';
 
 const SOURCES    = ['Direct', 'Téléphone', 'Walk-in', 'Booking.com', 'Expedia', 'Airbnb'];
 const CURRENCIES = ['XOF', 'EUR', 'USD'];
-const KWH_PRICE  = 230;
-const DEFAULT_PDJ_PRICE = 3500;
+const KWH_PRICE = 230;
 
 function nightsBetween(from: string, to: string): number {
   if (!from || !to) return 0;
@@ -35,9 +34,12 @@ const GAMME_LABELS: Record<string, string> = {
 export default function NewReservationPage() {
   const router = useRouter();
 
-  const [categoryList, setCategoryList] = useState<RoomCategoryDto[]>([]);
-  const [roomList, setRoomList]         = useState<RoomDto[]>([]);
-  const [clientList, setClientList]     = useState<ClientDto[]>([]);
+  const [categoryList, setCategoryList]     = useState<RoomCategoryDto[]>([]);
+  const [roomList, setRoomList]             = useState<RoomDto[]>([]);
+  const [clientList, setClientList]         = useState<ClientDto[]>([]);
+  const [prestationList, setPrestationList] = useState<PrestationAnnexeDto[]>([]);
+  // selectedPrestations: Map<prestationId, quantiteOverride | null>
+  const [selectedPrestations, setSelectedPrestations] = useState<Map<number, number | null>>(new Map());
   const [clientSearch, setClientSearch] = useState('');
   const [showDrop, setShowDrop]         = useState(false);
   const [kwh, setKwh]                   = useState('');
@@ -55,16 +57,21 @@ export default function NewReservationPage() {
     checkOutDate:    '',
     adults:          1,
     children:        0,
-    includePdj:      false,
-    pdjUnitPrice:    DEFAULT_PDJ_PRICE,
     currency:        'XOF',
     source:          'Direct',
     specialRequests: '',
     internalNotes:   '',
+    // Garantie
+    garantieType:    '' as '' | 'Cash' | 'Carte',
+    garantieMontantCash: '',
+    carteNumero:     '',
+    carteNom:        '',
+    carteExpiration: '',
   });
 
   useEffect(() => { categories.getAll().then(setCategoryList); }, []);
   useEffect(() => { rooms.getAll().then(setRoomList); }, []);
+  useEffect(() => { prestations.getAll(true).then(setPrestationList); }, []);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -86,23 +93,39 @@ export default function NewReservationPage() {
     setForm(prev => ({ ...prev, [field]: value }));
   }
 
+  const [selectedClientCompany, setSelectedClientCompany] = useState<{ id: number; name: string } | null>(null);
+
   function selectClient(c: ClientDto) {
     setForm(prev => ({ ...prev, clientId: c.id, clientLabel: c.fullName }));
     setClientSearch(c.fullName);
     setShowDrop(false);
+    setSelectedClientCompany(c.companyId && c.companyName ? { id: c.companyId, name: c.companyName } : null);
   }
 
   // Calculations
-  const nights          = nightsBetween(form.checkInDate, form.checkOutDate);
-  const totalPax        = Math.max(1, Number(form.adults) + Number(form.children));
-  const pdjQty          = form.includePdj ? totalPax * Math.max(1, nights) : 0;
-  const totalPdjCost    = form.includePdj ? pdjQty * Number(form.pdjUnitPrice || 0) : 0;
+  const nights      = nightsBetween(form.checkInDate, form.checkOutDate);
+  const totalPax    = Math.max(1, Number(form.adults) + Number(form.children));
 
-  const selectedCat     = categoryList.find(c => c.id === form.categoryId) ?? null;
-  const tier            = selectedCat && nights > 0 ? tierFor(nights, selectedCat) : null;
-  const hebergement     = tier ? tier.ratePerNight * nights : 0;
-  const elecCost        = tier && !tier.elecIncluded ? (Number(kwh) || 0) * KWH_PRICE : 0;
-  const totalEstime     = hebergement + totalPdjCost + elecCost;
+  const selectedCat = categoryList.find(c => c.id === form.categoryId) ?? null;
+  const tier        = selectedCat && nights > 0 ? tierFor(nights, selectedCat) : null;
+  const hebergement = tier ? tier.ratePerNight * nights : 0;
+  const elecCost    = tier && !tier.elecIncluded ? (Number(kwh) || 0) * KWH_PRICE : 0;
+
+  function quantiteFor(p: PrestationAnnexeDto): number {
+    const override = selectedPrestations.get(p.id);
+    if (override != null) return override;
+    if (p.mode === 'ParPersonneParNuit') return totalPax * Math.max(1, nights);
+    if (p.mode === 'ParPersonne')        return totalPax;
+    return 1; // Forfait
+  }
+
+  const totalPrestationsEstime = [...selectedPrestations.keys()].reduce((acc, pid) => {
+    const p = prestationList.find(x => x.id === pid);
+    if (!p) return acc;
+    return acc + p.prixInclus * quantiteFor(p);
+  }, 0);
+
+  const totalEstime = hebergement + totalPrestationsEstime + elecCost;
 
   // Available rooms for category
   const categoryRooms = roomList.filter(r => r.categoryId === form.categoryId && r.status === 'Available');
@@ -118,32 +141,50 @@ export default function NewReservationPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (nights <= 0)      { setError("Veuillez sélectionner des dates de séjour valides (Départ après Arrivée)."); return; }
-    if (!form.categoryId) { setError('Veuillez sélectionner une catégorie de logement.'); return; }
-    if (!form.clientId)   { setError('Veuillez sélectionner ou renseigner un client.'); return; }
+    if (nights <= 0)           { setError("Veuillez sélectionner des dates de séjour valides (Départ après Arrivée)."); return; }
+    if (!form.categoryId)      { setError('Veuillez sélectionner une catégorie de logement.'); return; }
+    if (!form.clientId)        { setError('Veuillez sélectionner ou renseigner un client.'); return; }
+    if (Number(form.adults) < 1) { setError('Le nombre d\'adultes doit être au moins 1.'); return; }
+    if (!form.garantieType)    { setError('Veuillez renseigner une garantie (dépôt en espèces ou carte bancaire).'); return; }
+    if (form.garantieType === 'Cash' && !form.garantieMontantCash) {
+      setError('Veuillez indiquer le montant du dépôt en espèces.'); return;
+    }
+    if (form.garantieType === 'Carte') {
+      if (form.carteNumero.replace(/\s/g, '').length < 4) { setError('Numéro de carte invalide.'); return; }
+      if (!form.carteNom.trim())                           { setError('Veuillez indiquer le nom sur la carte.'); return; }
+      if (!/^\d{2}\/\d{4}$/.test(form.carteExpiration))   { setError('Date d\'expiration invalide (format MM/AAAA).'); return; }
+    }
     
     setError('');
     setSaving(true);
     try {
-      // Build special requests summary with breakfast note if chosen
-      let enrichedRequests = form.specialRequests || '';
-      if (form.includePdj) {
-        const pdjNote = `[Petit Déjeuner Inclus : ${totalPax} pers. × ${nights} nuits = ${pdjQty} PDJ @ ${Number(form.pdjUnitPrice).toLocaleString('fr')} FCFA = ${totalPdjCost.toLocaleString('fr')} FCFA]`;
-        enrichedRequests = enrichedRequests ? `${enrichedRequests} | ${pdjNote}` : pdjNote;
-      }
+      const carteSuffix = form.garantieType === 'Carte'
+        ? form.carteNumero.replace(/\s/g, '').slice(-4)
+        : null;
+
+      const prestationsPayload = [...selectedPrestations.keys()].map(pid => {
+        const p = prestationList.find(x => x.id === pid)!;
+        return { prestationId: pid, quantite: quantiteFor(p) };
+      });
 
       const body = {
-        categoryId:      form.categoryId,
-        clientId:        form.clientId,
-        roomId:          form.roomId > 0 ? form.roomId : null,
-        checkInDate:     form.checkInDate,
-        checkOutDate:    form.checkOutDate,
-        adults:          Number(form.adults),
-        children:        Number(form.children),
-        currency:        form.currency,
-        source:          form.source || null,
-        specialRequests: enrichedRequests || null,
-        internalNotes:   form.internalNotes || null,
+        categoryId:          form.categoryId,
+        clientId:            form.clientId,
+        roomId:              form.roomId > 0 ? form.roomId : null,
+        checkInDate:         form.checkInDate,
+        checkOutDate:        form.checkOutDate,
+        adults:              Number(form.adults),
+        children:            Number(form.children),
+        currency:            form.currency,
+        source:              form.source || null,
+        specialRequests:     form.specialRequests || null,
+        internalNotes:       form.internalNotes || null,
+        garantieType:        form.garantieType || null,
+        garantieMontantCash: form.garantieType === 'Cash' ? Number(form.garantieMontantCash) : null,
+        carteNom:            form.garantieType === 'Carte' ? form.carteNom.trim() : null,
+        carteSuffix,
+        carteExpiration:     form.garantieType === 'Carte' ? form.carteExpiration : null,
+        prestations:         prestationsPayload.length > 0 ? prestationsPayload : null,
       };
       const created = await reservations.create(body);
       router.push(`/reservations/${created.id}`);
@@ -164,7 +205,7 @@ export default function NewReservationPage() {
             <ArrowLeft size={16} /> Retour aux réservations
           </Link>
           <div className="text-xs font-bold text-gold uppercase tracking-wider">
-            Tunnel Guidé en 4 Étapes
+            Tunnel Guidé en 5 Étapes
           </div>
         </div>
 
@@ -258,82 +299,241 @@ export default function NewReservationPage() {
             </div>
           </div>
 
-          {/* ── ÉTAPE 3 : PETIT DÉJEUNER AUTOMATISÉ ── */}
+          {/* ── ÉTAPE 3 : PRESTATIONS ANNEXES ── */}
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <span className="w-6 h-6 rounded-full bg-green text-white text-xs font-bold flex items-center justify-center">3</span>
                 <h2 className="text-sm font-bold text-charcoal uppercase tracking-wider flex items-center gap-2">
-                  <Coffee size={16} className="text-gold" />
-                  Restauration & Petit Déjeuner
+                  <Package size={16} className="text-gold" />
+                  Prestations Annexes
                 </h2>
               </div>
-              {form.includePdj && (
+              {selectedPrestations.size > 0 && (
                 <span className="px-2.5 py-1 rounded-full bg-gold/15 text-gold font-bold text-xs">
-                  {pdjQty} Petit{pdjQty > 1 ? 's' : ''} déj. inclus
+                  {selectedPrestations.size} prestation{selectedPrestations.size > 1 ? 's' : ''} sélectionnée{selectedPrestations.size > 1 ? 's' : ''}
                 </span>
               )}
             </div>
 
-            <div className="space-y-4">
-              <label className="flex items-start gap-3 p-3.5 rounded-lg border border-gray-200 bg-surface/40 hover:bg-surface cursor-pointer transition-colors">
-                <input
-                  type="checkbox"
-                  checked={form.includePdj}
-                  onChange={e => set('includePdj', e.target.checked)}
-                  className="mt-1 w-4 h-4 rounded text-green focus:ring-green border-gray-300"
-                />
-                <div>
-                  <span className="font-bold text-charcoal text-sm block">Ajouter la formule Petit Déjeuner</span>
-                  <span className="text-xs text-gray-500">
-                    Calculé automatiquement pour chaque personne hébergée ({totalPax} pers.) sur l'ensemble du séjour ({nights || 1} nuit{nights > 1 ? 's' : ''}).
-                  </span>
-                </div>
-              </label>
+            {prestationList.length === 0 ? (
+              <p className="text-sm text-gray-400 italic">
+                Aucune prestation disponible. Configurez-en depuis <strong>Prestations Annexes</strong> dans le menu.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {prestationList.map(p => {
+                  const selected  = selectedPrestations.has(p.id);
+                  const qte       = selected ? quantiteFor(p) : 0;
+                  const ligneTotal = selected ? p.prixInclus * qte : 0;
 
-              {form.includePdj && (
-                <div className="bg-gold/5 border border-gold/20 rounded-xl p-4 space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="bg-white p-3 rounded-lg border border-gold/20">
-                      <div className="text-[10px] font-bold text-gray-400 uppercase">Personnes hébergées</div>
-                      <div className="text-sm font-extrabold text-charcoal mt-0.5">{totalPax} pers.</div>
-                    </div>
-                    <div className="bg-white p-3 rounded-lg border border-gold/20">
-                      <div className="text-[10px] font-bold text-gray-400 uppercase">Quantité Totale</div>
-                      <div className="text-sm font-extrabold text-green-dark mt-0.5">
-                        {totalPax} pers × {nights || 1} n = <span className="text-gold">{pdjQty} PDJ</span>
-                      </div>
-                    </div>
-                    <div className="bg-white p-3 rounded-lg border border-gold/20">
-                      <div className="text-[10px] font-bold text-gray-400 uppercase">Prix unitaire (ajustable)</div>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <input
-                          type="number"
-                          min="0"
-                          step="500"
-                          value={form.pdjUnitPrice}
-                          onChange={e => set('pdjUnitPrice', e.target.value)}
-                          className="w-24 border border-gray-200 rounded px-2 py-0.5 text-xs font-bold text-charcoal focus:ring-1 focus:ring-green"
-                        />
-                        <span className="text-xs font-bold text-gray-500">FCFA</span>
-                      </div>
-                    </div>
-                  </div>
+                  const modeDesc = p.mode === 'ParPersonneParNuit'
+                    ? `${totalPax} pers. × ${Math.max(1, nights)} nuit${nights > 1 ? 's' : ''} = ${qte} unité${qte > 1 ? 's' : ''}`
+                    : p.mode === 'ParPersonne'
+                    ? `${totalPax} personne${totalPax > 1 ? 's' : ''}`
+                    : 'Forfait';
 
-                  <div className="flex items-center justify-between text-xs pt-2 border-t border-gold/20">
-                    <span className="text-gray-600 font-medium">Montant total Petit Déjeuner :</span>
-                    <span className="text-sm font-black text-gold">{totalPdjCost.toLocaleString('fr')} FCFA</span>
+                  return (
+                    <label key={p.id} className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                      selected ? 'border-gold bg-gold/5' : 'border-gray-100 hover:border-gray-200'
+                    }`}>
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        onChange={e => {
+                          const next = new Map(selectedPrestations);
+                          if (e.target.checked) next.set(p.id, null);
+                          else next.delete(p.id);
+                          setSelectedPrestations(next);
+                        }}
+                        className="w-4 h-4 rounded text-gold focus:ring-gold border-gray-300 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-charcoal text-sm">{p.nameFr}</span>
+                          <span className="text-sm font-bold text-gold shrink-0">
+                            {p.prixInclus.toLocaleString('fr')} FCFA
+                            <span className="text-xs font-normal text-gray-400 ml-1">
+                              {p.mode === 'ParPersonneParNuit' ? '/pers./nuit'
+                               : p.mode === 'ParPersonne' ? '/pers.'
+                               : ' forfait'}
+                            </span>
+                          </span>
+                        </div>
+                        {selected && (
+                          <div className="mt-1.5 flex items-center justify-between text-xs text-gray-500">
+                            <span>{modeDesc}</span>
+                            <span className="font-semibold text-charcoal">{ligneTotal.toLocaleString('fr')} FCFA</span>
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  );
+                })}
+
+                {selectedPrestations.size > 0 && (
+                  <div className="flex items-center justify-between text-xs pt-3 border-t border-gray-100">
+                    <span className="text-gray-500 font-medium">Total prestations annexes :</span>
+                    <span className="text-sm font-black text-gold">{totalPrestationsEstime.toLocaleString('fr')} FCFA</span>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* ── ÉTAPE 4 : LOGEMENT, CLIENT & DÉTAILS ── */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-5">
+          {/* ── ÉTAPE 4 : GARANTIE ── */}
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2.5">
                 <span className="w-6 h-6 rounded-full bg-green text-white text-xs font-bold flex items-center justify-center">4</span>
+                <h2 className="text-sm font-bold text-charcoal uppercase tracking-wider flex items-center gap-2">
+                  <Shield size={16} className="text-gold" />
+                  Garantie de la réservation
+                </h2>
+              </div>
+              {form.garantieType && (
+                <span className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 font-bold text-xs">
+                  {form.garantieType === 'Cash' ? 'Dépôt espèces' : 'Carte bancaire'}
+                </span>
+              )}
+            </div>
+
+            {/* Choix du type de garantie */}
+            <div className="grid grid-cols-2 gap-3">
+              <label className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                form.garantieType === 'Cash'
+                  ? 'border-green bg-green/5'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}>
+                <input
+                  type="radio"
+                  name="garantieType"
+                  value="Cash"
+                  checked={form.garantieType === 'Cash'}
+                  onChange={() => set('garantieType', 'Cash')}
+                  className="sr-only"
+                />
+                <Banknote size={22} className={form.garantieType === 'Cash' ? 'text-green' : 'text-gray-400'} />
+                <div>
+                  <span className="font-bold text-charcoal text-sm block">Dépôt en espèces</span>
+                  <span className="text-xs text-gray-500">Montant versé à l'accueil</span>
+                </div>
+              </label>
+
+              <label className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                form.garantieType === 'Carte'
+                  ? 'border-green bg-green/5'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}>
+                <input
+                  type="radio"
+                  name="garantieType"
+                  value="Carte"
+                  checked={form.garantieType === 'Carte'}
+                  onChange={() => set('garantieType', 'Carte')}
+                  className="sr-only"
+                />
+                <CreditCard size={22} className={form.garantieType === 'Carte' ? 'text-green' : 'text-gray-400'} />
+                <div>
+                  <span className="font-bold text-charcoal text-sm block">Carte bancaire</span>
+                  <span className="text-xs text-gray-500">Empreinte de garantie</span>
+                </div>
+              </label>
+            </div>
+
+            {/* Champs dépôt espèces */}
+            {form.garantieType === 'Cash' && (
+              <div className="bg-green/5 border border-green/20 rounded-xl p-4 space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Montant du dépôt *</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      step="500"
+                      required
+                      value={form.garantieMontantCash}
+                      onChange={e => set('garantieMontantCash', e.target.value)}
+                      placeholder="Ex : 50 000"
+                      className="w-48 border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white font-medium focus:ring-2 focus:ring-green/20 focus:border-green"
+                    />
+                    <span className="text-sm font-bold text-gray-500">FCFA</span>
+                  </div>
+                </div>
+                {form.garantieMontantCash && (
+                  <p className="text-xs text-green-dark font-medium">
+                    Dépôt enregistré : {Number(form.garantieMontantCash).toLocaleString('fr')} FCFA
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Champs carte bancaire */}
+            {form.garantieType === 'Carte' && (
+              <div className="bg-blue-50/60 border border-blue-200/60 rounded-xl p-4 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Numéro de carte *</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={19}
+                    value={form.carteNumero}
+                    onChange={e => {
+                      const raw = e.target.value.replace(/\D/g, '').slice(0, 16);
+                      const formatted = raw.replace(/(.{4})/g, '$1 ').trim();
+                      set('carteNumero', formatted);
+                    }}
+                    placeholder="XXXX XXXX XXXX XXXX"
+                    className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white font-mono tracking-widest focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
+                  />
+                  <p className="text-xs text-gray-400">Seuls les 4 derniers chiffres seront conservés.</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Nom sur la carte *</label>
+                    <input
+                      type="text"
+                      required
+                      value={form.carteNom}
+                      onChange={e => set('carteNom', e.target.value.toUpperCase())}
+                      placeholder="NOM PRÉNOM"
+                      className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white font-medium uppercase tracking-wide focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Date d'expiration *</label>
+                    <input
+                      type="text"
+                      required
+                      maxLength={7}
+                      value={form.carteExpiration}
+                      onChange={e => {
+                        let v = e.target.value.replace(/\D/g, '');
+                        if (v.length > 2) v = v.slice(0, 2) + '/' + v.slice(2, 6);
+                        set('carteExpiration', v);
+                      }}
+                      placeholder="MM/AAAA"
+                      className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white font-mono tracking-wider focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
+                    />
+                  </div>
+                </div>
+
+                {form.carteNumero.replace(/\s/g, '').length === 16 && (
+                  <div className="flex items-center gap-2 text-xs text-blue-700 font-medium bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                    <CreditCard size={14} />
+                    Carte enregistrée : •••• •••• •••• {form.carteNumero.replace(/\s/g, '').slice(-4)}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── ÉTAPE 5 : LOGEMENT, CLIENT & DÉTAILS ── */}
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="w-6 h-6 rounded-full bg-green text-white text-xs font-bold flex items-center justify-center">5</span>
                 <h2 className="text-sm font-bold text-charcoal uppercase tracking-wider flex items-center gap-2">
                   <Home size={16} className="text-gold" />
                   Logement & Client
@@ -396,7 +596,7 @@ export default function NewReservationPage() {
                   onChange={e => {
                     setClientSearch(e.target.value);
                     setShowDrop(true);
-                    if (form.clientId) setForm(prev => ({ ...prev, clientId: 0, clientLabel: '' }));
+                    if (form.clientId) { setForm(prev => ({ ...prev, clientId: 0, clientLabel: '' })); setSelectedClientCompany(null); }
                   }}
                   onFocus={() => setShowDrop(true)}
                   placeholder="Rechercher par nom, téléphone ou email…"
@@ -420,8 +620,16 @@ export default function NewReservationPage() {
                 )}
               </div>
               {form.clientId > 0 && (
-                <div className="flex items-center gap-1.5 text-xs text-green font-bold bg-green/10 px-3 py-1 rounded-md w-fit">
-                  <CheckCircle2 size={13} /> {form.clientLabel}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-1.5 text-xs text-green font-bold bg-green/10 px-3 py-1 rounded-md">
+                    <CheckCircle2 size={13} /> {form.clientLabel}
+                  </div>
+                  {selectedClientCompany && (
+                    <div className="flex items-center gap-1.5 text-xs text-blue-600 font-semibold bg-blue-50 border border-blue-200 px-3 py-1 rounded-md">
+                      <Briefcase size={12} />
+                      Tarif entreprise : {selectedClientCompany.name}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -465,12 +673,17 @@ export default function NewReservationPage() {
                   <span className="font-bold text-charcoal">{hebergement.toLocaleString('fr')} FCFA</span>
                 </div>
 
-                {form.includePdj && (
-                  <div className="flex justify-between items-center py-1.5 text-gold">
-                    <span>Petit Déjeuner ({pdjQty} repas @ {Number(form.pdjUnitPrice).toLocaleString('fr')} FCFA)</span>
-                    <span className="font-bold">+{totalPdjCost.toLocaleString('fr')} FCFA</span>
-                  </div>
-                )}
+                {[...selectedPrestations.keys()].map(pid => {
+                  const p = prestationList.find(x => x.id === pid);
+                  if (!p) return null;
+                  const qte = quantiteFor(p);
+                  return (
+                    <div key={pid} className="flex justify-between items-center py-1.5 text-gold">
+                      <span>{p.nameFr} ({qte} unité{qte > 1 ? 's' : ''} @ {p.prixInclus.toLocaleString('fr')} FCFA)</span>
+                      <span className="font-bold">+{(p.prixInclus * qte).toLocaleString('fr')} FCFA</span>
+                    </div>
+                  );
+                })}
 
                 {tier && !tier.elecIncluded && (
                   <div className="py-2 space-y-2">

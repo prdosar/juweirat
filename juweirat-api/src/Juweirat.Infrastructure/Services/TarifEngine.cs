@@ -9,8 +9,8 @@ public static class TarifEngine
     // Spec §5.3: tier selection by stay length
     public static TarifResult ForStay(int tarifNuit, int tarifN15, int tarifN30, int nights)
     {
-        if (nights >= 30) return new(TarifTier.N30Nuits, tarifN30 / 30, false);
-        if (nights >= 15) return new(TarifTier.N15Nuits, tarifN15 / 15, false);
+        if (nights >= 30) return new(TarifTier.N30Nuits, tarifN30, false);
+        if (nights >= 15) return new(TarifTier.N15Nuits, tarifN15, false);
         return new(TarifTier.Nuitee, tarifNuit, true);
     }
 

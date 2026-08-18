@@ -2,7 +2,7 @@ import type {
   HotelConfigDto, UnitDto, FolioDto,
   CloturePreviewDto, ClotureDto, PostingDto,
   FactureDto, ContractDataDto,
-  MaintenanceTicketDto, DebiteurDto,
+  MaintenanceTicketDto, MaintenanceCategoryDto, MaintenanceStaffDto, DebiteurDto,
 } from './pmsTypes';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
@@ -132,6 +132,30 @@ export const pmsMaintenance = {
   update:  (id: number, body: Record<string, unknown>) =>
     pmsReq<MaintenanceTicketDto>(`/api/pms/maintenance/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   delete:  (id: number) => pmsReq<void>(`/api/pms/maintenance/${id}`, { method: 'DELETE' }),
+};
+
+// ── Maintenance Categories & Staff ────────────────────────────────────────────
+export const pmsMaintenanceCategories = {
+  getAll: () => pmsReq<MaintenanceCategoryDto[]>('/api/pms/maintenance-categories'),
+  create: (name: string) =>
+    pmsReq<MaintenanceCategoryDto>('/api/pms/maintenance-categories', { method: 'POST', body: JSON.stringify({ name }) }),
+  update: (id: number, body: { name?: string; isActive?: boolean }) =>
+    pmsReq<MaintenanceCategoryDto>(`/api/pms/maintenance-categories/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  delete: (id: number) => pmsReq<void>(`/api/pms/maintenance-categories/${id}`, { method: 'DELETE' }),
+};
+
+export const pmsMaintenanceStaff = {
+  getAll: (params?: { categoryId?: number; activeOnly?: boolean }) => {
+    const qs = new URLSearchParams();
+    if (params?.categoryId) qs.set('categoryId', String(params.categoryId));
+    if (params?.activeOnly) qs.set('activeOnly', 'true');
+    return pmsReq<MaintenanceStaffDto[]>(`/api/pms/maintenance-staff?${qs}`);
+  },
+  create: (body: { categoryId: number; firstName: string; lastName: string; phone?: string }) =>
+    pmsReq<MaintenanceStaffDto>('/api/pms/maintenance-staff', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: number, body: { categoryId?: number; firstName?: string; lastName?: string; phone?: string; isActive?: boolean }) =>
+    pmsReq<MaintenanceStaffDto>(`/api/pms/maintenance-staff/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  delete: (id: number) => pmsReq<void>(`/api/pms/maintenance-staff/${id}`, { method: 'DELETE' }),
 };
 
 // ── Débiteurs ─────────────────────────────────────────────────────────────────

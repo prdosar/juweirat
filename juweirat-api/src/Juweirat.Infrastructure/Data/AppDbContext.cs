@@ -25,7 +25,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Cloture>          Clotures         { get; set; }
     public DbSet<MaintenanceTicket> MaintenanceTickets { get; set; }
     public DbSet<Debtor>           Debtors          { get; set; }
-    public DbSet<ContactMessage>   ContactMessages  { get; set; }
+    public DbSet<ContactMessage>       ContactMessages      { get; set; }
+    public DbSet<PrestationAnnexe>      PrestationsAnnexes     { get; set; }
+    public DbSet<ReservationPrestation> ReservationPrestations { get; set; }
+    public DbSet<VenteDirecte>          VentesDirectes         { get; set; }
+    public DbSet<Company>               Companies              { get; set; }
+    public DbSet<CompanyTarif>          CompanyTarifs          { get; set; }
+    public DbSet<MaintenanceCategory>   MaintenanceCategories  { get; set; }
+    public DbSet<MaintenanceStaff>      MaintenanceStaff       { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -83,6 +90,34 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .WithMany(a => a.Rooms)
             .UsingEntity(j => j.ToTable("roomAmenities"));
 
+        // ── companies ─────────────────────────────────────────────
+        modelBuilder.Entity<Company>(e =>
+        {
+            e.Property(c => c.IsActive).HasDefaultValue(true);
+
+            e.HasMany(c => c.Clients)
+             .WithOne(cl => cl.Company)
+             .HasForeignKey(cl => cl.CompanyId)
+             .IsRequired(false)
+             .OnDelete(DeleteBehavior.SetNull);
+
+            e.HasMany(c => c.Tarifs)
+             .WithOne(t => t.Company)
+             .HasForeignKey(t => t.CompanyId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ── companyTarifs ─────────────────────────────────────────
+        modelBuilder.Entity<CompanyTarif>(e =>
+        {
+            e.HasIndex(t => new { t.CompanyId, t.CategoryId }).IsUnique();
+
+            e.HasOne(t => t.Category)
+             .WithMany()
+             .HasForeignKey(t => t.CategoryId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
         // ── clients ───────────────────────────────────────────────
         modelBuilder.Entity<Client>(e =>
         {
@@ -118,6 +153,57 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
             e.ToTable(t => t.HasCheckConstraint("ck_checkOutAfterCheckIn",
                 "\"checkOutDate\" > \"checkInDate\""));
+        });
+
+        // ── prestationsAnnexes ────────────────────────────────────
+        modelBuilder.Entity<PrestationAnnexe>(e =>
+        {
+            e.Property(p => p.PrixInclus).HasPrecision(10, 2);
+            e.Property(p => p.PrixSeule).HasPrecision(10, 2);
+            e.Property(p => p.IsActive).HasDefaultValue(true);
+            e.Property(p => p.Mode).HasDefaultValue("ParPersonneParNuit");
+        });
+
+        // ── reservationPrestations ────────────────────────────────
+        modelBuilder.Entity<ReservationPrestation>(e =>
+        {
+            e.Property(p => p.PrixUnitaireSnapshot).HasPrecision(10, 2);
+            e.Property(p => p.TotalLigne).HasPrecision(10, 2);
+
+            e.HasOne(p => p.Reservation)
+             .WithMany(r => r.Prestations)
+             .HasForeignKey(p => p.ReservationId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(p => p.Prestation)
+             .WithMany(pa => pa.ReservationPrestations)
+             .HasForeignKey(p => p.PrestationId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── ventesDirectes ────────────────────────────────────────
+        modelBuilder.Entity<VenteDirecte>(e =>
+        {
+            e.Property(v => v.PrixUnitaireSnapshot).HasPrecision(10, 2);
+            e.Property(v => v.Total).HasPrecision(10, 2);
+            e.Property(v => v.Mode).HasDefaultValue("Encaissement");
+
+            e.HasOne(v => v.Prestation)
+             .WithMany()
+             .HasForeignKey(v => v.PrestationId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(v => v.Client)
+             .WithMany()
+             .HasForeignKey(v => v.ClientId)
+             .IsRequired(false)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(v => v.Folio)
+             .WithMany()
+             .HasForeignKey(v => v.FolioId)
+             .IsRequired(false)
+             .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ── payments ──────────────────────────────────────────────
@@ -218,6 +304,29 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         {
             e.HasIndex(c => c.DateHotel).IsUnique();
             e.Property(c => c.Occupation).HasPrecision(5, 2);
+        });
+
+        // ── maintenanceCategories ─────────────────────────────────
+        modelBuilder.Entity<MaintenanceCategory>(e =>
+        {
+            e.Property(c => c.IsActive).HasDefaultValue(true);
+
+            e.HasMany(c => c.Staff)
+             .WithOne(s => s.Category)
+             .HasForeignKey(s => s.CategoryId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── maintenanceStaff ──────────────────────────────────────
+        modelBuilder.Entity<MaintenanceStaff>(e =>
+        {
+            e.Property(s => s.IsActive).HasDefaultValue(true);
+
+            e.HasMany(s => s.Tickets)
+             .WithOne(t => t.Staff)
+             .HasForeignKey(t => t.StaffId)
+             .IsRequired(false)
+             .OnDelete(DeleteBehavior.SetNull);
         });
 
         // ── PMS : maintenanceTickets ──────────────────────────────

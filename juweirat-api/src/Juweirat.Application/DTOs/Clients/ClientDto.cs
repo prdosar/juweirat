@@ -16,7 +16,9 @@ public record ClientDto(
     string? Country,
     string? Notes,
     int TotalReservations,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    long? CompanyId = null,
+    string? CompanyName = null
 );
 
 public record CreateClientRequest(
@@ -29,7 +31,8 @@ public record CreateClientRequest(
     string? DocumentNumber,
     string? City,
     string? Country,
-    string? Notes
+    string? Notes,
+    long? CompanyId = null
 );
 
 public record UpdateClientRequest(
@@ -42,5 +45,6 @@ public record UpdateClientRequest(
     string? DocumentNumber,
     string? City,
     string? Country,
-    string? Notes
+    string? Notes,
+    long? CompanyId = null
 );

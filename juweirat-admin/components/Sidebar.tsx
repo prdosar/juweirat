@@ -7,7 +7,7 @@ import {
   LayoutDashboard, BedDouble, Users, CalendarCheck,
   CreditCard, LogOut, CalendarDays, Building2,
   ClipboardList, Wrench, Receipt, FileText, Settings,
-  BarChart2, Printer, Mail,
+  BarChart2, Printer, Mail, ShoppingCart, Package, Briefcase,
 } from 'lucide-react';
 import { clearAuth } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
@@ -17,8 +17,11 @@ const navItems = [
   { href: '/rooms',        label: 'Chambres',         icon: BedDouble       },
   { href: '/clients',      label: 'Clients',          icon: Users           },
   { href: '/reservations', label: 'Réservations',     icon: CalendarCheck   },
-  { href: '/payments',     label: 'Paiements',        icon: CreditCard      },
-  { href: '/messages',     label: 'Messages Contact', icon: Mail            },
+  { href: '/payments',         label: 'Paiements',        icon: CreditCard   },
+  { href: '/ventes-directes',  label: 'Vente Directe',    icon: ShoppingCart },
+  { href: '/prestations',      label: 'Prestations',      icon: Package      },
+  { href: '/companies',        label: 'Compagnies',       icon: Briefcase    },
+  { href: '/messages',         label: 'Messages Contact', icon: Mail         },
 ];
 
 const pmsItems = [
@@ -28,6 +31,7 @@ const pmsItems = [
   { href: '/pms/cloture',      label: 'Clôture',          icon: Receipt        },
   { href: '/pms/debiteurs',    label: 'Débiteurs',        icon: CreditCard     },
   { href: '/pms/maintenance',  label: 'Maintenance',      icon: Wrench         },
+  { href: '/pms/personnel',    label: 'Personnel',        icon: Users          },
   { href: '/pms/statistiques', label: 'Statistiques',     icon: BarChart2      },
   { href: '/pms/edition',      label: 'Édition',          icon: Printer        },
   { href: '/pms/config',       label: 'Config PMS',       icon: Settings       },

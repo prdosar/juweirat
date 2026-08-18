@@ -171,6 +171,27 @@ export interface MaintenanceTicketDto {
   note: string | null;
   createdAt: string;
   updatedAt: string;
+  staffId: number | null;
+  staffNom: string | null;
+  staffPhone: string | null;
+}
+
+export interface MaintenanceCategoryDto {
+  id: number;
+  name: string;
+  isActive: boolean;
+  staffCount: number;
+}
+
+export interface MaintenanceStaffDto {
+  id: number;
+  categoryId: number;
+  categoryName: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  isActive: boolean;
+  fullName: string;
 }
 
 export interface ContractDataDto {

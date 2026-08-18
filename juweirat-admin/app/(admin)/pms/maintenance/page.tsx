@@ -2,13 +2,12 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Header from '@/components/Header';
-import { pmsMaintenance, pmsUnits } from '@/lib/pms';
-import type { MaintenanceTicketDto, UnitDto } from '@/lib/pmsTypes';
-import { Plus, Wrench, CheckCircle, AlertTriangle, Clock, X } from 'lucide-react';
+import { pmsMaintenance, pmsUnits, pmsMaintenanceCategories, pmsMaintenanceStaff } from '@/lib/pms';
+import type { MaintenanceTicketDto, UnitDto, MaintenanceCategoryDto, MaintenanceStaffDto } from '@/lib/pmsTypes';
+import { Plus, Wrench, CheckCircle, AlertTriangle, Clock, X, User } from 'lucide-react';
 
 const PRIORITIES = ['Basse', 'Normale', 'Haute', 'Urgente'];
 const STATUSES   = ['Ouvert', 'EnCours', 'Resolu'];
-const CATEGORIES = ['Plomberie', 'Électricité', 'Climatisation', 'Mobilier', 'Ménage', 'Serrurerie', 'Autre'];
 
 const PRIORITY_CLS: Record<string, string> = {
   Basse:   'bg-gray-100 text-gray-500',
@@ -26,44 +25,62 @@ const STATUS_FR: Record<string, string> = {
 };
 
 function StatusIcon({ status }: { status: string }) {
-  if (status === 'Resolu')  return <CheckCircle  size={13} className="text-green-dark" />;
-  if (status === 'EnCours') return <Clock        size={13} className="text-blue-500"   />;
+  if (status === 'Resolu')  return <CheckCircle   size={13} className="text-green-dark" />;
+  if (status === 'EnCours') return <Clock         size={13} className="text-blue-500"   />;
   return                           <AlertTriangle size={13} className="text-amber-500"  />;
 }
 
 interface TicketForm {
   zone: string; unitId: string; spot: string; category: string;
   priority: string; title: string; description: string; tech: string;
+  staffId: string;
 }
 const EMPTY_FORM: TicketForm = {
-  zone: 'Appartement', unitId: '', spot: '', category: 'Autre',
-  priority: 'Normale', title: '', description: '', tech: '',
+  zone: 'Appartement', unitId: '', spot: '', category: '',
+  priority: 'Normale', title: '', description: '', tech: '', staffId: '',
 };
 
 export default function MaintenancePage() {
-  const [tickets, setTickets] = useState<MaintenanceTicketDto[]>([]);
-  const [units, setUnits]     = useState<UnitDto[]>([]);
+  const [tickets, setTickets]     = useState<MaintenanceTicketDto[]>([]);
+  const [units, setUnits]         = useState<UnitDto[]>([]);
+  const [categories, setCategories] = useState<MaintenanceCategoryDto[]>([]);
+  const [staffAll, setStaffAll]   = useState<MaintenanceStaffDto[]>([]);
   const [filterStatus, setFilterStatus]     = useState('');
   const [filterPriority, setFilterPriority] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm]         = useState<TicketForm>(EMPTY_FORM);
-  const [busy, setBusy]         = useState(false);
-  const [error, setError]       = useState('');
+  const [loading, setLoading]     = useState(true);
+  const [showForm, setShowForm]   = useState(false);
+  const [form, setForm]           = useState<TicketForm>(EMPTY_FORM);
+  const [busy, setBusy]           = useState(false);
+  const [error, setError]         = useState('');
   const [patchBusy, setPatchBusy] = useState<number | null>(null);
 
   const load = useCallback(async () => {
-    const [t, u] = await Promise.all([
-      pmsMaintenance.getAll({
-        status:   filterStatus   || undefined,
-        priority: filterPriority || undefined,
-      }),
+    const [t, u, cats, staff] = await Promise.all([
+      pmsMaintenance.getAll({ status: filterStatus || undefined, priority: filterPriority || undefined }),
       pmsUnits.getAll(),
+      pmsMaintenanceCategories.getAll(),
+      pmsMaintenanceStaff.getAll({ activeOnly: true }),
     ]);
-    setTickets(t); setUnits(u); setLoading(false);
+    setTickets(t); setUnits(u);
+    setCategories(cats); setStaffAll(staff);
+    setLoading(false);
   }, [filterStatus, filterPriority]);
 
   useEffect(() => { setLoading(true); load(); }, [load]);
+
+  // Staff filtered by selected category
+  const staffForCategory = form.category
+    ? staffAll.filter(s => s.categoryName === form.category)
+    : staffAll;
+
+  function setField(field: keyof TicketForm, value: string) {
+    setForm(f => {
+      const next = { ...f, [field]: value };
+      // reset staff when category changes
+      if (field === 'category') next.staffId = '';
+      return next;
+    });
+  }
 
   async function doCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -73,11 +90,12 @@ export default function MaintenancePage() {
         zone:        form.zone,
         unitId:      form.unitId ? Number(form.unitId) : null,
         spot:        form.spot || null,
-        category:    form.category,
+        category:    form.category || 'Autre',
         priority:    form.priority,
         title:       form.title,
         description: form.description || null,
         tech:        form.tech || null,
+        staffId:     form.staffId ? Number(form.staffId) : null,
       });
       setShowForm(false); setForm(EMPTY_FORM); await load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Erreur'); }
@@ -87,7 +105,7 @@ export default function MaintenancePage() {
   async function doSetStatus(id: number, status: string) {
     setPatchBusy(id);
     try { await pmsMaintenance.update(id, { status }); await load(); }
-    catch { /* silent — list refreshes anyway */ }
+    catch { /* silent */ }
     finally { setPatchBusy(null); }
   }
 
@@ -135,7 +153,7 @@ export default function MaintenancePage() {
             <form onSubmit={doCreate} className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Zone</label>
-                <select value={form.zone} onChange={e => setForm(f => ({ ...f, zone: e.target.value }))}
+                <select value={form.zone} onChange={e => setField('zone', e.target.value)}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green/30">
                   <option>Appartement</option>
                   <option>Communs</option>
@@ -144,7 +162,7 @@ export default function MaintenancePage() {
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Appartement</label>
-                <select value={form.unitId} onChange={e => setForm(f => ({ ...f, unitId: e.target.value }))}
+                <select value={form.unitId} onChange={e => setField('unitId', e.target.value)}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green/30">
                   <option value="">—</option>
                   {units.map(u => <option key={u.id} value={u.id}>{u.pmsRoomNo ?? u.nameFr}</option>)}
@@ -152,39 +170,51 @@ export default function MaintenancePage() {
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Catégorie</label>
-                <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                <select value={form.category} onChange={e => setField('category', e.target.value)}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green/30">
-                  {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                  <option value="">— choisir —</option>
+                  {categories.filter(c => c.isActive).map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
                 </select>
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Priorité</label>
-                <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))}
+                <select value={form.priority} onChange={e => setField('priority', e.target.value)}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green/30">
                   {PRIORITIES.map(p => <option key={p}>{p}</option>)}
                 </select>
               </div>
               <div className="col-span-2">
                 <label className="block text-xs text-gray-500 mb-1">Titre *</label>
-                <input required value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+                <input required value={form.title} onChange={e => setField('title', e.target.value)}
                   placeholder="Ex: Robinet qui fuit dans la salle de bain"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green/30" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Emplacement précis</label>
-                <input value={form.spot} onChange={e => setForm(f => ({ ...f, spot: e.target.value }))}
+                <input value={form.spot} onChange={e => setField('spot', e.target.value)}
                   placeholder="Ex: Salle de bain principale"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green/30" />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Technicien assigné</label>
-                <input value={form.tech} onChange={e => setForm(f => ({ ...f, tech: e.target.value }))}
-                  placeholder="Nom du technicien"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green/30" />
+                <label className="block text-xs text-gray-500 mb-1">
+                  Intervenant
+                  {staffForCategory.length === 0 && form.category && (
+                    <span className="ml-1 text-amber-500">(aucun pour cette catégorie)</span>
+                  )}
+                </label>
+                <select value={form.staffId} onChange={e => setField('staffId', e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green/30">
+                  <option value="">— non assigné —</option>
+                  {staffForCategory.map(s => (
+                    <option key={s.id} value={s.id}>{s.fullName}{s.phone ? ` · ${s.phone}` : ''}</option>
+                  ))}
+                </select>
               </div>
               <div className="col-span-2">
                 <label className="block text-xs text-gray-500 mb-1">Description</label>
-                <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                <textarea value={form.description} onChange={e => setField('description', e.target.value)}
                   rows={2} placeholder="Détails supplémentaires…"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-green/30" />
               </div>
@@ -229,7 +259,13 @@ export default function MaintenancePage() {
                       <span className="flex items-center gap-1"><Wrench size={11} /> {t.category}</span>
                       {t.unitLabel && <span>Appt {t.unitLabel}</span>}
                       {t.spot      && <span>{t.spot}</span>}
-                      {t.tech      && <span>→ {t.tech}</span>}
+                      {t.staffNom  && (
+                        <span className="flex items-center gap-1 text-blue-600 font-medium">
+                          <User size={11} /> {t.staffNom}
+                          {t.staffPhone && <span className="text-gray-400 font-normal">· {t.staffPhone}</span>}
+                        </span>
+                      )}
+                      {!t.staffNom && t.tech && <span>→ {t.tech}</span>}
                       <span>{new Date(t.createdAt).toLocaleDateString('fr')}</span>
                     </div>
                     {t.description && <p className="text-xs text-gray-500 mt-1 truncate">{t.description}</p>}

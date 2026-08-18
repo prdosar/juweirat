@@ -78,6 +78,94 @@ export interface ClientDto {
   notes: string | null;
   totalReservations: number;
   createdAt: string;
+  companyId: number | null;
+  companyName: string | null;
+}
+
+export interface CompanyDto {
+  id: number;
+  name: string;
+  responsableNom: string | null;
+  phone: string | null;
+  email: string | null;
+  adresse: string | null;
+  ville: string | null;
+  notes: string | null;
+  isActive: boolean;
+  clientCount: number;
+  createdAt: string;
+}
+
+export interface CompanyClientDto {
+  id: number;
+  fullName: string;
+  email: string | null;
+  phone: string | null;
+}
+
+export interface CompanyTarifDto {
+  id: number;
+  categoryId: number;
+  categoryNameFr: string;
+  categorySlug: string;
+  tarifNuit: number;
+  tarifN15: number;
+  tarifN30: number;
+}
+
+export interface CompanyDetailDto extends CompanyDto {
+  clients: CompanyClientDto[];
+  tarifs: CompanyTarifDto[];
+}
+
+export interface FolioActifDto {
+  folioId: number;
+  folioNumber: string;
+  roomNumber: string;
+  guestName: string | null;
+}
+
+export interface VenteDirecteDto {
+  id: number;
+  prestationId: number;
+  prestationNameFr: string;
+  prestationIcon: string | null;
+  clientId: number | null;
+  clientNom: string | null;
+  folioId: number | null;
+  folioNumber: string | null;
+  roomNumber: string | null;
+  quantite: number;
+  prixUnitaireSnapshot: number;
+  total: number;
+  mode: 'Encaissement' | 'SurChambre';
+  paymentMethod: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface PrestationAnnexeDto {
+  id: number;
+  nameFr: string;
+  nameEn: string;
+  icon: string | null;
+  mode: 'ParPersonneParNuit' | 'ParPersonne' | 'Forfait';
+  prixInclus: number;
+  prixSeule: number;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface ReservationPrestationDto {
+  id: number;
+  prestationId: number;
+  nameFr: string;
+  nameEn: string;
+  icon: string | null;
+  mode: string;
+  quantite: number;
+  prixUnitaireSnapshot: number;
+  totalLigne: number;
 }
 
 export interface ReservationDto {
@@ -112,6 +200,14 @@ export interface ReservationDto {
   confirmedAt: string | null;
   cancelledAt: string | null;
   createdAt: string;
+  garantieType: string | null;
+  garantieMontantCash: number | null;
+  carteNom: string | null;
+  carteSuffix: string | null;
+  carteExpiration: string | null;
+  totalHebergement: number;
+  totalPrestations: number;
+  prestations: ReservationPrestationDto[];
 }
 
 export interface PaymentDto {
@@ -127,6 +223,14 @@ export interface PaymentDto {
   notes: string | null;
   paidAt: string | null;
   createdAt: string;
+}
+
+export interface NoShowBillingResultDto {
+  reservationId: number;
+  penaltyNights: number;
+  penaltyAmount: number;
+  currency: string;
+  reservation: ReservationDto;
 }
 
 export interface DashboardStats {

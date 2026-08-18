@@ -8,7 +8,7 @@ namespace Juweirat.Api.Controllers;
 [ApiController]
 [Route("api/pms")]
 [Authorize]
-public class PmsController(PmsService pms, ClotureService cloture, FactureService facture, MaintenanceService maintenance, DebiteurService debiteur) : ControllerBase
+public class PmsController(PmsService pms, ClotureService cloture, FactureService facture, MaintenanceService maintenance, DebiteurService debiteur, MaintenanceStaffService maintenanceStaff) : ControllerBase
 {
     // ── Config ────────────────────────────────────────────────────────────────
 
@@ -244,6 +244,58 @@ public class PmsController(PmsService pms, ClotureService cloture, FactureServic
     [HttpDelete("maintenance/{id:long}")]
     public async Task<IActionResult> DeleteTicket(long id)
         => await maintenance.DeleteAsync(id) ? NoContent() : NotFound();
+
+    // ── Maintenance Categories ─────────────────────────────────────────────────
+
+    [HttpGet("maintenance-categories")]
+    public async Task<IActionResult> GetCategories()
+        => Ok(await maintenanceStaff.GetCategoriesAsync());
+
+    [HttpPost("maintenance-categories")]
+    public async Task<IActionResult> CreateCategory([FromBody] CreateMaintenanceCategoryRequest req)
+    {
+        var dto = await maintenanceStaff.CreateCategoryAsync(req);
+        return CreatedAtAction(nameof(GetCategories), dto);
+    }
+
+    [HttpPatch("maintenance-categories/{id:long}")]
+    public async Task<IActionResult> UpdateCategory(long id, [FromBody] UpdateMaintenanceCategoryRequest req)
+    {
+        var dto = await maintenanceStaff.UpdateCategoryAsync(id, req);
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    [HttpDelete("maintenance-categories/{id:long}")]
+    public async Task<IActionResult> DeleteCategory(long id)
+    {
+        var ok = await maintenanceStaff.DeleteCategoryAsync(id);
+        return ok ? NoContent() : Conflict(new { error = "Cannot delete category with existing staff" });
+    }
+
+    // ── Maintenance Staff ─────────────────────────────────────────────────────
+
+    [HttpGet("maintenance-staff")]
+    public async Task<IActionResult> GetStaff([FromQuery] long? categoryId, [FromQuery] bool activeOnly = false)
+        => Ok(await maintenanceStaff.GetStaffAsync(categoryId, activeOnly));
+
+    [HttpPost("maintenance-staff")]
+    public async Task<IActionResult> CreateStaff([FromBody] CreateMaintenanceStaffRequest req)
+    {
+        var (dto, error) = await maintenanceStaff.CreateStaffAsync(req);
+        if (error is not null) return BadRequest(new { error });
+        return CreatedAtAction(nameof(GetStaff), dto);
+    }
+
+    [HttpPatch("maintenance-staff/{id:long}")]
+    public async Task<IActionResult> UpdateStaff(long id, [FromBody] UpdateMaintenanceStaffRequest req)
+    {
+        var dto = await maintenanceStaff.UpdateStaffAsync(id, req);
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    [HttpDelete("maintenance-staff/{id:long}")]
+    public async Task<IActionResult> DeleteStaff(long id)
+        => await maintenanceStaff.DeleteStaffAsync(id) ? NoContent() : NotFound();
 
     // ── Débiteurs ─────────────────────────────────────────────────────────────
 
