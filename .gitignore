@@ -28,3 +28,7 @@ npm-debug.log*
 yarn-debug.log*
 *.tsbuildinfo
 next-env.d.ts
+
+# Photos / archives
+*.zip
+photos/
