@@ -53,6 +53,12 @@ public class RoomService(AppDbContext db)
             PricePerNight    = req.PricePerNight,
             PricePerWeek     = req.PricePerWeek,
             PricePerMonth    = req.PricePerMonth,
+            PmsRoomNo        = req.RoomNumber,
+            TarifNuit        = (int)req.PricePerNight,
+            TarifN30         = (int)(req.PricePerMonth ?? req.PricePerNight * 30 * 0.65m),
+            TarifN15         = (int)(req.PricePerWeek.HasValue ? req.PricePerWeek.Value * 2 : req.PricePerNight * 15 * 0.8m),
+            StatutMenage     = MenageStatus.Propre,
+            HorsService      = false,
         };
 
         if (req.AmenityIds?.Count > 0)
@@ -78,7 +84,11 @@ public class RoomService(AppDbContext db)
 
         if (room is null) return null;
 
-        if (req.RoomNumber is not null)    room.RoomNumber       = req.RoomNumber;
+        if (req.RoomNumber is not null)
+        {
+            room.RoomNumber = req.RoomNumber;
+            if (string.IsNullOrEmpty(room.PmsRoomNo)) room.PmsRoomNo = req.RoomNumber;
+        }
         if (req.Floor is not null)         room.Floor            = req.Floor.Value;
         if (req.NameFr is not null)        room.NameFr           = req.NameFr;
         if (req.NameEn is not null)        room.NameEn           = req.NameEn;
@@ -87,9 +97,21 @@ public class RoomService(AppDbContext db)
         if (req.CapacityAdults is not null)   room.CapacityAdults   = req.CapacityAdults.Value;
         if (req.CapacityChildren is not null) room.CapacityChildren = req.CapacityChildren.Value;
         if (req.SizeSqm is not null)       room.SizeSqm          = req.SizeSqm;
-        if (req.PricePerNight is not null) room.PricePerNight    = req.PricePerNight.Value;
-        if (req.PricePerWeek is not null)  room.PricePerWeek     = req.PricePerWeek;
-        if (req.PricePerMonth is not null) room.PricePerMonth    = req.PricePerMonth;
+        if (req.PricePerNight is not null)
+        {
+            room.PricePerNight = req.PricePerNight.Value;
+            if (room.TarifNuit == 0) room.TarifNuit = (int)req.PricePerNight.Value;
+        }
+        if (req.PricePerWeek is not null)
+        {
+            room.PricePerWeek = req.PricePerWeek;
+            if (room.TarifN15 == 0 && req.PricePerWeek.HasValue) room.TarifN15 = (int)(req.PricePerWeek.Value * 2);
+        }
+        if (req.PricePerMonth is not null)
+        {
+            room.PricePerMonth = req.PricePerMonth;
+            if (room.TarifN30 == 0 && req.PricePerMonth.HasValue) room.TarifN30 = (int)req.PricePerMonth.Value;
+        }
         if (req.IsFeatured is not null)    room.IsFeatured       = req.IsFeatured.Value;
 
         if (req.Status is not null && Enum.TryParse<RoomStatus>(req.Status, true, out var s))

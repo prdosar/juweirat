@@ -51,24 +51,17 @@ function formatDate(d: string, lang: 'fr' | 'en') {
 function toDateStr(d: Date) { return d.toISOString().split('T')[0] }
 
 export default async function CategoryBookingPage({ params, searchParams }: Props) {
-  const { slug }                                                               = await params
+  const { slug }                                                                                    = await params
   const { checkIn: queryCheckIn = '', checkOut: queryCheckOut = '', adults = '1', children = '0' } = await searchParams
-  const [lang, cat]                                                            = await Promise.all([getLang(), getCategoryBySlug(slug)])
+  const [lang, cat]                                                                                 = await Promise.all([getLang(), getCategoryBySlug(slug)])
 
   if (!cat) notFound()
 
   const fr = lang === 'fr'
-
-  // Default dates if not supplied in URL parameters (Tomorrow -> +3 days)
-  const defaultCheckIn = toDateStr(new Date(Date.now() + 86400000))
-  const defaultCheckOut = toDateStr(new Date(Date.now() + 86400000 * 3))
-
-  const initialCheckIn = queryCheckIn || defaultCheckIn
-  const initialCheckOut = queryCheckOut || defaultCheckOut
-
-  const nights = nightsBetween(initialCheckIn, initialCheckOut)
-  const { total, savings, rateLabel } = calcPrice(cat.tarifNuit, cat.tarifN15, cat.tarifN30, nights)
-  const name = fr ? cat.nameFr : cat.nameEn
+  const today = toDateStr(new Date())
+  const tomorrow = toDateStr(new Date(Date.now() + 86400000))
+  const checkIn = queryCheckIn && queryCheckIn >= today ? queryCheckIn : today
+  const checkOut = queryCheckOut && queryCheckOut > checkIn ? queryCheckOut : (queryCheckIn ? toDateStr(new Date(new Date(checkIn).getTime() + 86400000)) : tomorrow)
 
   return (
     <div className="pt-20 bg-[#FAFAFA] min-h-screen">
@@ -85,114 +78,28 @@ export default async function CategoryBookingPage({ params, searchParams }: Prop
       </div>
 
       <div className="max-w-6xl mx-auto px-6 lg:px-10 pb-24">
-        <div className="grid lg:grid-cols-5 gap-10">
-
-          {/* ── LEFT: Booking form ── */}
-          <div className="lg:col-span-3">
-            <h1 className="font-display text-3xl md:text-4xl font-light text-charcoal mb-8">
-              {fr ? 'Finaliser votre ' : 'Complete your '}
-              <span className="italic text-green">{fr ? 'réservation' : 'booking'}</span>
-            </h1>
-
-            <CategoryBookingForm
-              categoryId={cat.id}
-              categorySlug={slug}
-              lang={lang}
-              checkIn={initialCheckIn}
-              checkOut={initialCheckOut}
-              adults={parseInt(adults) || 1}
-              children={parseInt(children) || 0}
-              nights={nights}
-              totalFcfa={total}
-              savings={savings}
-              rateLabel={rateLabel}
-              tarifNuit={cat.tarifNuit}
-              tarifN15={cat.tarifN15}
-              tarifN30={cat.tarifN30}
-            />
-          </div>
-
-          {/* ── RIGHT: Summary ── */}
-          <div className="lg:col-span-2">
-            <div className="sticky top-28 space-y-4">
-
-              {/* Category card */}
-              <div className="bg-white border border-charcoal/10 p-5 space-y-3">
-                <p className="text-green text-[10px] tracking-widest uppercase font-light">
-                  {fr ? 'Votre catégorie' : 'Your category'}
-                </p>
-                <div>
-                  <h2 className="text-charcoal font-display text-xl font-light">{name}</h2>
-                  <p className="text-charcoal/30 text-xs font-light mt-1">
-                    {cat.pmsType} · {cat.pmsGamme} · Résidence Juweirat, Lomé
-                  </p>
-                </div>
-                <p className="text-charcoal/40 text-xs font-light">
-                  {fr
-                    ? 'Une unité disponible vous sera assignée à votre arrivée.'
-                    : 'An available unit will be assigned to you at check-in.'}
-                </p>
-              </div>
-
-              {/* Stay details */}
-              <div className="bg-white border border-charcoal/10 p-5 space-y-4">
-                <p className="text-green text-[10px] tracking-widest uppercase font-light">
-                  {fr ? 'Détails du séjour' : 'Stay details'}
-                </p>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-surface p-3 space-y-1">
-                    <p className="text-charcoal/30 text-[10px] tracking-widest uppercase font-light flex items-center gap-1">
-                      <CalendarDays size={10} /> {fr ? 'Arrivée' : 'Check-in'}
-                    </p>
-                    <p className="text-charcoal text-xs font-light">{formatDate(initialCheckIn, lang)}</p>
-                  </div>
-                  <div className="bg-surface p-3 space-y-1">
-                    <p className="text-charcoal/30 text-[10px] tracking-widest uppercase font-light flex items-center gap-1">
-                      <CalendarDays size={10} /> {fr ? 'Départ' : 'Check-out'}
-                    </p>
-                    <p className="text-charcoal text-xs font-light">{formatDate(initialCheckOut, lang)}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 text-sm font-light text-charcoal/60">
-                  <Users size={13} className="text-green/60" />
-                  {adults} {fr ? 'adulte' : 'adult'}{parseInt(adults) > 1 ? 's' : ''}
-                  {parseInt(children) > 0 && ` · ${children} ${fr ? 'enfant' : 'child'}${parseInt(children) > 1 ? (fr ? 's' : 'ren') : ''}`}
-                </div>
-
-                <div className="h-px bg-charcoal/5" />
-
-                {/* Price breakdown */}
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-charcoal/50 font-light">
-                      {formatFCFA(cat.tarifNuit)} × {nights} {fr ? (nights > 1 ? 'nuits' : 'nuit') : (nights > 1 ? 'nights' : 'night')}
-                    </span>
-                    <span className="text-charcoal/70">{formatFCFA(nights * cat.tarifNuit)}</span>
-                  </div>
-                  {savings > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-green/70 font-light">{fr ? 'Réduction' : 'Discount'} ({rateLabel})</span>
-                      <span className="text-green">− {formatFCFA(savings)}</span>
-                    </div>
-                  )}
-                  <div className="h-px bg-charcoal/5 my-1" />
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-charcoal text-sm font-medium">Total</span>
-                    <span className="text-green text-xl font-semibold">{formatFCFA(total)}</span>
-                  </div>
-                </div>
-              </div>
-
-              <p className="text-charcoal/25 text-xs font-light text-center leading-relaxed">
-                {fr
-                  ? 'Des questions ? Contactez-nous au +228 90 00 00 00 ou par email à contact@juweirat.com'
-                  : 'Questions? Contact us at +228 90 00 00 00 or by email at contact@juweirat.com'}
-              </p>
-            </div>
-          </div>
+        <div className="mb-8">
+          <h1 className="font-display text-3xl md:text-4xl font-light text-charcoal">
+            {fr ? 'Finaliser votre ' : 'Complete your '}
+            <span className="italic text-green">{fr ? 'réservation' : 'booking'}</span>
+          </h1>
         </div>
+
+        <CategoryBookingForm
+          categoryId={cat.id}
+          categorySlug={slug}
+          categoryName={fr ? cat.nameFr : cat.nameEn}
+          pmsType={cat.pmsType}
+          pmsGamme={cat.pmsGamme}
+          lang={lang}
+          checkIn={checkIn}
+          checkOut={checkOut}
+          adults={parseInt(adults) || 1}
+          children={parseInt(children) || 0}
+          tarifNuit={cat.tarifNuit}
+          tarifN15={cat.tarifN15}
+          tarifN30={cat.tarifN30}
+        />
       </div>
     </div>
   )

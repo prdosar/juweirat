@@ -214,7 +214,11 @@ export default function EditionPage() {
   const pmGlobal = agg.nights ? agg.heb / agg.nights : 0;
   const losGlobal = agg.stays ? agg.losTot / agg.stays : 0;
 
-  const unitLabel = (id: number) => { const u = units.find((x) => x.id === id); return u ? u.nameFr + " · " + u.pmsType : null; };
+  const unitLabel = (id: number) => {
+    const u = units.find((x) => x.id === id);
+    if (!u) return null;
+    return `${u.pmsRoomNo ? `Appt ${u.pmsRoomNo} — ` : ''}${u.nameFr}${u.pmsType ? ` · ${u.pmsType}` : ''}`;
+  };
   const byUnit = unitsView.map((u) => ({ 
     u, 
     evs: events.filter((e) => e.unitId === u.id).sort((a, b) => (a.start < b.start ? -1 : 1)),
@@ -232,7 +236,11 @@ export default function EditionPage() {
       if (filterType === "menage" && cleanings.length === 0) return false;
       if (!q) return true;
       
-      const matchUnit = u.nameFr.toLowerCase().includes(q) || u.pmsType.toLowerCase().includes(q) || u.roomNumber.toLowerCase().includes(q);
+      const matchUnit =
+        (u.nameFr && u.nameFr.toLowerCase().includes(q)) ||
+        (u.pmsType && u.pmsType.toLowerCase().includes(q)) ||
+        (u.pmsRoomNo && u.pmsRoomNo.toLowerCase().includes(q)) ||
+        (u.pmsGamme && u.pmsGamme.toLowerCase().includes(q));
       const matchEvent = evs.some(e => 
         (e.label && e.label.toLowerCase().includes(q)) ||
         (e.ref && e.ref.toLowerCase().includes(q)) ||
@@ -332,11 +340,15 @@ export default function EditionPage() {
           <button onClick={() => quick(dateHotel, addDays(dateHotel, 6))} className="px-3 py-2 text-sm text-green font-medium border border-gray-200 rounded-lg hover:bg-green/5">7 jours</button>
           <button onClick={() => quick(dateHotel, addDays(dateHotel, 29))} className="px-3 py-2 text-sm text-green font-medium border border-gray-200 rounded-lg hover:bg-green/5">30 jours</button>
           
-          <div className="w-56">
+          <div className="w-64">
             <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Chambre</label>
             <select value={fRoom} onChange={e => setFRoom(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-green/20 focus:border-green">
               <option value="tous">Toutes les chambres ({units.length})</option>
-              {units.map(u => <option key={u.id} value={u.id}>{u.nameFr} · {u.pmsType}</option>)}
+              {units.map(u => (
+                <option key={u.id} value={u.id}>
+                  {u.pmsRoomNo ? `Appt ${u.pmsRoomNo} — ` : ''}{u.nameFr}{u.pmsType ? ` · ${u.pmsType}` : ''}
+                </option>
+              ))}
             </select>
           </div>
           <div className={`ml-auto text-sm pb-2 ${validPeriod ? 'text-gray-400 font-medium' : 'text-red-500 font-bold'}`}>
@@ -396,8 +408,8 @@ export default function EditionPage() {
               {byUnit.map(({ u, evs }, ri) => (
                 <div key={u.id} className={`flex border-b border-gray-100 h-12 ${ri % 2 ? 'bg-gray-50' : 'bg-white'}`}>
                   <div style={{ width: labelW }} className="shrink-0 px-3 py-1 flex flex-col justify-center border-r border-gray-100 bg-inherit z-10">
-                    <div className="text-xs font-bold">{u.nameFr}</div>
-                    <div className="text-[10px] text-gray-400">{u.pmsType}{u.horsService ? " · HS" : ""}</div>
+                    <div className="text-xs font-bold truncate">{u.pmsRoomNo ? `Appt ${u.pmsRoomNo} · ` : ''}{u.nameFr}</div>
+                    <div className="text-[10px] text-gray-400">{u.pmsType || ''}{u.pmsGamme ? ` · ${u.pmsGamme}` : ''}{u.horsService ? " · HS" : ""}</div>
                     {caByUnit[u.id] && caByUnit[u.id].total > 0 && <div className="text-[9px] text-green-dark font-bold">CA {money(caByUnit[u.id].total)}</div>}
                   </div>
                   <div className="relative shrink-0" style={{ width: list.length * dayW }}>
@@ -492,10 +504,10 @@ export default function EditionPage() {
                 return (
                   <tr key={u.id} className={`hover:bg-green/5 transition-colors ${i % 2 ? 'bg-gray-50/50' : 'bg-white'}`}>
                     <td className="py-3 px-4 font-bold text-charcoal flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: u.horsService ? C.danger : C.ok }} />
-                      {u.nameFr}
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: u.horsService ? C.danger : C.ok }} />
+                      <span>{u.pmsRoomNo ? `Appt ${u.pmsRoomNo} — ` : ''}{u.nameFr}</span>
                     </td>
-                    <td className="py-3 px-4 text-gray-500 text-xs">{u.pmsType}</td>
+                    <td className="py-3 px-4 text-gray-500 text-xs">{u.pmsType ? `${u.pmsType} ${u.pmsGamme || ''}` : '—'}</td>
                     <td className="py-3 px-4 text-center font-semibold">{x.stays || '—'}</td>
                     <td className="py-3 px-4 text-center font-semibold">{x.nights || '—'}</td>
                     <td className="py-3 px-4 text-right text-gray-600">{x.los ? x.los.toFixed(1).replace(".", ",") + " j" : "—"}</td>
@@ -575,12 +587,12 @@ export default function EditionPage() {
                 {/* Unit Header */}
                 <div className="flex flex-wrap items-center justify-between gap-3 bg-surface p-3 rounded-lg border border-gray-100">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-green text-white font-bold flex items-center justify-center text-sm shadow-sm">
-                      {u.roomNumber}
+                    <div className="w-10 h-10 rounded-lg bg-green text-white font-bold flex items-center justify-center text-sm shadow-sm shrink-0">
+                      {u.pmsRoomNo || u.nameFr.slice(0, 3)}
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-charcoal m-0">{u.nameFr}</h3>
-                      <div className="text-xs text-gray-400">{u.pmsType} · Étage {u.floor} {u.horsService ? "· [HORS SERVICE]" : ""}</div>
+                      <div className="text-xs text-gray-400">{u.pmsRoomNo ? `Appartement ${u.pmsRoomNo} · ` : ''}{u.pmsType || 'Logement'}{u.pmsGamme ? ` (${u.pmsGamme})` : ''} · Étage {u.floor} {u.horsService ? "· [HORS SERVICE]" : ""}</div>
                     </div>
                   </div>
 

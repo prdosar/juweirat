@@ -104,8 +104,7 @@ public class ClotureService(AppDbContext db)
                 DateHotel   = dateHotel,
                 FolioId     = folio.Id,
                 UnitId      = folio.UnitId,
-                Famille     = "Hébergement",
-                Libelle     = $"Hébergement {folio.Unit?.PmsRoomNo} — {folio.Rate:N0} FCFA/nuit",
+                Libelle     = $"Hébergement {folio.Unit?.PmsRoomNo ?? folio.Unit?.RoomNumber} — {folio.Rate:N0} FCFA/nuit",
                 Montant     = folio.Rate,
                 Horodatage  = DateTime.UtcNow,
             });
@@ -127,7 +126,7 @@ public class ClotureService(AppDbContext db)
         }
 
         // Indicators
-        var totalUnits = await db.Rooms.CountAsync(r => r.PmsRoomNo != null && !r.HorsService);
+        var totalUnits = await db.Rooms.CountAsync(r => !r.HorsService);
         var dispo      = totalUnits;
         var occ        = activeFolios.Count;
         var caHeb      = activeFolios.Sum(f => f.Rate);

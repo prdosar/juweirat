@@ -169,9 +169,18 @@ export default function ReservationDetailPage() {
             {r.clientEmail && <p className="text-sm text-gray-500">{r.clientEmail}</p>}
             {r.clientPhone && <p className="text-sm text-gray-500">{r.clientPhone}</p>}
           </div>
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-2">
-            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Chambre</h3>
-            <p className="font-semibold text-charcoal">{r.roomNumber} — {r.roomNameFr}</p>
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Logement</h3>
+            <p className="font-semibold text-charcoal">
+              {r.roomNameFr ? (
+                <>
+                  {r.roomNameFr} {r.roomNumber && <span className="text-gray-400 font-normal">· Appt {r.roomNumber}</span>}
+                </>
+              ) : (
+                <>
+                  {r.categoryNameFr} <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-normal ml-1">À assigner</span>
+                </>
+              )}
+            </p>
             <p className="text-sm text-gray-500">{r.nights} nuit{r.nights > 1 ? 's' : ''} · {r.adults} adulte{r.adults > 1 ? 's' : ''}{r.children > 0 ? ` · ${r.children} enfant${r.children > 1 ? 's' : ''}` : ''}</p>
           </div>
         </div>

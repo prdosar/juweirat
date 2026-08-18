@@ -138,7 +138,8 @@ export async function submitContact(data: { name: string, email: string, phone?:
 
 export async function submitBooking(data: {
   firstName: string, lastName: string, email: string, phone: string, nationality: string,
-  categoryId: number, checkInDate: string, checkOutDate: string, adults: number, children: number, notes: string
+  categoryId: number, checkInDate: string, checkOutDate: string, adults: number, children: number, notes: string,
+  roomId?: number
 }): Promise<boolean> {
   try {
     const res = await fetch(`${API}/api/public/booking`, {

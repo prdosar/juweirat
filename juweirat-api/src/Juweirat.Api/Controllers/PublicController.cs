@@ -19,7 +19,8 @@ public class PublicController(
 {
     public record PublicBookingRequest(
         string FirstName, string LastName, string Email, string Phone, string Nationality,
-        long CategoryId, DateOnly CheckInDate, DateOnly CheckOutDate, int Adults, int Children, string Notes
+        long CategoryId, DateOnly CheckInDate, DateOnly CheckOutDate, int Adults, int Children, string Notes,
+        long? RoomId = null
     );
 
     [HttpPost("booking")]
@@ -40,6 +41,7 @@ public class PublicController(
 
         var createRes = new CreateReservationRequest(
             CategoryId: req.CategoryId,
+            RoomId: req.RoomId,
             ClientId: client!.Id,
             CheckInDate: req.CheckInDate,
             CheckOutDate: req.CheckOutDate,
@@ -52,11 +54,11 @@ public class PublicController(
         var (res, err) = await reservationService.CreateAsync(createRes);
         if (err is not null) return BadRequest(new { error = err });
 
-        var category = await categorySvc.GetByIdAsync(req.CategoryId);
-        string categoryName = category?.NameFr ?? "Appartement Résidence Juweirat";
+        var category = await categorySvc.GetByIdAsync(res!.CategoryId);
+        string categoryName = category?.NameFr ?? res.RoomNameFr ?? "Appartement Résidence Juweirat";
 
         // 1. Send luxury notification to admin
-        string adminSubject = $"[RÉSERVATION WEB] {req.FirstName} {req.LastName} — {categoryName}";
+        string adminSubject = $"[RÉSERVATION WEB] {req.FirstName} {req.LastName} — {res.RoomNameFr ?? categoryName}";
         string adminBody = EmailTemplateService.BuildBookingAdminNotification(
             req.FirstName, req.LastName, req.Email ?? "", req.Phone, req.Nationality,
             categoryName, req.CheckInDate, req.CheckOutDate, req.Adults, req.Children, req.Notes

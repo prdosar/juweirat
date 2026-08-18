@@ -38,8 +38,8 @@ public class PmsService(AppDbContext db)
     public async Task<List<UnitDto>> GetUnitsAsync()
     {
         var rooms = await db.Rooms
-            .Where(r => r.PmsRoomNo != null)
-            .OrderBy(r => r.Floor).ThenBy(r => r.RoomNumber)
+            .Include(r => r.Category)
+            .OrderBy(r => r.Floor).ThenBy(r => r.PmsRoomNo ?? r.RoomNumber)
             .ToListAsync();
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
@@ -58,7 +58,7 @@ public class PmsService(AppDbContext db)
 
     public async Task<UnitDto?> GetUnitByIdAsync(long id)
     {
-        var room = await db.Rooms.FindAsync(id);
+        var room = await db.Rooms.Include(r => r.Category).FirstOrDefaultAsync(r => r.Id == id);
         if (room is null) return null;
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
@@ -416,11 +416,22 @@ public class PmsService(AppDbContext db)
     );
 
     private static UnitDto ToUnitDto(Room r, string? currentFolioNumber) => new(
-        r.Id, r.PmsRoomNo, r.PmsType, r.PmsGamme,
-        r.TarifNuit, r.TarifN15, r.TarifN30,
-        r.StatutMenage.ToString(), r.LastCleaned, r.HorsService,
-        r.Floor, r.PlanCol, r.PlanRow,
-        r.NameFr, r.NameEn, currentFolioNumber
+        r.Id,
+        r.PmsRoomNo ?? r.RoomNumber,
+        r.PmsType ?? r.Category?.PmsType ?? "T2",
+        r.PmsGamme ?? r.Category?.PmsGamme ?? "standard",
+        r.TarifNuit > 0 ? r.TarifNuit : (int)r.PricePerNight,
+        r.TarifN15 > 0 ? r.TarifN15 : (int)(r.PricePerWeek.HasValue ? r.PricePerWeek.Value * 2 : r.PricePerNight * 15 * 0.8m),
+        r.TarifN30 > 0 ? r.TarifN30 : (int)(r.PricePerMonth.HasValue ? r.PricePerMonth.Value : r.PricePerNight * 30 * 0.65m),
+        r.StatutMenage.ToString(),
+        r.LastCleaned,
+        r.HorsService,
+        r.Floor,
+        r.PlanCol,
+        r.PlanRow,
+        r.NameFr,
+        r.NameEn,
+        currentFolioNumber
     );
 
     internal static FolioDto ToFolioDto(Folio f)

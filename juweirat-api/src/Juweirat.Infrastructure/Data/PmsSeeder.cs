@@ -77,35 +77,47 @@ public static class PmsSeeder
             .Select(r => r.PmsRoomNo!)
             .ToHashSetAsync();
 
-        // Tous déjà mappés → rien à faire
-        if (existingPmsNos.Count == PmsRooms.Length) return;
-
-        var pmsToInsert = PmsRooms
-            .Where(p => !existingPmsNos.Contains(p.No))
-            .OrderBy(p => p.Floor).ThenBy(p => p.No)
-            .ToList();
-
-        // Rooms existantes sans mapping PMS — on les met à jour en ordre
-        var unmappedRooms = await db.Rooms
-            .Where(r => r.PmsRoomNo == null)
-            .OrderBy(r => r.Floor).ThenBy(r => r.RoomNumber)
-            .ToListAsync();
-
-        int updateCount = Math.Min(unmappedRooms.Count, pmsToInsert.Count);
-
-        for (int i = 0; i < updateCount; i++)
+        // Tous déjà mappés ? Vérifier s'il reste des rooms sans pmsRoomNo
+        if (existingPmsNos.Count < PmsRooms.Length)
         {
-            Apply(unmappedRooms[i], pmsToInsert[i]);
+            var pmsToInsert = PmsRooms
+                .Where(p => !existingPmsNos.Contains(p.No))
+                .OrderBy(p => p.Floor).ThenBy(p => p.No)
+                .ToList();
+
+            // Rooms existantes sans mapping PMS — on les met à jour en ordre
+            var unmappedRooms = await db.Rooms
+                .Where(r => r.PmsRoomNo == null)
+                .OrderBy(r => r.Floor).ThenBy(r => r.RoomNumber)
+                .ToListAsync();
+
+            int updateCount = Math.Min(unmappedRooms.Count, pmsToInsert.Count);
+
+            for (int i = 0; i < updateCount; i++)
+            {
+                Apply(unmappedRooms[i], pmsToInsert[i]);
+            }
+
+            // PMS rooms restantes sans room existante → nouvelles lignes
+            for (int i = updateCount; i < pmsToInsert.Count; i++)
+            {
+                db.Rooms.Add(NewRoom(pmsToInsert[i]));
+            }
+
+            if (updateCount > 0 || pmsToInsert.Count > updateCount)
+                await db.SaveChangesAsync();
         }
 
-        // PMS rooms restantes sans room existante → nouvelles lignes
-        for (int i = updateCount; i < pmsToInsert.Count; i++)
+        // S'il reste des chambres sans pmsRoomNo, leur assigner leur numéro de chambre
+        var remainingWithoutPms = await db.Rooms.Where(r => r.PmsRoomNo == null).ToListAsync();
+        if (remainingWithoutPms.Count > 0)
         {
-            db.Rooms.Add(NewRoom(pmsToInsert[i]));
-        }
-
-        if (updateCount > 0 || pmsToInsert.Count > updateCount)
+            foreach (var r in remainingWithoutPms)
+            {
+                r.PmsRoomNo = r.RoomNumber;
+            }
             await db.SaveChangesAsync();
+        }
     }
 
     private static void Apply(Room room, PmsRoomDef p)

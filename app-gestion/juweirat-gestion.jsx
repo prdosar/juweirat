@@ -25,6 +25,7 @@ const JUWEIRAT_FLOORS = [
 const TYPE_DEFAULTS = { T1: { rent: 85000, rate: 18000 }, T2: { rent: 150000, rate: 30000 }, T3: { rent: 200000, rate: 40000 } };
 // Grille tarifaire réelle (FCFA). 3 tarifs selon la durée : nuitée (élec incl.) / 15 nuits / 30 nuits (hors élec).
 const TARIFS = {
+  "21": { type: "T1", gamme: "standard", nuit: 30000, n15: 200000, n30: 300000 },
   "22": { type: "T2", gamme: "supérieure", nuit: 45000, n15: 325000, n30: 600000 },
   "23": { type: "T3", gamme: "supérieure", nuit: 80000, n15: 500000, n30: 900000 },
   "24": { type: "T3", gamme: "supérieure", nuit: 80000, n15: 500000, n30: 900000 },
@@ -1387,7 +1388,7 @@ function Edition({ units, folios, tickets, debtors = [], monthly = {}, config })
     [],
     ["Synthèse par chambre"],
     ["Chambre", "Séjours", "Nuits", "Durée moy. (nuits)", "Prix moyen", "Hébergement", "PDJ", "Extras", "CA total"],
-    ...unitsView.filter((u) => caByUnit[u.id] && (caByUnit[u.id].total > 0 || caByUnit[u.id].stays > 0)).map((u) => { const x = caByUnit[u.id]; return [u.label + " · " + u.type, x.stays, x.nights, x.los.toFixed(1).replace(".", ","), Math.round(x.pm), Math.round(x.heb), Math.round(x.pdj), Math.round(x.extra), Math.round(x.total)]; }),
+    ...units.map((u) => { const x = caByUnit[u.id] || { stays: 0, nights: 0, los: 0, pm: 0, heb: 0, pdj: 0, extra: 0, total: 0 }; return [u.label + " · " + u.type, x.stays, x.nights, x.los.toFixed(1).replace(".", ","), Math.round(x.pm), Math.round(x.heb), Math.round(x.pdj), Math.round(x.extra), Math.round(x.total)]; }),
     ["TOTAL", agg.stays, agg.nights, losGlobal.toFixed(1).replace(".", ","), Math.round(pmGlobal), "", "", "", Math.round(caTotal)],
     [],
     ["SUIVI DES DÉBITEURS & CRÉANCES DIVERSES"],
@@ -1421,7 +1422,7 @@ function Edition({ units, folios, tickets, debtors = [], monthly = {}, config })
         <Btn kind="ghost" size="sm" onClick={() => quick(now + "-01", now + "-" + String(daysInMonth(now)).padStart(2, "0"))}>Ce mois</Btn>
         <Btn kind="ghost" size="sm" onClick={() => quick(config.dateHotel, addDays(config.dateHotel, 6))}>7 jours</Btn>
         <Btn kind="ghost" size="sm" onClick={() => quick(config.dateHotel, addDays(config.dateHotel, 29))}>30 jours</Btn>
-        <div style={{ width: 190 }}><Field label="Chambre"><Select value={fRoom} onChange={setFRoom} options={[{ v: "tous", l: "Toutes les chambres" }, ...units.map((u) => ({ v: u.id, l: u.label + " · " + u.type }))]} /></Field></div>
+        <div style={{ width: 220 }}><Field label="Chambre"><Select value={fRoom} onChange={setFRoom} options={[{ v: "tous", l: `Toutes les chambres (${units.length})` }, ...units.map((u) => ({ v: u.id, l: u.label + " · " + u.type }))]} /></Field></div>
         <div style={{ fontSize: 12.5, color: validPeriod ? C.muted : C.danger, paddingBottom: 9 }}>{validPeriod ? `${span} jour(s) · ${events.length} évènement(s)` : "période invalide"}</div>
       </div>
     </Card>

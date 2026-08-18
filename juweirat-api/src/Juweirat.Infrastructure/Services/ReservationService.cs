@@ -41,23 +41,27 @@ public class ReservationService(AppDbContext db)
         if (req.CheckOutDate <= req.CheckInDate)
             return (null, "checkOutDate must be after checkInDate");
 
-        var category = await db.RoomCategories.FindAsync(req.CategoryId);
-        if (category is null) return (null, "Category not found");
-
-        var nights = req.CheckOutDate.DayNumber - req.CheckInDate.DayNumber;
-
         Room? room = null;
         if (req.RoomId is not null)
         {
-            room = await db.Rooms.FindAsync(req.RoomId.Value);
+            room = await db.Rooms.Include(r => r.Category).FirstOrDefaultAsync(r => r.Id == req.RoomId.Value);
             if (room is null) return (null, "Room not found");
-            if (room.CategoryId != req.CategoryId) return (null, "Room does not belong to the requested category");
             if (room.Status != RoomStatus.Available) return (null, "Room is not available");
 
             var overlap = await CheckOverlapAsync(req.RoomId.Value, req.CheckInDate, req.CheckOutDate);
             if (overlap) return (null, "Room is already reserved for these dates");
         }
-        else
+
+        var category = (req.CategoryId > 0 ? await db.RoomCategories.FindAsync(req.CategoryId) : null)
+                       ?? (room?.CategoryId != null ? await db.RoomCategories.FindAsync(room.CategoryId.Value) : null)
+                       ?? (room != null ? await db.RoomCategories.FirstOrDefaultAsync(c => c.PmsType == room.PmsType) : null)
+                       ?? await db.RoomCategories.FirstOrDefaultAsync();
+
+        if (category is null) return (null, "Category not found");
+
+        var nights = req.CheckOutDate.DayNumber - req.CheckInDate.DayNumber;
+
+        if (room is null && req.CategoryId > 0)
         {
             // Auto-assign: find first available room in the category
             var candidateIds = await db.Rooms
@@ -69,15 +73,18 @@ public class ReservationService(AppDbContext db)
             {
                 if (!await CheckOverlapAsync(candidateId, req.CheckInDate, req.CheckOutDate))
                 {
-                    room = await db.Rooms.FindAsync(candidateId);
+                    room = await db.Rooms.Include(r => r.Category).FirstOrDefaultAsync(r => r.Id == candidateId);
                     break;
                 }
             }
         }
 
         // Tarification selon le palier
-        var tarifResult = TarifEngine.ForStay(
-            category.TarifNuit, category.TarifN15, category.TarifN30, nights);
+        var tarifNuit = category.TarifNuit > 0 ? category.TarifNuit : (room != null ? room.TarifNuit : 30000);
+        var tarifN15  = category.TarifN15 > 0 ? category.TarifN15 : (room != null ? room.TarifN15 : 200000);
+        var tarifN30  = category.TarifN30 > 0 ? category.TarifN30 : (room != null ? room.TarifN30 : 300000);
+
+        var tarifResult = TarifEngine.ForStay(tarifNuit, tarifN15, tarifN30, nights);
         var total = (decimal)tarifResult.PerNight * nights;
 
         var reservation = new Reservation

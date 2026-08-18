@@ -118,12 +118,26 @@ export default function DashboardPage() {
                       <th className="px-6 py-3 text-right font-medium">Montant</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
                     {recent.map(r => (
-                      <tr key={r.id} className="hover:bg-gray-50/70 transition-colors">
+                      <tr
+                        key={r.id}
+                        className="hover:bg-gray-50/70 transition-colors cursor-pointer"
+                        onClick={() => window.location.href = `/reservations/${r.id}`}
+                      >
                         <td className="px-6 py-3.5 font-mono text-xs text-green-dark font-bold">{r.reference}</td>
                         <td className="px-6 py-3.5 font-medium text-charcoal">{r.clientFullName}</td>
-                        <td className="px-6 py-3.5 text-gray-500">{r.roomNumber} – {r.roomNameFr}</td>
+                        <td className="px-6 py-3.5 text-gray-500">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-medium text-charcoal">{r.roomNameFr || r.categoryNameFr || 'Logement'}</span>
+                            {r.roomNumber ? (
+                              <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">Appt {r.roomNumber}</span>
+                            ) : (
+                              <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-normal">
+                                À assigner
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-6 py-3.5 text-gray-500">{r.checkInDate}</td>
                         <td className="px-6 py-3.5"><StatusBadge status={r.status} /></td>
                         <td className="px-6 py-3.5 text-right font-semibold text-charcoal">
