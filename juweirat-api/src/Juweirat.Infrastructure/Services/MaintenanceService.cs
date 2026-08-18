@@ -10,7 +10,7 @@ public class MaintenanceService(AppDbContext db)
 {
     public async Task<List<MaintenanceTicketDto>> GetAllAsync(string? status = null, string? priority = null, long? unitId = null)
     {
-        var query = db.MaintenanceTickets.Include(t => t.Unit).AsQueryable();
+        var query = db.MaintenanceTickets.Include(t => t.Unit).Include(t => t.Staff).AsQueryable();
 
         if (status is not null && Enum.TryParse<TicketStatus>(status, true, out var s))
             query = query.Where(t => t.Status == s);
@@ -25,7 +25,7 @@ public class MaintenanceService(AppDbContext db)
 
     public async Task<MaintenanceTicketDto?> GetByIdAsync(long id)
     {
-        var t = await db.MaintenanceTickets.Include(t => t.Unit).FirstOrDefaultAsync(x => x.Id == id);
+        var t = await db.MaintenanceTickets.Include(t => t.Unit).Include(t => t.Staff).FirstOrDefaultAsync(x => x.Id == id);
         return t is null ? null : ToDto(t);
     }
 
@@ -46,6 +46,7 @@ public class MaintenanceService(AppDbContext db)
             Title       = req.Title,
             Description = req.Description,
             Tech        = req.Tech,
+            StaffId     = req.StaffId,
             Cost        = req.Cost,
             Note        = req.Note,
             Status      = TicketStatus.Ouvert,
@@ -54,13 +55,13 @@ public class MaintenanceService(AppDbContext db)
         db.MaintenanceTickets.Add(ticket);
         await db.SaveChangesAsync();
 
-        var created = await db.MaintenanceTickets.Include(t => t.Unit).FirstAsync(t => t.Id == ticket.Id);
+        var created = await db.MaintenanceTickets.Include(t => t.Unit).Include(t => t.Staff).FirstAsync(t => t.Id == ticket.Id);
         return (ToDto(created), null);
     }
 
     public async Task<(MaintenanceTicketDto? dto, string? error)> UpdateAsync(long id, UpdateMaintenanceRequest req)
     {
-        var ticket = await db.MaintenanceTickets.Include(t => t.Unit).FirstOrDefaultAsync(t => t.Id == id);
+        var ticket = await db.MaintenanceTickets.Include(t => t.Unit).Include(t => t.Staff).FirstOrDefaultAsync(t => t.Id == id);
         if (ticket is null) return (null, null);
 
         if (req.Zone        is not null) ticket.Zone        = req.Zone;
@@ -70,6 +71,7 @@ public class MaintenanceService(AppDbContext db)
         if (req.Title       is not null) ticket.Title       = req.Title;
         if (req.Description is not null) ticket.Description = req.Description;
         if (req.Tech        is not null) ticket.Tech        = req.Tech;
+        if (req.StaffId     is not null) ticket.StaffId     = req.StaffId == 0 ? null : req.StaffId;
         if (req.Cost        is not null) ticket.Cost        = req.Cost;
         if (req.Note        is not null) ticket.Note        = req.Note;
 
@@ -103,6 +105,7 @@ public class MaintenanceService(AppDbContext db)
         t.Priority.ToString(), t.Title, t.Description,
         t.Tech, t.Cost, t.Status.ToString(),
         t.ResolvedAt, t.Note,
-        t.CreatedAt, t.UpdatedAt
+        t.CreatedAt, t.UpdatedAt,
+        t.StaffId, t.Staff?.FullName, t.Staff?.Phone
     );
 }

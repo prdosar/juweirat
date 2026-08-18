@@ -1,29 +1,55 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Header from '@/components/Header';
-import { categories, clients, rooms, reservations } from '@/lib/api';
-import type { ClientDto, RoomCategoryDto, RoomDto } from '@/lib/types';
-import { ArrowLeft, Save, Search, Zap, Coffee, Calendar, Users, Home, UserCheck, CheckCircle2, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
+import { categories, clients, rooms, reservations, prestations } from '@/lib/api';
+import type { ClientDto, PrestationAnnexeDto, RoomCategoryDto, RoomDto } from '@/lib/types';
 
-const SOURCES    = ['Direct', 'Téléphone', 'Walk-in', 'Booking.com', 'Expedia', 'Airbnb'];
+/* ────────────────────────── Design tokens ───────────────────────── */
+const C = {
+  page:        '#f3f5f3',
+  card:        '#ffffff',
+  ink:         '#14181a',
+  ink2:        '#5c6660',
+  ink3:        '#6b7570',
+  ink4:        '#8b958f',
+  ink5:        '#98a29c',
+  mute:        '#a3aca7',
+  fieldBorder: '#dfe4e0',
+  cardBorder:  '#e5e9e6',
+  sep:         '#eef1ef',
+  sep2:        '#e8ebe9',
+  neutral:     '#f1f4f2',
+  neutral2:    '#edf0ee',
+  accent:      '#15803d',
+  accentHover: '#116830',
+  accentSoft:  '#f2f8f4',
+  accentTint:  '#eef5f0',
+  ctaBg:       '#22a15a',
+  ctaHover:    '#2cb968',
+  ctaText:     '#062d17',
+  danger:      '#c13c3c',
+  dark:        '#14181a',
+  darkSep:     '#2a2f31',
+  darkLabel:   '#8c9691',
+  darkFg:      '#eef2ef',
+  balance:     '#7fc79b',
+};
+
+const STEP_LABELS = ['Client', 'Séjour', 'Occupants', 'Logement', 'Garantie'];
+const STEP_TITLES = [
+  'Client titulaire du séjour',
+  'Période du séjour',
+  "Nombre d'occupants",
+  'Logement & prestations',
+  'Garantie & tarif',
+];
+
+const SOURCES    = ['Direct', 'Téléphone', 'Agence', 'Site web', 'OTA'];
 const CURRENCIES = ['XOF', 'EUR', 'USD'];
-const KWH_PRICE  = 230;
-const DEFAULT_PDJ_PRICE = 3500;
-
-function nightsBetween(from: string, to: string): number {
-  if (!from || !to) return 0;
-  const diff = (new Date(to).getTime() - new Date(from).getTime()) / 86_400_000;
-  return diff > 0 ? Math.round(diff) : 0;
-}
-
-function tierFor(n: number, cat: RoomCategoryDto): { label: string; ratePerNight: number; elecIncluded: boolean } {
-  if (n >= 30) return { label: 'Forfait mensuel (30j+)',  ratePerNight: cat.tarifN30,   elecIncluded: false };
-  if (n >= 15) return { label: 'Forfait 15 jours (15-29j)', ratePerNight: cat.tarifN15,   elecIncluded: false };
-  return              { label: 'Nuitée standard (1-14j)',  ratePerNight: cat.tarifNuit,  elecIncluded: true  };
-}
+const COUNTRIES  = ["Côte d'Ivoire", 'Sénégal', 'Burkina Faso', 'France', 'Togo', 'Bénin', 'Ghana', 'Autre'];
+const CLIENT_TYPES = ['Particulier', 'Entreprise', 'Agence / TO'];
 
 const GAMME_LABELS: Record<string, string> = {
   standard:   'Standard',
@@ -32,118 +58,258 @@ const GAMME_LABELS: Record<string, string> = {
   suite:      'Suite',
 };
 
+/* ────────────────────────── Utils ───────────────────────── */
+function parseIsoLocal(v: string): Date | null {
+  const parts = String(v || '').split('-').map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
+  return new Date(parts[0], parts[1] - 1, parts[2]);
+}
+function toIso(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+function fmtDateShort(v: string): string {
+  const d = parseIsoLocal(v);
+  return d ? d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '—';
+}
+function fcfa(n: number): string {
+  return `${Math.round(n).toLocaleString('fr-FR').replace(/ | /g, ' ')} F`;
+}
+function nightsBetween(from: string, to: string): number {
+  const a = parseIsoLocal(from);
+  const b = parseIsoLocal(to);
+  if (!a || !b) return 0;
+  const n = Math.round((b.getTime() - a.getTime()) / 86_400_000);
+  return n > 0 ? n : 0;
+}
+function tierFor(n: number, cat: RoomCategoryDto): { label: string; rate: number; elecIncluded: boolean } {
+  if (n >= 30) return { label: 'Forfait mensuel',     rate: cat.tarifN30,  elecIncluded: false };
+  if (n >= 15) return { label: 'Forfait 15 jours',    rate: cat.tarifN15,  elecIncluded: false };
+  return              { label: 'Nuitée standard',     rate: cat.tarifNuit, elecIncluded: true  };
+}
+function initials(name: string): string {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('') || '·';
+}
+
+/* ────────────────────────── Component ───────────────────────── */
 export default function NewReservationPage() {
   const router = useRouter();
 
-  const [categoryList, setCategoryList] = useState<RoomCategoryDto[]>([]);
-  const [roomList, setRoomList]         = useState<RoomDto[]>([]);
-  const [clientList, setClientList]     = useState<ClientDto[]>([]);
-  const [clientSearch, setClientSearch] = useState('');
-  const [showDrop, setShowDrop]         = useState(false);
-  const [kwh, setKwh]                   = useState('');
-  const [saving, setSaving]             = useState(false);
-  const [error, setError]               = useState('');
-  const dropRef = useRef<HTMLDivElement>(null);
-
-  // Form State
-  const [form, setForm] = useState({
-    clientId:        0,
-    clientLabel:     '',
-    categoryId:      0,
-    roomId:          0,  // 0 = auto-assign
-    checkInDate:     '',
-    checkOutDate:    '',
-    adults:          1,
-    children:        0,
-    includePdj:      false,
-    pdjUnitPrice:    DEFAULT_PDJ_PRICE,
-    currency:        'XOF',
-    source:          'Direct',
-    specialRequests: '',
-    internalNotes:   '',
-  });
+  // ── Data ──
+  const [categoryList, setCategoryList]     = useState<RoomCategoryDto[]>([]);
+  const [roomList, setRoomList]             = useState<RoomDto[]>([]);
+  const [clientList, setClientList]         = useState<ClientDto[]>([]);
+  const [prestationList, setPrestationList] = useState<PrestationAnnexeDto[]>([]);
 
   useEffect(() => { categories.getAll().then(setCategoryList); }, []);
   useEffect(() => { rooms.getAll().then(setRoomList); }, []);
+  useEffect(() => { prestations.getAll(true).then(setPrestationList); }, []);
 
+  // ── Wizard state ──
+  const [step, setStep] = useState(0);
+
+  // Step 1 — client
+  const [clientMode, setClientMode] = useState<'existing' | 'new'>('existing');
+  const [clientQuery, setClientQuery] = useState('');
+  const [clientId, setClientId] = useState(0);
+  const [selectedClient, setSelectedClient] = useState<ClientDto | null>(null);
+  const [newClient, setNewClient] = useState({
+    fullName: '', phone: '', email: '', idDoc: '',
+    country: COUNTRIES[0], type: CLIENT_TYPES[0], saveToDirectory: true,
+  });
+
+  // Step 2 — dates
+  const [checkIn,  setCheckIn]  = useState('');
+  const [checkOut, setCheckOut] = useState('');
+
+  // Step 3 — guests
+  const [adults, setAdults] = useState(1);
+  const [kids,   setKids]   = useState(0);
+
+  // Step 4 — logement + prestations
+  const [categoryId, setCategoryId] = useState(0);
+  const [roomId, setRoomId]         = useState(0);
+  const [selectedPrestations, setSelectedPrestations] = useState<Map<number, number | null>>(new Map());
+  const [internalNotes, setInternalNotes] = useState('');
+
+  // Step 5 — garantie & tarif
+  const [garantieType, setGarantieType] = useState<'' | 'Cash' | 'Carte'>('');
+  const [garantieMontantCash, setGarantieMontantCash] = useState('');
+  const [carteNumero,     setCarteNumero]     = useState('');
+  const [carteNom,        setCarteNom]        = useState('');
+  const [carteExpiration, setCarteExpiration] = useState('');
+  const [source,   setSource]   = useState<string>(SOURCES[0]);
+  const [currency, setCurrency] = useState<string>(CURRENCIES[0]);
+  const [discount, setDiscount] = useState('0');
+  const [deposit,  setDeposit]  = useState('0');
+
+  // ── Debounced client search ──
   useEffect(() => {
     const t = setTimeout(() => {
-      clients.getAll(clientSearch || undefined).then(setClientList);
+      clients.getAll(clientQuery || undefined).then(setClientList);
     }, 250);
     return () => clearTimeout(t);
-  }, [clientSearch]);
+  }, [clientQuery]);
 
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (dropRef.current && !dropRef.current.contains(e.target as Node))
-        setShowDrop(false);
-    }
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, []);
+  // ── Submit ──
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
 
-  function set(field: string, value: unknown) {
-    setForm(prev => ({ ...prev, [field]: value }));
-  }
+  // ── Derived ──
+  const nights   = nightsBetween(checkIn, checkOut);
+  const totalPax = Math.max(1, adults + kids);
+  const selectedCat = categoryList.find(c => c.id === categoryId) ?? null;
+  const tier        = selectedCat && nights > 0 ? tierFor(nights, selectedCat) : null;
+  const hebergement = tier ? tier.rate * nights : 0;
 
-  function selectClient(c: ClientDto) {
-    setForm(prev => ({ ...prev, clientId: c.id, clientLabel: c.fullName }));
-    setClientSearch(c.fullName);
-    setShowDrop(false);
-  }
-
-  // Calculations
-  const nights          = nightsBetween(form.checkInDate, form.checkOutDate);
-  const totalPax        = Math.max(1, Number(form.adults) + Number(form.children));
-  const pdjQty          = form.includePdj ? totalPax * Math.max(1, nights) : 0;
-  const totalPdjCost    = form.includePdj ? pdjQty * Number(form.pdjUnitPrice || 0) : 0;
-
-  const selectedCat     = categoryList.find(c => c.id === form.categoryId) ?? null;
-  const tier            = selectedCat && nights > 0 ? tierFor(nights, selectedCat) : null;
-  const hebergement     = tier ? tier.ratePerNight * nights : 0;
-  const elecCost        = tier && !tier.elecIncluded ? (Number(kwh) || 0) * KWH_PRICE : 0;
-  const totalEstime     = hebergement + totalPdjCost + elecCost;
-
-  // Available rooms for category
-  const categoryRooms = roomList.filter(r => r.categoryId === form.categoryId && r.status === 'Available');
+  const categoryRooms = useMemo(
+    () => roomList.filter(r => r.categoryId === categoryId && r.status === 'Available'),
+    [roomList, categoryId],
+  );
 
   const filteredClients = clientList
-    .filter(c =>
-      !clientSearch ||
-      c.fullName.toLowerCase().includes(clientSearch.toLowerCase()) ||
-      (c.phone ?? '').includes(clientSearch) ||
-      (c.email ?? '').toLowerCase().includes(clientSearch.toLowerCase())
-    )
+    .filter(c => {
+      if (!clientQuery) return true;
+      const q = clientQuery.toLowerCase();
+      return c.fullName.toLowerCase().includes(q)
+        || (c.phone ?? '').toLowerCase().includes(q)
+        || (c.email ?? '').toLowerCase().includes(q);
+    })
     .slice(0, 8);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (nights <= 0)      { setError("Veuillez sélectionner des dates de séjour valides (Départ après Arrivée)."); return; }
-    if (!form.categoryId) { setError('Veuillez sélectionner une catégorie de logement.'); return; }
-    if (!form.clientId)   { setError('Veuillez sélectionner ou renseigner un client.'); return; }
-    
+  function quantityFor(p: PrestationAnnexeDto): number {
+    const override = selectedPrestations.get(p.id);
+    if (override != null) return override;
+    if (p.mode === 'ParPersonneParNuit') return totalPax * Math.max(1, nights);
+    if (p.mode === 'ParPersonne')        return totalPax;
+    return 1;
+  }
+  const extrasTotal = [...selectedPrestations.keys()].reduce((acc, pid) => {
+    const p = prestationList.find(x => x.id === pid);
+    return p ? acc + p.prixInclus * quantityFor(p) : acc;
+  }, 0);
+
+  const discountNum = Math.max(0, Number(String(discount).replace(/[^\d]/g, '')) || 0);
+  const depositNum  = Math.max(0, Number(String(deposit).replace(/[^\d]/g, '')) || 0);
+  const total       = Math.max(0, hebergement + extrasTotal - discountNum);
+  const balance     = Math.max(0, total - depositNum);
+
+  const summaryClientLabel = clientMode === 'new'
+    ? (newClient.fullName.trim() || 'Nouveau client')
+    : (selectedClient?.fullName ?? '—');
+
+  const summaryRoomLabel = selectedCat
+    ? `${selectedCat.pmsType} ${GAMME_LABELS[selectedCat.pmsGamme] ?? selectedCat.pmsGamme}`
+    : '—';
+
+  /* ────────────────────────── Duration chips ────────────────────────── */
+  function applyDuration(n: number) {
+    const anchor = parseIsoLocal(checkIn) ?? new Date();
+    if (!checkIn) setCheckIn(toIso(anchor));
+    setCheckOut(toIso(new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + n)));
+  }
+
+  /* ────────────────────────── Validation per step ────────────────────────── */
+  function validateStep(current: number): string {
+    if (current === 0) {
+      if (clientMode === 'existing') {
+        if (!clientId) return 'Sélectionnez un client dans la liste (ou basculez sur "Créer un client").';
+      } else {
+        if (!newClient.fullName.trim()) return 'Nom complet requis.';
+        if (!newClient.phone.trim())    return 'Téléphone requis.';
+      }
+    }
+    if (current === 1) {
+      if (!checkIn || !checkOut) return "Renseignez les dates d'arrivée et de départ.";
+      if (nights <= 0)           return 'La date de départ doit être postérieure à la date d\'arrivée.';
+    }
+    if (current === 2) {
+      if (adults < 1) return "Au moins un adulte est requis.";
+    }
+    if (current === 3) {
+      if (!categoryId) return 'Sélectionnez une catégorie de logement.';
+    }
+    if (current === 4) {
+      if (!garantieType) return 'Choisissez un mode de garantie (dépôt ou carte).';
+      if (garantieType === 'Cash' && !garantieMontantCash) return 'Indiquez le montant du dépôt.';
+      if (garantieType === 'Carte') {
+        if (carteNumero.replace(/\s/g, '').length < 4) return 'Numéro de carte invalide.';
+        if (!carteNom.trim())                          return 'Nom sur la carte requis.';
+        if (!/^\d{2}\/\d{4}$/.test(carteExpiration))   return 'Date d\'expiration invalide (MM/AAAA).';
+      }
+    }
+    return '';
+  }
+
+  function goToStep(target: number) {
     setError('');
+    if (target <= step) { setStep(target); return; }
+    for (let i = step; i < target; i++) {
+      const msg = validateStep(i);
+      if (msg) { setError(msg); return; }
+    }
+    setStep(target);
+  }
+  function goNext() { goToStep(Math.min(4, step + 1)); }
+  function goPrev() { setError(''); setStep(s => Math.max(0, s - 1)); }
+
+  /* ────────────────────────── Submit ────────────────────────── */
+  async function handleConfirm() {
+    setError('');
+    for (let i = 0; i <= 4; i++) {
+      const msg = validateStep(i);
+      if (msg) { setStep(i); setError(msg); return; }
+    }
     setSaving(true);
     try {
-      // Build special requests summary with breakfast note if chosen
-      let enrichedRequests = form.specialRequests || '';
-      if (form.includePdj) {
-        const pdjNote = `[Petit Déjeuner Inclus : ${totalPax} pers. × ${nights} nuits = ${pdjQty} PDJ @ ${Number(form.pdjUnitPrice).toLocaleString('fr')} FCFA = ${totalPdjCost.toLocaleString('fr')} FCFA]`;
-        enrichedRequests = enrichedRequests ? `${enrichedRequests} | ${pdjNote}` : pdjNote;
+      let finalClientId = clientId;
+
+      if (clientMode === 'new') {
+        const trimmed = newClient.fullName.trim().replace(/\s+/g, ' ');
+        const [firstName, ...rest] = trimmed.split(' ');
+        const lastName = rest.join(' ') || firstName;
+        const notesParts: string[] = [];
+        if (newClient.type && newClient.type !== 'Particulier') notesParts.push(`Type : ${newClient.type}`);
+        if (!newClient.saveToDirectory) notesParts.push('Fiche créée pour un séjour ponctuel.');
+        const created = await clients.create({
+          firstName,
+          lastName,
+          email:          newClient.email.trim() || null,
+          phone:          newClient.phone.trim() || null,
+          nationality:    null,
+          documentType:   newClient.idDoc.trim() ? 'Pièce d\'identité' : null,
+          documentNumber: newClient.idDoc.trim() || null,
+          city:           null,
+          country:        newClient.country || null,
+          notes:          notesParts.length ? notesParts.join(' — ') : null,
+        });
+        finalClientId = created.id;
       }
 
+      const carteSuffix = garantieType === 'Carte' ? carteNumero.replace(/\s/g, '').slice(-4) : null;
+      const prestationsPayload = [...selectedPrestations.keys()].map(pid => {
+        const p = prestationList.find(x => x.id === pid)!;
+        return { prestationId: pid, quantite: quantityFor(p) };
+      });
+
       const body = {
-        categoryId:      form.categoryId,
-        clientId:        form.clientId,
-        roomId:          form.roomId > 0 ? form.roomId : null,
-        checkInDate:     form.checkInDate,
-        checkOutDate:    form.checkOutDate,
-        adults:          Number(form.adults),
-        children:        Number(form.children),
-        currency:        form.currency,
-        source:          form.source || null,
-        specialRequests: enrichedRequests || null,
-        internalNotes:   form.internalNotes || null,
+        categoryId,
+        clientId:            finalClientId,
+        roomId:              roomId > 0 ? roomId : null,
+        checkInDate:         checkIn,
+        checkOutDate:        checkOut,
+        adults,
+        children:            kids,
+        currency,
+        source:              source || null,
+        specialRequests:     null,
+        internalNotes:       internalNotes || null,
+        garantieType:        garantieType || null,
+        garantieMontantCash: garantieType === 'Cash' ? Number(garantieMontantCash) : null,
+        carteNom:            garantieType === 'Carte' ? carteNom.trim() : null,
+        carteSuffix,
+        carteExpiration:     garantieType === 'Carte' ? carteExpiration : null,
+        prestations:         prestationsPayload.length > 0 ? prestationsPayload : null,
       };
       const created = await reservations.create(body);
       router.push(`/reservations/${created.id}`);
@@ -154,222 +320,364 @@ export default function NewReservationPage() {
     }
   }
 
+  /* ────────────────────────── Shared styles ────────────────────────── */
+  const fieldInput: React.CSSProperties = {
+    width: '100%', padding: '12px 14px', border: `1px solid ${C.fieldBorder}`,
+    borderRadius: 10, background: C.card, fontSize: 13, color: C.ink, outline: 'none',
+  };
+  const fieldLabel: React.CSSProperties = {
+    fontSize: 11, fontWeight: 700, letterSpacing: '.08em',
+    textTransform: 'uppercase', color: C.ink3,
+  };
+  const cardStyle: React.CSSProperties = {
+    background: C.card, border: `1px solid ${C.cardBorder}`,
+    borderRadius: 16, padding: '26px 28px', boxShadow: '0 1px 2px rgba(20,24,26,.03)',
+  };
+  const cardHeader: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 12, paddingBottom: 18,
+    borderBottom: `1px solid ${C.sep}`, marginBottom: 22,
+  };
+  const chip = (active: boolean): React.CSSProperties => ({
+    padding: '8px 14px', borderRadius: 999, fontSize: 12, cursor: 'pointer',
+    background: active ? C.accent : C.card,
+    color: active ? '#fff' : C.ink2,
+    border: `1px solid ${active ? C.accent : C.fieldBorder}`,
+    transition: 'all .15s',
+  });
+
+  /* ────────────────────────── Render ────────────────────────── */
   return (
-    <div className="flex flex-col min-h-full">
-      <Header title="Création de Réservation PMS" />
-      <div className="flex-1 p-6 max-w-4xl mx-auto w-full space-y-6">
-        
-        <div className="flex items-center justify-between">
-          <Link href="/reservations" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-charcoal font-medium">
-            <ArrowLeft size={16} /> Retour aux réservations
-          </Link>
-          <div className="text-xs font-bold text-gold uppercase tracking-wider">
-            Tunnel Guidé en 4 Étapes
-          </div>
-        </div>
+    <div style={{ minHeight: '100%', color: C.ink, fontFamily: 'inherit' }}>
+      {/* Header */}
+      <header style={{
+        position: 'sticky', top: 0, zIndex: 30,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24,
+        padding: '16px 36px', background: C.card, borderBottom: `1px solid ${C.cardBorder}`,
+      }}>
+        <Link href="/reservations" style={{
+          display: 'inline-flex', alignItems: 'center', gap: 8,
+          fontSize: 13, color: C.ink2, textDecoration: 'none',
+        }}>← Retour aux réservations</Link>
+        <span style={{
+          fontSize: 12, fontWeight: 700, letterSpacing: '.1em',
+          textTransform: 'uppercase', color: C.ink,
+        }}>Tunnel guidé en 5 étapes</span>
+      </header>
 
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg flex items-center gap-2">
-            <span>⚠️</span> {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-
-          {/* ── ÉTAPE 1 : PÉRIODE DU SÉJOUR ── */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <span className="w-6 h-6 rounded-full bg-green text-white text-xs font-bold flex items-center justify-center">1</span>
-                <h2 className="text-sm font-bold text-charcoal uppercase tracking-wider flex items-center gap-2">
-                  <Calendar size={16} className="text-gold" />
-                  Période du Séjour
-                </h2>
-              </div>
-              {nights > 0 && (
-                <span className="px-2.5 py-1 rounded-full bg-green/10 text-green font-bold text-xs">
-                  {nights} Nuitée{nights > 1 ? 's' : ''}
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Date d'arrivée *</label>
-                <input
-                  required
-                  type="date"
-                  value={form.checkInDate}
-                  onChange={e => { set('checkInDate', e.target.value); setKwh(''); }}
-                  className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white font-medium focus:ring-2 focus:ring-green/20 focus:border-green"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Date de départ *</label>
-                <input
-                  required
-                  type="date"
-                  value={form.checkOutDate}
-                  min={form.checkInDate || undefined}
-                  onChange={e => { set('checkOutDate', e.target.value); setKwh(''); }}
-                  className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white font-medium focus:ring-2 focus:ring-green/20 focus:border-green"
-                />
-              </div>
-            </div>
+      {/* Body */}
+      <div style={{
+        maxWidth: 1200, margin: '0 auto', padding: '32px 36px 72px',
+        display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 324px', gap: 32, alignItems: 'start',
+      }}>
+        {/* Main column */}
+        <main style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 22 }}>
+          <div>
+            <h1 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600, letterSpacing: '-.01em' }}>
+              Nouvelle réservation
+            </h1>
+            <p style={{ margin: 0, fontSize: 12, color: C.ink3 }}>
+              Étape {step + 1} sur 5 — {STEP_TITLES[step]}
+            </p>
           </div>
 
-          {/* ── ÉTAPE 2 : NOMBRE D'OCCUPANTS ── */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <span className="w-6 h-6 rounded-full bg-green text-white text-xs font-bold flex items-center justify-center">2</span>
-                <h2 className="text-sm font-bold text-charcoal uppercase tracking-wider flex items-center gap-2">
-                  <Users size={16} className="text-gold" />
-                  Nombre d'Occupants
-                </h2>
-              </div>
-              <span className="text-xs text-gray-400 font-medium">Total : {totalPax} personne{totalPax > 1 ? 's' : ''}</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Nombre d'adultes *</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="20"
-                  required
-                  value={form.adults}
-                  onChange={e => set('adults', e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white font-medium focus:ring-2 focus:ring-green/20 focus:border-green"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Nombre d'enfants</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="10"
-                  value={form.children}
-                  onChange={e => set('children', e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white font-medium focus:ring-2 focus:ring-green/20 focus:border-green"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* ── ÉTAPE 3 : PETIT DÉJEUNER AUTOMATISÉ ── */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <span className="w-6 h-6 rounded-full bg-green text-white text-xs font-bold flex items-center justify-center">3</span>
-                <h2 className="text-sm font-bold text-charcoal uppercase tracking-wider flex items-center gap-2">
-                  <Coffee size={16} className="text-gold" />
-                  Restauration & Petit Déjeuner
-                </h2>
-              </div>
-              {form.includePdj && (
-                <span className="px-2.5 py-1 rounded-full bg-gold/15 text-gold font-bold text-xs">
-                  {pdjQty} Petit{pdjQty > 1 ? 's' : ''} déj. inclus
-                </span>
-              )}
-            </div>
-
-            <div className="space-y-4">
-              <label className="flex items-start gap-3 p-3.5 rounded-lg border border-gray-200 bg-surface/40 hover:bg-surface cursor-pointer transition-colors">
-                <input
-                  type="checkbox"
-                  checked={form.includePdj}
-                  onChange={e => set('includePdj', e.target.checked)}
-                  className="mt-1 w-4 h-4 rounded text-green focus:ring-green border-gray-300"
-                />
-                <div>
-                  <span className="font-bold text-charcoal text-sm block">Ajouter la formule Petit Déjeuner</span>
-                  <span className="text-xs text-gray-500">
-                    Calculé automatiquement pour chaque personne hébergée ({totalPax} pers.) sur l'ensemble du séjour ({nights || 1} nuit{nights > 1 ? 's' : ''}).
-                  </span>
-                </div>
-              </label>
-
-              {form.includePdj && (
-                <div className="bg-gold/5 border border-gold/20 rounded-xl p-4 space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="bg-white p-3 rounded-lg border border-gold/20">
-                      <div className="text-[10px] font-bold text-gray-400 uppercase">Personnes hébergées</div>
-                      <div className="text-sm font-extrabold text-charcoal mt-0.5">{totalPax} pers.</div>
-                    </div>
-                    <div className="bg-white p-3 rounded-lg border border-gold/20">
-                      <div className="text-[10px] font-bold text-gray-400 uppercase">Quantité Totale</div>
-                      <div className="text-sm font-extrabold text-green-dark mt-0.5">
-                        {totalPax} pers × {nights || 1} n = <span className="text-gold">{pdjQty} PDJ</span>
-                      </div>
-                    </div>
-                    <div className="bg-white p-3 rounded-lg border border-gold/20">
-                      <div className="text-[10px] font-bold text-gray-400 uppercase">Prix unitaire (ajustable)</div>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <input
-                          type="number"
-                          min="0"
-                          step="500"
-                          value={form.pdjUnitPrice}
-                          onChange={e => set('pdjUnitPrice', e.target.value)}
-                          className="w-24 border border-gray-200 rounded px-2 py-0.5 text-xs font-bold text-charcoal focus:ring-1 focus:ring-green"
-                        />
-                        <span className="text-xs font-bold text-gray-500">FCFA</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs pt-2 border-t border-gold/20">
-                    <span className="text-gray-600 font-medium">Montant total Petit Déjeuner :</span>
-                    <span className="text-sm font-black text-gold">{totalPdjCost.toLocaleString('fr')} FCFA</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* ── ÉTAPE 4 : LOGEMENT, CLIENT & DÉTAILS ── */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-5">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <span className="w-6 h-6 rounded-full bg-green text-white text-xs font-bold flex items-center justify-center">4</span>
-                <h2 className="text-sm font-bold text-charcoal uppercase tracking-wider flex items-center gap-2">
-                  <Home size={16} className="text-gold" />
-                  Logement & Client
-                </h2>
-              </div>
-            </div>
-
-            {/* Catégorie & Logement */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Catégorie de logement *</label>
-                <select
-                  required
-                  value={form.categoryId}
-                  onChange={e => { set('categoryId', Number(e.target.value)); set('roomId', 0); setKwh(''); }}
-                  className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white font-medium focus:ring-2 focus:ring-green/20 focus:border-green"
+          {/* Stepper */}
+          <nav style={{
+            display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2,
+            background: C.card, border: `1px solid ${C.cardBorder}`,
+            borderRadius: 14, padding: 8,
+          }}>
+            {STEP_LABELS.map((label, i) => {
+              const done = i < step;
+              const on   = i === step;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => goToStep(i)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 9,
+                    padding: '10px 14px', border: 'none', borderRadius: 10,
+                    cursor: 'pointer', whiteSpace: 'nowrap', fontSize: 12,
+                    fontWeight: on ? 700 : 400,
+                    color: on ? C.ink : done ? C.ink2 : C.mute,
+                    background: on ? C.accentTint : 'transparent',
+                  }}
                 >
-                  <option value={0}>— Sélectionner une catégorie —</option>
-                  {categoryList.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.pmsType} {GAMME_LABELS[c.pmsGamme] ?? c.pmsGamme} — {c.nameFr} ({c.tarifNuit.toLocaleString('fr')} XOF/nuit)
-                    </option>
-                  ))}
-                </select>
+                  <span style={{
+                    flex: '0 0 auto', width: 22, height: 22, borderRadius: 999,
+                    display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 700,
+                    background: on || done ? C.accent : C.neutral2,
+                    color:      on || done ? '#fff'     : C.mute,
+                  }}>{done ? '✓' : String(i + 1)}</span>
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </nav>
+
+          {error && (
+            <div style={{
+              background: '#fdecec', color: C.danger, border: '1px solid #f1c9c9',
+              borderRadius: 12, padding: '12px 16px', fontSize: 13,
+            }}>{error}</div>
+          )}
+
+          {/* ── STEP 1 ── Client ── */}
+          {step === 0 && (
+            <section style={cardStyle}>
+              <div style={cardHeader}>
+                <span style={{
+                  width: 24, height: 24, borderRadius: 999, background: C.accent, color: '#fff',
+                  display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700,
+                }}>1</span>
+                <h2 style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase' }}>
+                  Client titulaire du séjour
+                </h2>
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: C.ink5 }}>Obligatoire</span>
               </div>
 
-              {form.categoryId > 0 && (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">
-                    Logement spécifique <span className="text-gray-400 font-normal">(Optionnel)</span>
+              {/* Tabs */}
+              <div style={{
+                display: 'inline-flex', padding: 3, gap: 3,
+                background: C.neutral, borderRadius: 10, marginBottom: 22,
+              }}>
+                {(['existing', 'new'] as const).map(mode => {
+                  const on = clientMode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setClientMode(mode)}
+                      style={{
+                        padding: '8px 16px', borderRadius: 8, border: 'none',
+                        cursor: 'pointer', fontSize: 13, fontWeight: 500,
+                        background: on ? C.card : 'transparent',
+                        color:      on ? C.ink  : C.ink3,
+                        boxShadow: on ? '0 1px 2px rgba(20,24,26,.1)' : 'none',
+                      }}
+                    >{mode === 'existing' ? 'Client existant' : 'Créer un client'}</button>
+                  );
+                })}
+              </div>
+
+              {clientMode === 'existing' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    <span style={fieldLabel}>Rechercher un client *</span>
+                    <input
+                      value={clientQuery}
+                      onChange={e => setClientQuery(e.target.value)}
+                      placeholder="Rechercher par nom, téléphone ou email…"
+                      style={fieldInput}
+                    />
                   </label>
-                  <select
-                    value={form.roomId}
-                    onChange={e => set('roomId', Number(e.target.value))}
-                    className="w-full border border-gray-200 rounded-lg px-3.5 py-2.5 text-sm bg-white font-medium focus:ring-2 focus:ring-green/20 focus:border-green"
-                  >
+                  <div style={{ border: `1px solid ${C.sep}`, borderRadius: 12, overflow: 'hidden' }}>
+                    {filteredClients.length === 0 ? (
+                      <div style={{ padding: '20px 16px', fontSize: 13, color: C.ink4, textAlign: 'center' }}>
+                        Aucun client trouvé.
+                      </div>
+                    ) : filteredClients.map(c => {
+                      const on = c.id === clientId;
+                      const meta = [c.email, c.phone].filter(Boolean).join(' · ') || '—';
+                      const tag = (c.totalReservations ?? 0) === 0
+                        ? 'Nouveau'
+                        : (c.totalReservations ?? 0) >= 3
+                          ? 'Fidèle'
+                          : `${c.totalReservations} séjour${(c.totalReservations ?? 0) > 1 ? 's' : ''}`;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => { setClientId(c.id); setSelectedClient(c); }}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center',
+                            justifyContent: 'space-between', gap: 14, padding: '13px 16px',
+                            border: 'none', borderBottom: `1px solid ${C.sep}`,
+                            cursor: 'pointer', textAlign: 'left',
+                            background: on ? C.accentSoft : C.card,
+                            boxShadow: on ? `inset 3px 0 0 ${C.accent}` : 'none',
+                          }}
+                        >
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                            <span style={{
+                              flex: '0 0 auto', width: 34, height: 34, borderRadius: 999,
+                              display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700,
+                              background: on ? C.accent   : C.neutral2,
+                              color:      on ? '#fff'      : C.ink3,
+                            }}>{initials(c.fullName)}</span>
+                            <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                              <span style={{ fontSize: 13, fontWeight: 500 }}>{c.fullName}</span>
+                              <span style={{
+                                fontSize: 11, color: C.ink4,
+                                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                              }}>{meta}</span>
+                            </span>
+                          </span>
+                          <span style={{
+                            flex: '0 0 auto', fontSize: 11, padding: '3px 9px', borderRadius: 999,
+                            background: on ? C.accent   : C.neutral,
+                            color:      on ? '#fff'      : C.ink3,
+                          }}>{tag}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p style={{ margin: 0, fontSize: 11, color: C.ink4 }}>
+                    Client introuvable ?{' '}
+                    <button type="button" onClick={() => setClientMode('new')} style={{
+                      background: 'none', border: 'none', color: C.accent, cursor: 'pointer',
+                      padding: 0, font: 'inherit', fontWeight: 500,
+                    }}>+ Créer un nouveau client</button>
+                  </p>
+                </div>
+              )}
+
+              {clientMode === 'new' && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    <span style={fieldLabel}>Nom complet *</span>
+                    <input value={newClient.fullName} onChange={e => setNewClient(v => ({ ...v, fullName: e.target.value }))} placeholder="Awa Diop" style={fieldInput} />
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    <span style={fieldLabel}>Téléphone *</span>
+                    <input value={newClient.phone} onChange={e => setNewClient(v => ({ ...v, phone: e.target.value }))} placeholder="+225 07 00 00 00 00" style={fieldInput} />
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    <span style={fieldLabel}>E-mail</span>
+                    <input value={newClient.email} onChange={e => setNewClient(v => ({ ...v, email: e.target.value }))} placeholder="awa.diop@mail.com" style={fieldInput} />
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    <span style={fieldLabel}>Pièce d'identité</span>
+                    <input value={newClient.idDoc} onChange={e => setNewClient(v => ({ ...v, idDoc: e.target.value }))} placeholder="CNI · n° 00 000 000" style={fieldInput} />
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    <span style={fieldLabel}>Pays</span>
+                    <select value={newClient.country} onChange={e => setNewClient(v => ({ ...v, country: e.target.value }))} style={fieldInput}>
+                      {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    <span style={fieldLabel}>Type de client</span>
+                    <select value={newClient.type} onChange={e => setNewClient(v => ({ ...v, type: e.target.value }))} style={fieldInput}>
+                      {CLIENT_TYPES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </label>
+                  <label style={{
+                    gridColumn: '1 / -1', display: 'flex', alignItems: 'flex-start', gap: 10,
+                    padding: '13px 14px', border: `1px solid ${C.sep}`,
+                    borderRadius: 10, background: '#f8faf9',
+                  }}>
+                    <input type="checkbox" checked={newClient.saveToDirectory}
+                      onChange={e => setNewClient(v => ({ ...v, saveToDirectory: e.target.checked }))}
+                      style={{ marginTop: 2, accentColor: C.accent }} />
+                    <span style={{ fontSize: 12, color: C.ink3 }}>
+                      Enregistrer cette fiche dans le répertoire clients pour les prochains séjours.
+                    </span>
+                  </label>
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* ── STEP 2 ── Dates ── */}
+          {step === 1 && (
+            <section style={cardStyle}>
+              <div style={cardHeader}>
+                <span style={{ width: 24, height: 24, borderRadius: 999, background: C.accent, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>2</span>
+                <h2 style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase' }}>
+                  Période du séjour
+                </h2>
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: C.ink5 }}>
+                  {nights > 0 ? `${nights} nuit${nights > 1 ? 's' : ''}` : '—'}
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  <span style={fieldLabel}>Date d'arrivée *</span>
+                  <input type="date" value={checkIn} onChange={e => setCheckIn(e.target.value)} style={fieldInput} />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  <span style={fieldLabel}>Date de départ *</span>
+                  <input type="date" value={checkOut} min={checkIn || undefined} onChange={e => setCheckOut(e.target.value)} style={fieldInput} />
+                </label>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
+                {[1, 2, 3, 7].map(n => (
+                  <button key={n} type="button" onClick={() => applyDuration(n)} style={chip(nights === n)}>
+                    {n} nuit{n > 1 ? 's' : ''}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* ── STEP 3 ── Guests ── */}
+          {step === 2 && (
+            <section style={cardStyle}>
+              <div style={cardHeader}>
+                <span style={{ width: 24, height: 24, borderRadius: 999, background: C.accent, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>3</span>
+                <h2 style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase' }}>
+                  Nombre d'occupants
+                </h2>
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: C.ink5 }}>
+                  Total : {totalPax} personne{totalPax > 1 ? 's' : ''}
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <Stepper label="Nombre d'adultes *" value={adults} onChange={setAdults} min={1} />
+                <Stepper label="Nombre d'enfants"    value={kids}   onChange={setKids}   min={0} />
+              </div>
+            </section>
+          )}
+
+          {/* ── STEP 4 ── Logement & prestations ── */}
+          {step === 3 && (
+            <section style={cardStyle}>
+              <div style={cardHeader}>
+                <span style={{ width: 24, height: 24, borderRadius: 999, background: C.accent, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>4</span>
+                <h2 style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase' }}>
+                  Logement &amp; prestations
+                </h2>
+              </div>
+
+              <span style={{ ...fieldLabel, display: 'block', marginBottom: 10 }}>Catégorie de logement *</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {categoryList.length === 0 && (
+                  <p style={{ margin: 0, fontSize: 11, color: C.ink4 }}>Aucune catégorie configurée.</p>
+                )}
+                {categoryList.map(cat => {
+                  const on = cat.id === categoryId;
+                  const detail = `${cat.pmsType} ${GAMME_LABELS[cat.pmsGamme] ?? cat.pmsGamme} · ${cat.capacityAdults} adulte${cat.capacityAdults > 1 ? 's' : ''}`;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => { setCategoryId(cat.id); setRoomId(0); }}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        gap: 16, padding: '15px 18px', borderRadius: 12, cursor: 'pointer',
+                        background: on ? C.accentSoft : C.card,
+                        border: `1px solid ${on ? C.accent : C.sep2}`,
+                        textAlign: 'left',
+                      }}
+                    >
+                      <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <span style={{ fontSize: 13, fontWeight: 500 }}>{cat.nameFr}</span>
+                        <span style={{ fontSize: 11, color: C.ink4 }}>{detail}</span>
+                      </span>
+                      <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                        <span style={{ fontSize: 13, fontWeight: 500 }}>{fcfa(cat.tarifNuit)}</span>
+                        <span style={{ fontSize: 11, color: C.ink4 }}>par nuit</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {categoryId > 0 && categoryRooms.length > 0 && (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 22 }}>
+                  <span style={fieldLabel}>Logement spécifique (optionnel)</span>
+                  <select value={roomId} onChange={e => setRoomId(Number(e.target.value))} style={fieldInput}>
                     <option value={0}>— Attribution automatique au check-in —</option>
                     {categoryRooms.map(r => (
                       <option key={r.id} value={r.id}>
@@ -377,143 +685,267 @@ export default function NewReservationPage() {
                       </option>
                     ))}
                   </select>
-                </div>
+                </label>
               )}
-            </div>
 
-            {/* Client Search */}
-            <div className="space-y-1.5" ref={dropRef}>
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Client titulaire du séjour *</label>
-                <Link href="/clients/new" target="_blank" className="text-xs text-gold font-bold hover:underline">
-                  + Créer un nouveau client
-                </Link>
-              </div>
-              <div className="relative">
-                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                <input
-                  value={clientSearch}
-                  onChange={e => {
-                    setClientSearch(e.target.value);
-                    setShowDrop(true);
-                    if (form.clientId) setForm(prev => ({ ...prev, clientId: 0, clientLabel: '' }));
-                  }}
-                  onFocus={() => setShowDrop(true)}
-                  placeholder="Rechercher par nom, téléphone ou email…"
-                  className="w-full border border-gray-200 rounded-lg pl-10 pr-3.5 py-2.5 text-sm bg-white font-medium focus:ring-2 focus:ring-green/20 focus:border-green"
-                  autoComplete="off"
-                />
-                {showDrop && filteredClients.length > 0 && (
-                  <div className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-52 overflow-y-auto divide-y divide-gray-50">
-                    {filteredClients.map(c => (
+              <span style={{ ...fieldLabel, display: 'block', margin: '22px 0 10px' }}>Prestations annexes</span>
+              {prestationList.length === 0 ? (
+                <p style={{ margin: 0, fontSize: 11, color: C.ink4 }}>
+                  Aucune prestation configurée.
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {prestationList.map(p => {
+                    const on = selectedPrestations.has(p.id);
+                    const label = `${p.nameFr} · ${p.prixInclus.toLocaleString('fr-FR')} F${p.mode === 'ParPersonneParNuit' ? ' /pers./nuit' : p.mode === 'ParPersonne' ? ' /pers.' : ''}`;
+                    return (
                       <button
-                        key={c.id}
+                        key={p.id}
                         type="button"
-                        onMouseDown={() => selectClient(c)}
-                        className="w-full text-left px-4 py-2.5 hover:bg-green/5 text-sm flex items-center justify-between transition-colors"
-                      >
-                        <span className="font-bold text-charcoal">{c.fullName}</span>
-                        <span className="text-xs text-gray-400">{c.phone || c.email}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {form.clientId > 0 && (
-                <div className="flex items-center gap-1.5 text-xs text-green font-bold bg-green/10 px-3 py-1 rounded-md w-fit">
-                  <CheckCircle2 size={13} /> {form.clientLabel}
+                        onClick={() => {
+                          const next = new Map(selectedPrestations);
+                          if (on) next.delete(p.id); else next.set(p.id, null);
+                          setSelectedPrestations(next);
+                        }}
+                        style={chip(on)}
+                      >{label}</button>
+                    );
+                  })}
                 </div>
               )}
-            </div>
 
-            {/* Source & Notes */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Canal d'origine</label>
-                <select value={form.source} onChange={e => set('source', e.target.value)} className="w-full border border-gray-200 rounded-lg px-3.5 py-2 text-sm bg-white focus:ring-2 focus:ring-green/20 focus:border-green">
-                  {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Devise</label>
-                <select value={form.currency} onChange={e => set('currency', e.target.value)} className="w-full border border-gray-200 rounded-lg px-3.5 py-2 text-sm bg-white focus:ring-2 focus:ring-green/20 focus:border-green">
-                  {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-gray-600 uppercase tracking-wider">Demandes spéciales & Notes</label>
-              <textarea
-                rows={2}
-                value={form.specialRequests}
-                onChange={e => set('specialRequests', e.target.value)}
-                placeholder="Ex : Arrivée tardive, lit supplémentaire, étage élevé…"
-                className="w-full border border-gray-200 rounded-lg px-3.5 py-2 text-sm bg-white resize-none focus:ring-2 focus:ring-green/20 focus:border-green"
-              />
-            </div>
-          </div>
-
-          {/* ── RÉCAPITULATIF FINANCIER & DEVIS ESTIMÉ ── */}
-          {selectedCat && nights > 0 && (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Devis Financier Estimé</h3>
-
-              <div className="space-y-2 text-sm divide-y divide-gray-100">
-                <div className="flex justify-between items-center py-1.5">
-                  <span className="text-gray-600">Hébergement ({tier?.label} · {nights} nuit{nights > 1 ? 's' : ''})</span>
-                  <span className="font-bold text-charcoal">{hebergement.toLocaleString('fr')} FCFA</span>
-                </div>
-
-                {form.includePdj && (
-                  <div className="flex justify-between items-center py-1.5 text-gold">
-                    <span>Petit Déjeuner ({pdjQty} repas @ {Number(form.pdjUnitPrice).toLocaleString('fr')} FCFA)</span>
-                    <span className="font-bold">+{totalPdjCost.toLocaleString('fr')} FCFA</span>
-                  </div>
-                )}
-
-                {tier && !tier.elecIncluded && (
-                  <div className="py-2 space-y-2">
-                    <div className="flex items-center justify-between text-amber-700">
-                      <span className="flex items-center gap-1.5 text-xs font-bold">
-                        <Zap size={14} /> Électricité (Hors forfait mensuel @ {KWH_PRICE} FCFA/kWh)
-                      </span>
-                      <span className="font-bold">+{elecCost.toLocaleString('fr')} FCFA</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number" min="0" step="1" value={kwh}
-                        onChange={e => setKwh(e.target.value)}
-                        placeholder="Estimation kWh..." className="w-40 border border-gray-200 rounded px-2.5 py-1 text-xs"
-                      />
-                      <span className="text-xs text-gray-400">kWh estimés</span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex justify-between items-center pt-3 text-base">
-                  <span className="font-extrabold text-charcoal uppercase text-xs tracking-wider">Total Devis Estimé</span>
-                  <span className="font-black text-gold text-lg">{totalEstime.toLocaleString('fr')} FCFA</span>
-                </div>
-              </div>
-            </div>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 22 }}>
+                <span style={fieldLabel}>Note interne</span>
+                <textarea
+                  rows={3}
+                  value={internalNotes}
+                  onChange={e => setInternalNotes(e.target.value)}
+                  placeholder="Arrivée tardive, préférences, transfert aéroport…"
+                  style={{ ...fieldInput, resize: 'vertical' }}
+                />
+              </label>
+            </section>
           )}
 
-          {/* ── BOUTONS D'ACTION ── */}
-          <div className="flex items-center gap-3 pt-2">
+          {/* ── STEP 5 ── Garantie & tarif ── */}
+          {step === 4 && (
+            <section style={cardStyle}>
+              <div style={cardHeader}>
+                <span style={{ width: 24, height: 24, borderRadius: 999, background: C.accent, color: '#fff', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>5</span>
+                <h2 style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: '.09em', textTransform: 'uppercase' }}>
+                  Garantie &amp; tarif
+                </h2>
+              </div>
+
+              <span style={{ ...fieldLabel, display: 'block', marginBottom: 10 }}>Garantie de la réservation</span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {[
+                  { id: 'Cash'  as const, name: 'Dépôt en espèces', detail: "Montant versé à l'accueil" },
+                  { id: 'Carte' as const, name: 'Carte bancaire',   detail: 'Empreinte de garantie' },
+                ].map(g => {
+                  const on = garantieType === g.id;
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => setGarantieType(g.id)}
+                      style={{
+                        display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start',
+                        padding: '15px 18px', borderRadius: 12, cursor: 'pointer',
+                        background: on ? C.accentSoft : C.card,
+                        border: `1px solid ${on ? C.accent : C.sep2}`,
+                        textAlign: 'left',
+                      }}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 500 }}>{g.name}</span>
+                      <span style={{ fontSize: 11, color: C.ink4 }}>{g.detail}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {garantieType === 'Cash' && (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 18 }}>
+                  <span style={fieldLabel}>Montant du dépôt *</span>
+                  <input type="number" min="0" step="500" value={garantieMontantCash}
+                    onChange={e => setGarantieMontantCash(e.target.value)}
+                    placeholder="Ex : 50 000" style={{ ...fieldInput, maxWidth: 260 }} />
+                </label>
+              )}
+
+              {garantieType === 'Carte' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 18 }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    <span style={fieldLabel}>Numéro de carte *</span>
+                    <input maxLength={19} value={carteNumero} onChange={e => {
+                      const raw = e.target.value.replace(/\D/g, '').slice(0, 16);
+                      setCarteNumero(raw.replace(/(.{4})/g, '$1 ').trim());
+                    }} placeholder="XXXX XXXX XXXX XXXX" style={{ ...fieldInput, fontFamily: 'monospace', letterSpacing: '.15em' }} />
+                    <span style={{ fontSize: 11, color: C.ink4 }}>Seuls les 4 derniers chiffres sont conservés.</span>
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                      <span style={fieldLabel}>Nom sur la carte *</span>
+                      <input value={carteNom} onChange={e => setCarteNom(e.target.value.toUpperCase())} placeholder="NOM PRÉNOM" style={fieldInput} />
+                    </label>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                      <span style={fieldLabel}>Date d'expiration *</span>
+                      <input maxLength={7} value={carteExpiration} onChange={e => {
+                        let v = e.target.value.replace(/\D/g, '');
+                        if (v.length > 2) v = v.slice(0, 2) + '/' + v.slice(2, 6);
+                        setCarteExpiration(v);
+                      }} placeholder="MM/AAAA" style={{ ...fieldInput, fontFamily: 'monospace' }} />
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 22 }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  <span style={fieldLabel}>Canal d'origine</span>
+                  <select value={source} onChange={e => setSource(e.target.value)} style={fieldInput}>
+                    {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  <span style={fieldLabel}>Devise</span>
+                  <select value={currency} onChange={e => setCurrency(e.target.value)} style={fieldInput}>
+                    {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  <span style={fieldLabel}>Remise</span>
+                  <input inputMode="numeric" value={discount} onChange={e => setDiscount(e.target.value)} placeholder="0" style={fieldInput} />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  <span style={fieldLabel}>Acompte encaissé</span>
+                  <input inputMode="numeric" value={deposit} onChange={e => setDeposit(e.target.value)} placeholder="0" style={fieldInput} />
+                </label>
+              </div>
+            </section>
+          )}
+
+          {/* Navigation */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
             <button
-              type="submit"
+              type="button"
+              onClick={goPrev}
+              style={{
+                padding: '12px 20px', borderRadius: 10,
+                border: `1px solid ${C.fieldBorder}`, background: C.card,
+                color: C.ink2, cursor: 'pointer', fontSize: 13,
+                visibility: step === 0 ? 'hidden' : 'visible',
+              }}
+            >← Précédent</button>
+            <button
+              type="button"
               disabled={saving}
-              className="inline-flex items-center gap-2 bg-gold text-white font-bold px-7 py-3 rounded-lg hover:bg-gold/90 disabled:opacity-60 transition-colors shadow-sm text-sm"
-            >
-              <Save size={16} />
-              {saving ? 'Création en cours…' : 'Confirmer et Créer la Réservation'}
-            </button>
-            <Link href="/reservations" className="px-5 py-3 text-sm text-gray-500 hover:text-charcoal transition-colors">
-              Annuler
-            </Link>
+              onClick={step === 4 ? handleConfirm : goNext}
+              style={{
+                padding: '12px 22px', borderRadius: 10, border: 'none',
+                background: saving ? '#8dbfa0' : C.accent, color: '#fff',
+                fontWeight: 500, cursor: saving ? 'not-allowed' : 'pointer',
+                fontSize: 13,
+              }}
+            >{step === 4 ? (saving ? 'Création en cours…' : 'Créer la réservation') : 'Continuer'}</button>
           </div>
-        </form>
+        </main>
+
+        {/* Summary sidebar */}
+        <aside style={{ position: 'sticky', top: 84, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{
+            background: C.dark, color: C.darkFg, borderRadius: 16,
+            padding: 24, display: 'flex', flexDirection: 'column', gap: 18,
+          }}>
+            <div>
+              <div style={{
+                fontSize: 11, fontWeight: 700, letterSpacing: '.1em',
+                textTransform: 'uppercase', color: C.darkLabel, marginBottom: 8,
+              }}>Récapitulatif</div>
+              <div style={{ fontSize: 15, fontWeight: 500 }}>{summaryClientLabel}</div>
+              <div style={{ fontSize: 11, color: C.darkLabel, marginTop: 4 }}>
+                {totalPax} personne{totalPax > 1 ? 's' : ''} · {nights > 0 ? `${nights} nuit${nights > 1 ? 's' : ''}` : '—'}
+              </div>
+            </div>
+
+            <div style={{ height: 1, background: C.darkSep }} />
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
+              <Row label="Dates" value={checkIn && checkOut ? `${fmtDateShort(checkIn)} → ${fmtDateShort(checkOut)}` : '—'} />
+              <Row label="Logement" value={summaryRoomLabel} />
+              <Row label="Hébergement" value={hebergement ? fcfa(hebergement) : '—'} />
+              <Row label="Prestations" value={extrasTotal ? fcfa(extrasTotal) : '—'} />
+              <Row label="Remise" value={discountNum ? `− ${fcfa(discountNum)}` : '—'} />
+            </div>
+
+            <div style={{ height: 1, background: C.darkSep }} />
+
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ fontSize: 12, color: C.darkLabel }}>Total</span>
+              <span style={{ fontSize: 20, fontWeight: 700 }}>{fcfa(total)}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 11, color: C.darkLabel }}>
+              <span>Reste à payer</span>
+              <span style={{ color: C.balance }}>{fcfa(balance)}</span>
+            </div>
+
+            <button
+              type="button"
+              disabled={saving}
+              onClick={handleConfirm}
+              style={{
+                padding: 13, border: 'none', borderRadius: 10,
+                background: saving ? '#5b8a6d' : C.ctaBg,
+                color: C.ctaText, fontWeight: 700,
+                cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13,
+              }}
+            >{saving ? 'Création en cours…' : 'Confirmer la réservation'}</button>
+          </div>
+          <div style={{
+            background: C.card, border: `1px solid ${C.cardBorder}`,
+            borderRadius: 14, padding: '16px 18px', fontSize: 12, color: C.ink3,
+          }}>
+            La fiche client est créée dès l'étape 1 : elle reste liée à toutes les réservations suivantes.
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────── Sub-components ─────────────────────── */
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+      <span style={{ color: C.darkLabel }}>{label}</span>
+      <span style={{ textAlign: 'right' }}>{value}</span>
+    </div>
+  );
+}
+
+function Stepper({ label, value, onChange, min }: {
+  label: string; value: number; onChange: (n: number) => void; min: number;
+}) {
+  const btn: React.CSSProperties = {
+    width: 32, height: 32, borderRadius: 8,
+    border: `1px solid ${C.fieldBorder}`, background: C.card,
+    cursor: 'pointer', color: C.ink2, fontSize: 14, fontWeight: 500,
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+      <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: C.ink3 }}>
+        {label}
+      </span>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 12, padding: '8px 10px 8px 14px',
+        border: `1px solid ${C.fieldBorder}`, borderRadius: 10, background: C.card,
+      }}>
+        <span style={{ fontSize: 14, fontWeight: 500 }}>{value}</span>
+        <span style={{ display: 'flex', gap: 6 }}>
+          <button type="button" style={btn} onClick={() => onChange(Math.max(min, value - 1))}>−</button>
+          <button type="button" style={btn} onClick={() => onChange(value + 1)}>+</button>
+        </span>
       </div>
     </div>
   );

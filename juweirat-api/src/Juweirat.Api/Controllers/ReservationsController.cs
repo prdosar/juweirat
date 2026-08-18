@@ -40,4 +40,12 @@ public class ReservationsController(ReservationService reservationService) : Con
         if (error is not null) return BadRequest(new { error });
         return dto is null ? NotFound() : Ok(dto);
     }
+
+    [HttpPost("{id:long}/process-noshow")]
+    public async Task<IActionResult> ProcessNoShow(long id)
+    {
+        var (dto, error) = await reservationService.ProcessNoShowAsync(id);
+        if (error is not null) return BadRequest(new { error });
+        return dto is null ? NotFound() : Ok(dto);
+    }
 }

@@ -6,7 +6,8 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import { reservations } from '@/lib/api';
 import type { ReservationDto } from '@/lib/types';
-import { ArrowLeft, AlertTriangle } from 'lucide-react';
+import type { NoShowBillingResultDto } from '@/lib/types';
+import { ArrowLeft, AlertTriangle, Banknote, CreditCard, Shield, Receipt } from 'lucide-react';
 
 const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
   Pending:    { label: 'En attente', cls: 'bg-amber-100 text-amber-800'      },
@@ -39,6 +40,9 @@ export default function ReservationDetailPage() {
   const [cancelReason, setCancelReason] = useState('');
   const [showCancel, setShowCancel] = useState(false);
   const [error, setError]   = useState('');
+  const [noShowBusy, setNoShowBusy] = useState(false);
+  const [noShowConfirm, setNoShowConfirm] = useState(false);
+  const [noShowResult, setNoShowResult] = useState<NoShowBillingResultDto | null>(null);
 
   useEffect(() => {
     reservations.getById(Number(id)).then(setR).finally(() => setLoading(false));
@@ -56,6 +60,21 @@ export default function ReservationDetailPage() {
       setError(e instanceof Error ? e.message : 'Erreur');
     } finally {
       setUpdating(false);
+    }
+  }
+
+  async function applyNoShow() {
+    if (!r) return;
+    setNoShowBusy(true); setError('');
+    try {
+      const result = await reservations.processNoShow(r.id);
+      setNoShowResult(result);
+      setR(result.reservation);
+      setNoShowConfirm(false);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Erreur');
+    } finally {
+      setNoShowBusy(false);
     }
   }
 
@@ -161,6 +180,57 @@ export default function ReservationDetailPage() {
           </div>
         )}
 
+        {/* No Show treatment */}
+        {r.status === 'NoShow' && (() => {
+          const penaltyNights = r.nights < 15 ? 1 : r.nights < 30 ? 2 : 4;
+          const penaltyAmount = penaltyNights * r.pricePerNightSnapshot;
+          const tierLabel = r.nights < 15 ? 'court séjour' : r.nights < 30 ? 'forfait 15 jours' : 'forfait au mois';
+
+          if (noShowResult) {
+            return (
+              <div className="bg-green/10 border border-green/30 rounded-xl p-5">
+                <div className="flex items-center gap-2 text-green-dark font-semibold mb-1">
+                  <Receipt size={16} /> Retenue No Show appliquée
+                </div>
+                <p className="text-sm text-gray-700">
+                  {noShowResult.penaltyNights} nuit{noShowResult.penaltyNights > 1 ? 's' : ''} retenues ·{' '}
+                  <span className="font-bold">{noShowResult.penaltyAmount.toLocaleString('fr')} {noShowResult.currency}</span>
+                </p>
+              </div>
+            );
+          }
+
+          return (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 space-y-3">
+              <div className="flex items-center gap-2 text-amber-800 font-semibold">
+                <Receipt size={16} /> Traitement No Show
+              </div>
+              <p className="text-sm text-gray-700">
+                Réservation <span className="font-medium">{tierLabel}</span> ({r.nights} nuit{r.nights > 1 ? 's' : ''}) ·{' '}
+                Retenue : <span className="font-bold">{penaltyNights} nuit{penaltyNights > 1 ? 's' : ''} × {r.pricePerNightSnapshot.toLocaleString('fr')} {r.currency}</span>{' '}
+                = <span className="font-bold text-amber-900">{penaltyAmount.toLocaleString('fr')} {r.currency}</span>
+              </p>
+              {noShowConfirm ? (
+                <div className="flex gap-2 items-center">
+                  <button onClick={applyNoShow} disabled={noShowBusy}
+                    className="bg-amber-700 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-amber-800 disabled:opacity-60">
+                    {noShowBusy ? 'Traitement…' : 'Confirmer la retenue'}
+                  </button>
+                  <button onClick={() => setNoShowConfirm(false)}
+                    className="text-sm text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-100">
+                    Annuler
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => setNoShowConfirm(true)}
+                  className="bg-amber-700 text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-amber-800">
+                  Appliquer la retenue
+                </button>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Client + room */}
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-2">
@@ -216,8 +286,18 @@ export default function ReservationDetailPage() {
                   <span>{r.pricePerNightSnapshot.toLocaleString('fr')} {r.currency}</span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-gray-500">Hébergement</span>
+                  <span className="font-medium text-charcoal">{r.totalHebergement.toLocaleString('fr')} {r.currency}</span>
+                </div>
+                {r.totalPrestations > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">Prestations</span>
+                    <span className="font-medium text-gold">+{r.totalPrestations.toLocaleString('fr')} {r.currency}</span>
+                  </div>
+                )}
+                <div className="flex justify-between border-t border-gray-100 pt-1.5">
                   <span className="text-gray-500">Total</span>
-                  <span className="font-medium text-charcoal">{r.totalPrice.toLocaleString('fr')} {r.currency}</span>
+                  <span className="font-bold text-charcoal">{r.totalPrice.toLocaleString('fr')} {r.currency}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-500">Payé</span>
@@ -233,6 +313,52 @@ export default function ReservationDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* Prestations Annexes */}
+        {r.prestations.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-3">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Prestations Annexes</h3>
+            <div className="divide-y divide-gray-50">
+              {r.prestations.map(p => (
+                <div key={p.id} className="flex items-center justify-between py-2 text-sm">
+                  <div>
+                    <span className="font-medium text-charcoal">{p.nameFr}</span>
+                    <span className="text-xs text-gray-400 ml-2">
+                      {p.quantite} unité{p.quantite > 1 ? 's' : ''} × {p.prixUnitaireSnapshot.toLocaleString('fr')} {r.currency}
+                    </span>
+                  </div>
+                  <span className="font-semibold text-gold">{p.totalLigne.toLocaleString('fr')} {r.currency}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Garantie */}
+        {r.garantieType && (
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-3">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide flex items-center gap-1.5">
+              <Shield size={13} /> Garantie de réservation
+            </h3>
+            {r.garantieType === 'Cash' ? (
+              <div className="flex items-center gap-3">
+                <Banknote size={20} className="text-green" />
+                <div>
+                  <p className="text-sm font-bold text-charcoal">Dépôt en espèces</p>
+                  <p className="text-sm text-gray-600">{r.garantieMontantCash?.toLocaleString('fr')} {r.currency}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <CreditCard size={20} className="text-blue-600" />
+                <div>
+                  <p className="text-sm font-bold text-charcoal">Carte bancaire — {r.carteNom}</p>
+                  <p className="text-sm text-gray-500 font-mono">•••• •••• •••• {r.carteSuffix} · Exp. {r.carteExpiration}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Notes */}
         {(r.specialRequests || r.internalNotes) && (

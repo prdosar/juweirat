@@ -153,6 +153,8 @@ export const reservations = {
   create:  (body: unknown) => request<import('./types').ReservationDto>('/api/reservations', { method: 'POST', body: JSON.stringify(body) }),
   updateStatus: (id: number, body: { status: string; internalNotes?: string; cancellationReason?: string }) =>
     request<import('./types').ReservationDto>(`/api/reservations/${id}/status`, { method: 'PATCH', body: JSON.stringify(body) }),
+  processNoShow: (id: number) =>
+    request<import('./types').NoShowBillingResultDto>(`/api/reservations/${id}/process-noshow`, { method: 'POST' }),
 };
 
 // ── Room Images ───────────────────────────────────────────────────────────────
@@ -200,6 +202,53 @@ export const payments = {
     request<import('./types').PaymentDto[]>(`/api/payments/reservation/${reservationId}`),
   create: (body: { reservationId: number; amount: number; currency?: string; method: string; notes?: string }) =>
     request<import('./types').PaymentDto>('/api/payments', { method: 'POST', body: JSON.stringify(body) }),
+};
+
+// ── Ventes Directes ───────────────────────────────────────────────────────────
+export const ventesDirectes = {
+  getAll: (date?: string) => {
+    const qs = date ? `?date=${date}` : '';
+    return request<import('./types').VenteDirecteDto[]>(`/api/ventes-directes${qs}`);
+  },
+  getFolioActif: (clientId: number) =>
+    request<import('./types').FolioActifDto>(`/api/ventes-directes/folio-actif?clientId=${clientId}`),
+  create: (body: {
+    prestationId: number; quantite?: number;
+    clientId?: number; clientNom?: string;
+    folioId?: number; mode?: string;
+    paymentMethod?: string; notes?: string;
+  }) => request<import('./types').VenteDirecteDto>('/api/ventes-directes', { method: 'POST', body: JSON.stringify(body) }),
+};
+
+// ── Prestations Annexes ───────────────────────────────────────────────────────
+export const prestations = {
+  getAll: (activeOnly = false) =>
+    request<import('./types').PrestationAnnexeDto[]>(`/api/prestations?activeOnly=${activeOnly}`),
+  create: (body: {
+    nameFr: string; nameEn: string; icon?: string;
+    mode?: string; prixInclus: number; prixSeule: number; sortOrder?: number;
+  }) => request<import('./types').PrestationAnnexeDto>('/api/prestations', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: number, body: Partial<{
+    nameFr: string; nameEn: string; icon: string; mode: string;
+    prixInclus: number; prixSeule: number; isActive: boolean; sortOrder: number;
+  }>) => request<import('./types').PrestationAnnexeDto>(`/api/prestations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  delete: (id: number) => request<void>(`/api/prestations/${id}`, { method: 'DELETE' }),
+};
+
+// ── Companies ─────────────────────────────────────────────────────────────────
+export const companies = {
+  getAll: () => request<import('./types').CompanyDto[]>('/api/companies'),
+  getById: (id: number) => request<import('./types').CompanyDetailDto>(`/api/companies/${id}`),
+  create: (body: { name: string; responsableNom?: string; phone?: string; email?: string; adresse?: string; ville?: string; notes?: string }) =>
+    request<import('./types').CompanyDto>('/api/companies', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: number, body: Partial<{ name: string; responsableNom: string; phone: string; email: string; adresse: string; ville: string; notes: string; isActive: boolean }>) =>
+    request<import('./types').CompanyDto>(`/api/companies/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  setTarif: (id: number, body: { categoryId: number; tarifNuit: number; tarifN15: number; tarifN30: number }) =>
+    request<void>(`/api/companies/${id}/tarifs`, { method: 'PUT', body: JSON.stringify(body) }),
+  assignClient: (id: number, clientId: number) =>
+    request<void>(`/api/companies/${id}/clients`, { method: 'POST', body: JSON.stringify({ clientId }) }),
+  removeClient: (id: number, clientId: number) =>
+    request<void>(`/api/companies/${id}/clients/${clientId}`, { method: 'DELETE' }),
 };
 
 // ── Contact Messages ──────────────────────────────────────────────────────────

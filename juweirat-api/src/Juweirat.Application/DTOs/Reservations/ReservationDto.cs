@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Juweirat.Application.DTOs.Prestations;
 
 namespace Juweirat.Application.DTOs.Reservations;
 
@@ -33,7 +34,15 @@ public record ReservationDto(
     decimal AmountDue,
     DateTime? ConfirmedAt,
     DateTime? CancelledAt,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    string? GarantieType,
+    decimal? GarantieMontantCash,
+    string? CarteNom,
+    string? CarteSuffix,
+    string? CarteExpiration,
+    decimal TotalHebergement,
+    decimal TotalPrestations,
+    List<ReservationPrestationDto> Prestations
 );
 
 public record CreateReservationRequest(
@@ -47,7 +56,13 @@ public record CreateReservationRequest(
     string Currency = "XOF",
     string? Source = "website",
     string? SpecialRequests = null,
-    string? InternalNotes = null
+    string? InternalNotes = null,
+    string? GarantieType = null,
+    decimal? GarantieMontantCash = null,
+    string? CarteNom = null,
+    string? CarteSuffix = null,
+    string? CarteExpiration = null,
+    List<PrestationLigneRequest>? Prestations = null
 );
 
 public record UpdateReservationStatusRequest(
@@ -62,4 +77,12 @@ public record AvailabilityRequest(
     [Required] DateOnly CheckOutDate,
     int Adults = 1,
     int Children = 0
+);
+
+public record NoShowBillingResultDto(
+    long ReservationId,
+    int PenaltyNights,
+    decimal PenaltyAmount,
+    string Currency,
+    ReservationDto Reservation
 );

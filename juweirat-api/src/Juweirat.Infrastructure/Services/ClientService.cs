@@ -59,6 +59,7 @@ public class ClientService(AppDbContext db)
     {
         var query = db.Clients
             .Include(c => c.Reservations)
+            .Include(c => c.Company)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -79,6 +80,7 @@ public class ClientService(AppDbContext db)
     {
         var c = await db.Clients
             .Include(c => c.Reservations)
+            .Include(c => c.Company)
             .FirstOrDefaultAsync(c => c.Id == id);
         return c is null ? null : ToDto(c);
     }
@@ -103,6 +105,7 @@ public class ClientService(AppDbContext db)
             City           = req.City,
             Country        = req.Country,
             Notes          = req.Notes,
+            CompanyId      = req.CompanyId,
         };
 
         db.Clients.Add(client);
@@ -114,6 +117,7 @@ public class ClientService(AppDbContext db)
     {
         var client = await db.Clients
             .Include(c => c.Reservations)
+            .Include(c => c.Company)
             .FirstOrDefaultAsync(c => c.Id == id);
 
         if (client is null) return null;
@@ -128,6 +132,7 @@ public class ClientService(AppDbContext db)
         if (req.City is not null)           client.City           = req.City;
         if (req.Country is not null)        client.Country        = req.Country;
         if (req.Notes is not null)          client.Notes          = req.Notes;
+        if (req.CompanyId is not null)      client.CompanyId      = req.CompanyId == 0 ? null : req.CompanyId;
 
         await db.SaveChangesAsync();
         return ToDto(client);
@@ -138,6 +143,7 @@ public class ClientService(AppDbContext db)
         c.Email, c.Phone, c.Nationality,
         c.DocumentType, c.DocumentNumber,
         c.City, c.Country, c.Notes,
-        c.Reservations.Count, c.CreatedAt
+        c.Reservations.Count, c.CreatedAt,
+        c.CompanyId, c.Company?.Name
     );
 }

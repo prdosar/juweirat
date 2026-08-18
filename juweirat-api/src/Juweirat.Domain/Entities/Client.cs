@@ -16,6 +16,9 @@ public class Client
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
+    public long? CompanyId { get; set; }
+    public Company? Company { get; set; }
+
     public string FullName => $"{FirstName} {LastName}";
     public ICollection<Reservation> Reservations { get; set; } = [];
 }

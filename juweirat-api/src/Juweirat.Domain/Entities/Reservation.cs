@@ -21,6 +21,14 @@ public class Reservation
     public string? Source { get; set; } // website | phone | walkIn | bookingCom | airbnb
     public string? SpecialRequests { get; set; }
     public string? InternalNotes { get; set; }
+
+    // Garantie
+    public string? GarantieType { get; set; }          // "Cash" | "Carte"
+    public decimal? GarantieMontantCash { get; set; }
+    public string? CarteNom { get; set; }
+    public string? CarteSuffix { get; set; }            // 4 derniers chiffres
+    public string? CarteExpiration { get; set; }        // MM/YYYY
+
     public DateTime? ConfirmedAt { get; set; }
     public DateTime? CancelledAt { get; set; }
     public string? CancellationReason { get; set; }
@@ -31,6 +39,7 @@ public class Reservation
     public RoomCategory Category { get; set; } = null!;
     public Client Client { get; set; } = null!;
     public ICollection<Payment> Payments { get; set; } = [];
+    public ICollection<ReservationPrestation> Prestations { get; set; } = [];
 
     // Folio PMS créé lorsque la réservation est prise en charge par la réception.
     public Folio? Folio { get; set; }

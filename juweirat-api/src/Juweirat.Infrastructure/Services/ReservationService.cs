@@ -1,4 +1,5 @@
 using Juweirat.Application.Common.Pagination;
+using Juweirat.Application.DTOs.Prestations;
 using Juweirat.Application.DTOs.Reservations;
 using Juweirat.Domain.Entities;
 using Juweirat.Domain.Enums;
@@ -83,6 +84,7 @@ public class ReservationService(AppDbContext db)
             .Include(r => r.Category)
             .Include(r => r.Client)
             .Include(r => r.Payments)
+            .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
             .AsQueryable();
 
         if (status is not null && Enum.TryParse<ReservationStatus>(status, true, out var s))
@@ -99,6 +101,7 @@ public class ReservationService(AppDbContext db)
             .Include(r => r.Category)
             .Include(r => r.Client)
             .Include(r => r.Payments)
+            .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
             .FirstOrDefaultAsync(r => r.Id == id);
         return r is null ? null : ToDto(r);
     }
@@ -146,13 +149,51 @@ public class ReservationService(AppDbContext db)
             }
         }
 
-        // Tarification selon le palier
-        var tarifNuit = category.TarifNuit > 0 ? category.TarifNuit : (room != null ? room.TarifNuit : 30000);
-        var tarifN15  = category.TarifN15 > 0 ? category.TarifN15 : (room != null ? room.TarifN15 : 200000);
-        var tarifN30  = category.TarifN30 > 0 ? category.TarifN30 : (room != null ? room.TarifN30 : 300000);
+        // Tarification selon le palier — priorité : tarif compagnie > tarif catégorie > tarif chambre
+        var client = await db.Clients.FindAsync(req.ClientId);
+        CompanyTarif? companyTarif = null;
+        if (client?.CompanyId is not null)
+        {
+            companyTarif = await db.CompanyTarifs.FirstOrDefaultAsync(
+                t => t.CompanyId == client.CompanyId && t.CategoryId == category.Id);
+        }
 
-        var tarifResult = TarifEngine.ForStay(tarifNuit, tarifN15, tarifN30, nights);
-        var total = (decimal)tarifResult.PerNight * nights;
+        var tarifNuit = companyTarif?.TarifNuit > 0 ? companyTarif.TarifNuit
+                      : (category.TarifNuit > 0 ? category.TarifNuit : (room != null ? room.TarifNuit : 30000));
+        var tarifN15  = companyTarif?.TarifN15 > 0 ? companyTarif.TarifN15
+                      : (category.TarifN15 > 0 ? category.TarifN15 : (room != null ? room.TarifN15 : 200000));
+        var tarifN30  = companyTarif?.TarifN30 > 0 ? companyTarif.TarifN30
+                      : (category.TarifN30 > 0 ? category.TarifN30 : (room != null ? room.TarifN30 : 300000));
+
+        var tarifResult   = TarifEngine.ForStay(tarifNuit, tarifN15, tarifN30, nights);
+        var totalHeb      = (decimal)tarifResult.PerNight * nights;
+
+        // Résoudre les prestations demandées
+        var lignesPrestations = new List<ReservationPrestation>();
+        decimal totalPrestations = 0;
+        if (req.Prestations is { Count: > 0 })
+        {
+            var ids = req.Prestations.Select(p => p.PrestationId).Distinct().ToList();
+            var catalogue = await db.PrestationsAnnexes
+                .Where(p => ids.Contains(p.Id) && p.IsActive)
+                .ToDictionaryAsync(p => p.Id);
+
+            foreach (var ligne in req.Prestations)
+            {
+                if (!catalogue.TryGetValue(ligne.PrestationId, out var prestation)) continue;
+                var ligneTotal = prestation.PrixInclus * ligne.Quantite;
+                lignesPrestations.Add(new ReservationPrestation
+                {
+                    PrestationId           = prestation.Id,
+                    Quantite               = ligne.Quantite,
+                    PrixUnitaireSnapshot   = prestation.PrixInclus,
+                    TotalLigne             = ligneTotal,
+                });
+                totalPrestations += ligneTotal;
+            }
+        }
+
+        var total = totalHeb + totalPrestations;
 
         var reservation = new Reservation
         {
@@ -171,16 +212,30 @@ public class ReservationService(AppDbContext db)
             Source                = req.Source,
             SpecialRequests       = req.SpecialRequests,
             InternalNotes         = req.InternalNotes,
+            GarantieType          = req.GarantieType,
+            GarantieMontantCash   = req.GarantieMontantCash,
+            CarteNom              = req.CarteNom,
+            CarteSuffix           = req.CarteSuffix,
+            CarteExpiration       = req.CarteExpiration,
         };
 
         db.Reservations.Add(reservation);
         await db.SaveChangesAsync();
+
+        foreach (var ligne in lignesPrestations)
+        {
+            ligne.ReservationId = reservation.Id;
+            db.ReservationPrestations.Add(ligne);
+        }
+        if (lignesPrestations.Count > 0)
+            await db.SaveChangesAsync();
 
         var created = await db.Reservations
             .Include(r => r.Room)
             .Include(r => r.Category)
             .Include(r => r.Client)
             .Include(r => r.Payments)
+            .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
             .FirstAsync(r => r.Id == reservation.Id);
 
         return (ToDto(created), null);
@@ -193,6 +248,7 @@ public class ReservationService(AppDbContext db)
             .Include(r => r.Category)
             .Include(r => r.Client)
             .Include(r => r.Payments)
+            .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
             .FirstOrDefaultAsync(r => r.Id == id);
 
         if (r is null) return (null, "Reservation not found");
@@ -218,6 +274,48 @@ public class ReservationService(AppDbContext db)
 
         await db.SaveChangesAsync();
         return (ToDto(r), null);
+    }
+
+    public async Task<(NoShowBillingResultDto? dto, string? error)> ProcessNoShowAsync(long id)
+    {
+        var r = await db.Reservations
+            .Include(r => r.Room)
+            .Include(r => r.Category)
+            .Include(r => r.Client)
+            .Include(r => r.Payments)
+            .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
+            .FirstOrDefaultAsync(r => r.Id == id);
+
+        if (r is null) return (null, "Réservation introuvable");
+        if (r.Status != ReservationStatus.NoShow) return (null, "Cette réservation n'est pas en statut No Show");
+
+        var alreadyBilled = r.Payments.Any(p => p.Notes != null && p.Notes.StartsWith("Retenue No Show"));
+        if (alreadyBilled) return (null, "Une retenue No Show a déjà été appliquée");
+
+        var penaltyNights = r.Nights < 15 ? 1 : r.Nights < 30 ? 2 : 4;
+        var penaltyAmount = penaltyNights * r.PricePerNightSnapshot;
+
+        db.Payments.Add(new Payment
+        {
+            ReservationId = r.Id,
+            Amount        = penaltyAmount,
+            Currency      = r.Currency,
+            Method        = PaymentMethod.Cash,
+            Status        = PaymentStatus.Completed,
+            PaidAt        = DateTime.UtcNow,
+            Notes         = $"Retenue No Show — {penaltyNights} nuit{(penaltyNights > 1 ? "s" : "")}",
+        });
+        await db.SaveChangesAsync();
+
+        var updated = await db.Reservations
+            .Include(r => r.Room)
+            .Include(r => r.Category)
+            .Include(r => r.Client)
+            .Include(r => r.Payments)
+            .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
+            .FirstAsync(r => r.Id == id);
+
+        return (new NoShowBillingResultDto(updated.Id, penaltyNights, penaltyAmount, updated.Currency, ToDto(updated)), null);
     }
 
     private async Task<bool> CheckOverlapAsync(long roomId, DateOnly checkIn, DateOnly checkOut)
@@ -285,15 +383,29 @@ public class ReservationService(AppDbContext db)
         return $"JW-{year}-{count:D5}";
     }
 
-    private static ReservationDto ToDto(Reservation r) => new(
-        r.Id, r.Reference,
-        r.RoomId, r.Room?.RoomNumber, r.Room?.NameFr, r.Room?.NameEn,
-        r.CategoryId, r.Category.Slug, r.Category.NameFr, r.Category.NameEn,
-        r.ClientId, r.Client.FullName, r.Client.Email, r.Client.Phone,
-        r.CheckInDate, r.CheckOutDate, r.Nights, r.Adults, r.Children,
-        r.PricePerNightSnapshot, r.TotalPrice, r.Currency,
-        r.Status.ToString(), r.Source, r.SpecialRequests, r.InternalNotes,
-        r.AmountPaid, r.AmountDue,
-        r.ConfirmedAt, r.CancelledAt, r.CreatedAt
-    );
+    private static ReservationDto ToDto(Reservation r)
+    {
+        var totalPrestations = r.Prestations.Sum(p => p.TotalLigne);
+        var totalHeb         = r.TotalPrice - totalPrestations;
+
+        var prestationsDto = r.Prestations.Select(p => new ReservationPrestationDto(
+            p.Id, p.PrestationId,
+            p.Prestation.NameFr, p.Prestation.NameEn, p.Prestation.Icon, p.Prestation.Mode,
+            p.Quantite, p.PrixUnitaireSnapshot, p.TotalLigne
+        )).ToList();
+
+        return new(
+            r.Id, r.Reference,
+            r.RoomId, r.Room?.RoomNumber, r.Room?.NameFr, r.Room?.NameEn,
+            r.CategoryId, r.Category.Slug, r.Category.NameFr, r.Category.NameEn,
+            r.ClientId, r.Client.FullName, r.Client.Email, r.Client.Phone,
+            r.CheckInDate, r.CheckOutDate, r.Nights, r.Adults, r.Children,
+            r.PricePerNightSnapshot, r.TotalPrice, r.Currency,
+            r.Status.ToString(), r.Source, r.SpecialRequests, r.InternalNotes,
+            r.AmountPaid, r.AmountDue,
+            r.ConfirmedAt, r.CancelledAt, r.CreatedAt,
+            r.GarantieType, r.GarantieMontantCash, r.CarteNom, r.CarteSuffix, r.CarteExpiration,
+            totalHeb, totalPrestations, prestationsDto
+        );
+    }
 }

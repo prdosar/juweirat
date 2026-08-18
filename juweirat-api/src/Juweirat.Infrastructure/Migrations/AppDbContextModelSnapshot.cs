@@ -127,6 +127,10 @@ namespace Juweirat.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("phone");
 
+                    b.Property<long?>("CompanyId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("companyId");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updatedAt");
@@ -138,7 +142,250 @@ namespace Juweirat.Infrastructure.Migrations
                         .HasDatabaseName("iX_clients_email")
                         .HasFilter("\"email\" IS NOT NULL");
 
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("IX_clients_companyId");
+
                     b.ToTable("clients");
+                });
+
+            modelBuilder.Entity("Juweirat.Domain.Entities.Company", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<string>("ResponsableNom")
+                        .HasColumnType("text")
+                        .HasColumnName("responsableNom");
+
+                    b.Property<string>("Phone")
+                        .HasColumnType("text")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("Email")
+                        .HasColumnType("text")
+                        .HasColumnName("email");
+
+                    b.Property<string>("Adresse")
+                        .HasColumnType("text")
+                        .HasColumnName("adresse");
+
+                    b.Property<string>("Ville")
+                        .HasColumnType("text")
+                        .HasColumnName("ville");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text")
+                        .HasColumnName("notes");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("isActive");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("createdAt");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updatedAt");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("companies");
+                });
+
+            modelBuilder.Entity("Juweirat.Domain.Entities.CompanyTarif", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("CompanyId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("companyId");
+
+                    b.Property<long>("CategoryId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("categoryId");
+
+                    b.Property<int>("TarifNuit")
+                        .HasColumnType("integer")
+                        .HasColumnName("tarifNuit");
+
+                    b.Property<int>("TarifN15")
+                        .HasColumnType("integer")
+                        .HasColumnName("tarifN15");
+
+                    b.Property<int>("TarifN30")
+                        .HasColumnType("integer")
+                        .HasColumnName("tarifN30");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("createdAt");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updatedAt");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "CategoryId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_companyTarifs_companyId_categoryId");
+
+                    b.HasIndex("CategoryId")
+                        .HasDatabaseName("IX_companyTarifs_categoryId");
+
+                    b.ToTable("companyTarifs");
+                });
+
+            modelBuilder.Entity("Juweirat.Domain.Entities.PrestationAnnexe", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("createdAt");
+
+                    b.Property<string>("Icon")
+                        .HasColumnType("text")
+                        .HasColumnName("icon");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("isActive");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("ParPersonneParNuit")
+                        .HasColumnName("mode");
+
+                    b.Property<string>("NameEn")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("nameEn");
+
+                    b.Property<string>("NameFr")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("nameFr");
+
+                    b.Property<decimal>("PrixInclus")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("prixInclus");
+
+                    b.Property<decimal>("PrixSeule")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("prixSeule");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sortOrder");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updatedAt");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("prestationsAnnexes");
+                });
+
+            modelBuilder.Entity("Juweirat.Domain.Entities.VenteDirecte", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long?>("ClientId").HasColumnType("bigint").HasColumnName("clientId");
+                    b.Property<string>("ClientNom").HasColumnType("text").HasColumnName("clientNom");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("timestamp with time zone").HasColumnName("createdAt");
+                    b.Property<long?>("FolioId").HasColumnType("bigint").HasColumnName("folioId");
+                    b.Property<string>("Mode").IsRequired().ValueGeneratedOnAdd().HasColumnType("text").HasDefaultValue("Encaissement").HasColumnName("mode");
+                    b.Property<string>("Notes").HasColumnType("text").HasColumnName("notes");
+                    b.Property<string>("PaymentMethod").HasColumnType("text").HasColumnName("paymentMethod");
+                    b.Property<long>("PrestationId").HasColumnType("bigint").HasColumnName("prestationId");
+                    b.Property<decimal>("PrixUnitaireSnapshot").HasPrecision(10, 2).HasColumnType("numeric(10,2)").HasColumnName("prixUnitaireSnapshot");
+                    b.Property<int>("Quantite").HasColumnType("integer").HasColumnName("quantite");
+                    b.Property<decimal>("Total").HasPrecision(10, 2).HasColumnType("numeric(10,2)").HasColumnName("total");
+
+                    b.HasKey("Id");
+                    b.HasIndex("ClientId").HasDatabaseName("IX_ventesDirectes_clientId");
+                    b.HasIndex("FolioId").HasDatabaseName("IX_ventesDirectes_folioId");
+                    b.HasIndex("PrestationId").HasDatabaseName("IX_ventesDirectes_prestationId");
+                    b.HasIndex("CreatedAt").HasDatabaseName("IX_ventesDirectes_createdAt");
+                    b.ToTable("ventesDirectes");
+                });
+
+            modelBuilder.Entity("Juweirat.Domain.Entities.ReservationPrestation", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("PrestationId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("prestationId");
+
+                    b.Property<decimal>("PrixUnitaireSnapshot")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("prixUnitaireSnapshot");
+
+                    b.Property<int>("Quantite")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantite");
+
+                    b.Property<long>("ReservationId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("reservationId");
+
+                    b.Property<decimal>("TotalLigne")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("totalLigne");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PrestationId")
+                        .HasDatabaseName("IX_reservationPrestations_prestationId");
+
+                    b.HasIndex("ReservationId")
+                        .HasDatabaseName("IX_reservationPrestations_reservationId");
+
+                    b.ToTable("reservationPrestations");
                 });
 
             modelBuilder.Entity("Juweirat.Domain.Entities.Cloture", b =>
@@ -554,6 +801,88 @@ namespace Juweirat.Infrastructure.Migrations
                     b.ToTable("hotelConfig");
                 });
 
+            modelBuilder.Entity("Juweirat.Domain.Entities.MaintenanceCategory", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("isActive");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("createdAt");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updatedAt");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("maintenanceCategories");
+                });
+
+            modelBuilder.Entity("Juweirat.Domain.Entities.MaintenanceStaff", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("CategoryId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("categoryId");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("firstName");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("lastName");
+
+                    b.Property<string>("Phone")
+                        .HasColumnType("text")
+                        .HasColumnName("phone");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("isActive");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("createdAt");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updatedAt");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CategoryId")
+                        .HasDatabaseName("IX_maintenanceStaff_categoryId");
+
+                    b.ToTable("maintenanceStaff");
+                });
+
             modelBuilder.Entity("Juweirat.Domain.Entities.MaintenanceTicket", b =>
                 {
                     b.Property<long>("Id")
@@ -624,10 +953,17 @@ namespace Juweirat.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("zone");
 
+                    b.Property<long?>("StaffId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("staffId");
+
                     b.HasKey("Id");
 
                     b.HasIndex("UnitId")
                         .HasDatabaseName("iX_maintenanceTickets_unitId");
+
+                    b.HasIndex("StaffId")
+                        .HasDatabaseName("IX_maintenanceTickets_staffId");
 
                     b.ToTable("maintenanceTickets");
                 });
@@ -775,6 +1111,29 @@ namespace Juweirat.Infrastructure.Migrations
                     b.Property<DateTime?>("CancelledAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("cancelledAt");
+
+                    b.Property<string>("CarteExpiration")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)")
+                        .HasColumnName("carteExpiration");
+
+                    b.Property<string>("CarteNom")
+                        .HasColumnType("text")
+                        .HasColumnName("carteNom");
+
+                    b.Property<string>("CarteSuffix")
+                        .HasMaxLength(4)
+                        .HasColumnType("character varying(4)")
+                        .HasColumnName("carteSuffix");
+
+                    b.Property<string>("GarantieType")
+                        .HasColumnType("text")
+                        .HasColumnName("garantieType");
+
+                    b.Property<decimal?>("GarantieMontantCash")
+                        .HasPrecision(10, 2)
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("garantieMontantCash");
 
                     b.Property<long>("CategoryId")
                         .HasColumnType("bigint")
@@ -1387,6 +1746,18 @@ namespace Juweirat.Infrastructure.Migrations
                     b.Navigation("Unit");
                 });
 
+            modelBuilder.Entity("Juweirat.Domain.Entities.MaintenanceStaff", b =>
+                {
+                    b.HasOne("Juweirat.Domain.Entities.MaintenanceCategory", "Category")
+                        .WithMany("Staff")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_maintenanceStaff_maintenanceCategories_categoryId");
+
+                    b.Navigation("Category");
+                });
+
             modelBuilder.Entity("Juweirat.Domain.Entities.MaintenanceTicket", b =>
                 {
                     b.HasOne("Juweirat.Domain.Entities.Room", "Unit")
@@ -1395,7 +1766,24 @@ namespace Juweirat.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fK_maintenanceTickets_Rooms_unitId");
 
+                    b.HasOne("Juweirat.Domain.Entities.MaintenanceStaff", "Staff")
+                        .WithMany("Tickets")
+                        .HasForeignKey("StaffId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_maintenanceTickets_maintenanceStaff_staffId");
+
                     b.Navigation("Unit");
+                    b.Navigation("Staff");
+                });
+
+            modelBuilder.Entity("Juweirat.Domain.Entities.MaintenanceCategory", b =>
+                {
+                    b.Navigation("Staff");
+                });
+
+            modelBuilder.Entity("Juweirat.Domain.Entities.MaintenanceStaff", b =>
+                {
+                    b.Navigation("Tickets");
                 });
 
             modelBuilder.Entity("Juweirat.Domain.Entities.Payment", b =>
@@ -1407,6 +1795,47 @@ namespace Juweirat.Infrastructure.Migrations
                         .IsRequired()
                         .HasConstraintName("fK_payments_Reservations_reservationId");
 
+                    b.Navigation("Reservation");
+                });
+
+            modelBuilder.Entity("Juweirat.Domain.Entities.VenteDirecte", b =>
+                {
+                    b.HasOne("Juweirat.Domain.Entities.PrestationAnnexe", "Prestation")
+                        .WithMany()
+                        .HasForeignKey("PrestationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Juweirat.Domain.Entities.Client", "Client")
+                        .WithMany()
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("Juweirat.Domain.Entities.Folio", "Folio")
+                        .WithMany()
+                        .HasForeignKey("FolioId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Prestation");
+                    b.Navigation("Client");
+                    b.Navigation("Folio");
+                });
+
+            modelBuilder.Entity("Juweirat.Domain.Entities.ReservationPrestation", b =>
+                {
+                    b.HasOne("Juweirat.Domain.Entities.Reservation", "Reservation")
+                        .WithMany("Prestations")
+                        .HasForeignKey("ReservationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Juweirat.Domain.Entities.PrestationAnnexe", "Prestation")
+                        .WithMany("ReservationPrestations")
+                        .HasForeignKey("PrestationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Prestation");
                     b.Navigation("Reservation");
                 });
 
@@ -1496,7 +1925,41 @@ namespace Juweirat.Infrastructure.Migrations
 
             modelBuilder.Entity("Juweirat.Domain.Entities.Client", b =>
                 {
+                    b.HasOne("Juweirat.Domain.Entities.Company", "Company")
+                        .WithMany("Clients")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("FK_clients_companies_companyId");
+
+                    b.Navigation("Company");
+
                     b.Navigation("Reservations");
+                });
+
+            modelBuilder.Entity("Juweirat.Domain.Entities.CompanyTarif", b =>
+                {
+                    b.HasOne("Juweirat.Domain.Entities.Company", "Company")
+                        .WithMany("Tarifs")
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("FK_companyTarifs_companies_companyId");
+
+                    b.HasOne("Juweirat.Domain.Entities.RoomCategory", "Category")
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_companyTarifs_roomCategories_categoryId");
+
+                    b.Navigation("Company");
+                    b.Navigation("Category");
+                });
+
+            modelBuilder.Entity("Juweirat.Domain.Entities.Company", b =>
+                {
+                    b.Navigation("Clients");
+                    b.Navigation("Tarifs");
                 });
 
             modelBuilder.Entity("Juweirat.Domain.Entities.ContactMessage", b =>

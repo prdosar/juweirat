@@ -18,7 +18,10 @@ public record MaintenanceTicketDto(
     DateTime? ResolvedAt,
     string? Note,
     DateTime CreatedAt,
-    DateTime UpdatedAt
+    DateTime UpdatedAt,
+    long? StaffId = null,
+    string? StaffNom = null,
+    string? StaffPhone = null
 );
 
 public record CreateMaintenanceRequest(
@@ -30,6 +33,7 @@ public record CreateMaintenanceRequest(
     [Required] string Title = "",
     string? Description = null,
     string? Tech = null,
+    long? StaffId = null,
     int? Cost = null,
     string? Note = null
 );
@@ -43,6 +47,7 @@ public record UpdateMaintenanceRequest(
     string? Title = null,
     string? Description = null,
     string? Tech = null,
+    long? StaffId = null,
     int? Cost = null,
     string? Status = null,
     string? Note = null

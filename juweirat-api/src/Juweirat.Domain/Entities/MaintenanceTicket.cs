@@ -17,7 +17,9 @@ public class MaintenanceTicket
     public TicketPriority Priority { get; set; } = TicketPriority.Normale;
     public string Title { get; set; } = string.Empty;
     public string? Description { get; set; }
-    public string? Tech { get; set; }          // technicien assigné
+    public string? Tech { get; set; }          // technicien assigné (texte libre, rétrocompat)
+    public long? StaffId { get; set; }         // intervenant enregistré
+    public MaintenanceStaff? Staff { get; set; }
     public int? Cost { get; set; }             // coût en FCFA
     public TicketStatus Status { get; set; } = TicketStatus.Ouvert;
     public DateTime? ResolvedAt { get; set; }
