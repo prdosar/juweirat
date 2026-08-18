@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f3f5f3; color: #14181a; font-family: "DM Sans", "Helvetica Neue", Helvetica, sans-serif; -webkit-font-smoothing: antialiased; }
+  input, select, textarea, button { font-family: inherit; font-size: inherit; color: inherit; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: #15803d; box-shadow: 0 0 0 3px rgba(21,128,61,0.13); }
+  a { color: #15803d; text-decoration: none; }
+  a:hover { color: #0f5c2c; }
+</style>
+</helmet>
+<div style="min-height: 100vh;">
+  <header style="display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 36px; background: #fff; border-bottom: 1px solid #e5e9e6; position: sticky; top: 0; z-index: 30;">
+    <a href="#" style="display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: #5c6660;">← Retour aux réservations</a>
+    <span style="font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #14181a;">Tunnel guidé en 5 étapes</span>
+  </header>
+
+  <div style="max-width: 1200px; margin: 0 auto; padding: 32px 36px 72px; display: grid; grid-template-columns: minmax(0,1fr) 324px; gap: 32px; align-items: start;">
+    <main style="min-width: 0; display: flex; flex-direction: column; gap: 22px;">
+      <div>
+        <h1 style="margin: 0 0 6px; font-size: 30px; font-weight: 700; letter-spacing: -0.02em;">Nouvelle réservation</h1>
+        <p style="margin: 0; font-size: 15px; color: #6b7570;">Étape {{ stepNumber }} sur 5 — {{ stepTitle }}</p>
+      </div>
+
+      <nav style="display: flex; flex-wrap: wrap; align-items: center; gap: 2px; background: #fff; border: 1px solid #e5e9e6; border-radius: 14px; padding: 8px;">
+        <sc-for list="{{ steps }}" as="s" hint-placeholder-count="5">
+          <button onClick="{{ s.go }}" style="{{ s.style }}">
+            <span style="{{ s.dotStyle }}">{{ s.dot }}</span>
+            <span>{{ s.label }}</span>
+          </button>
+        </sc-for>
+      </nav>
+
+      <sc-if value="{{ onClient }}" hint-placeholder-val="{{ true }}">
+        <section style="background: #fff; border: 1px solid #e5e9e6; border-radius: 16px; padding: 26px 28px; box-shadow: 0 1px 2px rgba(20,24,26,0.03);">
+          <div style="display: flex; align-items: center; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid #eef1ef; margin-bottom: 22px;">
+            <span style="width: 24px; height: 24px; border-radius: 999px; background: #15803d; color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 700;">1</span>
+            <h2 style="margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;">Client titulaire du séjour</h2>
+            <span style="margin-left: auto; font-size: 12px; color: #98a29c;">Obligatoire</span>
+          </div>
+
+          <div style="display: inline-flex; padding: 3px; gap: 3px; background: #f1f4f2; border-radius: 10px; margin-bottom: 22px;">
+            <button onClick="{{ pickExisting }}" style="{{ tabExistingStyle }}">Client existant</button>
+            <button onClick="{{ pickNew }}" style="{{ tabNewStyle }}">Créer un client</button>
+          </div>
+
+          <sc-if value="{{ isExisting }}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; flex-direction: column; gap: 14px;">
+              <label style="display: flex; flex-direction: column; gap: 7px;">
+                <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570;">Rechercher un client *</span>
+                <input value="{{ query }}" onChange="{{ onQuery }}" placeholder="Rechercher par nom, téléphone ou email…" style="padding: 12px 14px; border: 1px solid #dfe4e0; border-radius: 10px; background: #fff; transition: border-color .15s, box-shadow .15s;" />
+              </label>
+              <div style="border: 1px solid #eef1ef; border-radius: 12px; overflow: hidden;">
+                <sc-for list="{{ results }}" as="c" hint-placeholder-count="3">
+                  <button onClick="{{ c.select }}" style="{{ c.rowStyle }}">
+                    <span style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+                      <span style="{{ c.avatarStyle }}">{{ c.initials }}</span>
+                      <span style="display: flex; flex-direction: column; gap: 2px; text-align: left; min-width: 0;">
+                        <span style="font-size: 15px; font-weight: 500;">{{ c.name }}</span>
+                        <span style="font-size: 13px; color: #8b958f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ c.meta }}</span>
+                      </span>
+                    </span>
+                    <span style="{{ c.tagStyle }}">{{ c.tag }}</span>
+                  </button>
+                </sc-for>
+              </div>
+              <p style="margin: 0; font-size: 13px; color: #8b958f;">Client introuvable ? <a href="#" onClick="{{ pickNew }}">+ Créer un nouveau client</a></p>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isNew }}" hint-placeholder-val="{{ false }}">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+              <label style="display: flex; flex-direction: column; gap: 7px;">
+                <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570;">Nom complet *</span>
+                <input placeholder="Awa Diop" style="padding: 12px 14px; border: 1px solid #dfe4e0; border-radius: 10px;" />
+              </label>
+              <label style="display: flex; flex-direction: column; gap: 7px;">
+                <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570;">Téléphone *</span>
+                <input placeholder="+225 07 00 00 00 00" style="padding: 12px 14px; border: 1px solid #dfe4e0; border-radius: 10px;" />
+              </label>
+              <label style="display: flex; flex-direction: column; gap: 7px;">
+                <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570;">E-mail</span>
+                <input placeholder="awa.diop@mail.com" style="padding: 12px 14px; border: 1px solid #dfe4e0; border-radius: 10px;" />
+              </label>
+              <label style="display: flex; flex-direction: column; gap: 7px;">
+                <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570;">Pièce d'identité</span>
+                <input placeholder="CNI · n° 00 000 000" style="padding: 12px 14px; border: 1px solid #dfe4e0; border-radius: 10px;" />
+              </label>
+              <label style="display: flex; flex-direction: column; gap: 7px;">
+                <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570;">Pays</span>
+                <select style="padding: 12px 14px; border: 1px solid #dfe4e0; border-radius: 10px; background: #fff;">
+                  <option>Côte d'Ivoire</option>
+                  <option>Sénégal</option>
+                  <option>Burkina Faso</option>
+                  <option>France</option>
+                  <option>Autre</option>
+                </select>
+              </label>
+              <label style="display: flex; flex-direction: column; gap: 7px;">
+                <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570;">Type de client</span>
+                <select style="padding: 12px 14px; border: 1px solid #dfe4e0; border-radius: 10px; background: #fff;">
+                  <option>Particulier</option>
+                  <option>Entreprise</option>
+                  <option>Agence / TO</option>
+                </select>
+              </label>
+              <label style="grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 10px; padding: 13px 14px; border: 1px solid #eef1ef; border-radius: 10px; background: #f8faf9;">
+                <input type="checkbox" style="margin-top: 2px; accent-color: #15803d;" />
+                <span style="font-size: 13px; color: #6b7570; text-wrap: pretty;">Enregistrer cette fiche dans le répertoire clients pour les prochains séjours.</span>
+              </label>
+            </div>
+          </sc-if>
+        </section>
+      </sc-if>
+
+      <sc-if value="{{ onStay }}" hint-placeholder-val="{{ false }}">
+        <section style="background: #fff; border: 1px solid #e5e9e6; border-radius: 16px; padding: 26px 28px;">
+          <div style="display: flex; align-items: center; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid #eef1ef; margin-bottom: 22px;">
+            <span style="width: 24px; height: 24px; border-radius: 999px; background: #15803d; color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 700;">2</span>
+            <h2 style="margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;">Période du séjour</h2>
+            <span style="margin-left: auto; font-size: 12px; color: #98a29c;">{{ nightsLabel }}</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <label style="display: flex; flex-direction: column; gap: 7px;">
+              <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570;">Date d'arrivée *</span>
+              <input type="date" value="{{ checkIn }}" onChange="{{ onCheckIn }}" style="padding: 12px 14px; border: 1px solid #dfe4e0; border-radius: 10px;" />
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 7px;">
+              <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570;">Date de départ *</span>
+              <input type="date" value="{{ checkOut }}" onChange="{{ onCheckOut }}" style="padding: 12px 14px; border: 1px solid #dfe4e0; border-radius: 10px;" />
+            </label>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px;">
+            <sc-for list="{{ durations }}" as="d" hint-placeholder-count="4">
+              <button onClick="{{ d.apply }}" style="{{ d.style }}">{{ d.label }}</button>
+            </sc-for>
+          </div>
+        </section>
+      </sc-if>
+
+      <sc-if value="{{ onGuests }}" hint-placeholder-val="{{ false }}">
+        <section style="background: #fff; border: 1px solid #e5e9e6; border-radius: 16px; padding: 26px 28px;">
+          <div style="display: flex; align-items: center; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid #eef1ef; margin-bottom: 22px;">
+            <span style="width: 24px; height: 24px; border-radius: 999px; background: #15803d; color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 700;">3</span>
+            <h2 style="margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;">Nombre d'occupants</h2>
+            <span style="margin-left: auto; font-size: 12px; color: #98a29c;">Total : {{ guestsLabel }}</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div style="display: flex; flex-direction: column; gap: 7px;">
+              <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570;">Nombre d'adultes *</span>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px 8px 14px; border: 1px solid #dfe4e0; border-radius: 10px;">
+                <span style="font-size: 16px; font-weight: 500;">{{ adults }}</span>
+                <span style="display: flex; gap: 6px;">
+                  <button onClick="{{ adultsDown }}" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #dfe4e0; background: #fff; cursor: pointer; color: #5c6660;" style-hover="background:#f1f4f2">−</button>
+                  <button onClick="{{ adultsUp }}" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #dfe4e0; background: #fff; cursor: pointer; color: #5c6660;" style-hover="background:#f1f4f2">+</button>
+                </span>
+              </div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 7px;">
+              <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570;">Nombre d'enfants</span>
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px 8px 14px; border: 1px solid #dfe4e0; border-radius: 10px;">
+                <span style="font-size: 16px; font-weight: 500;">{{ kids }}</span>
+                <span style="display: flex; gap: 6px;">
+                  <button onClick="{{ kidsDown }}" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #dfe4e0; background: #fff; cursor: pointer; color: #5c6660;" style-hover="background:#f1f4f2">−</button>
+                  <button onClick="{{ kidsUp }}" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #dfe4e0; background: #fff; cursor: pointer; color: #5c6660;" style-hover="background:#f1f4f2">+</button>
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </sc-if>
+
+      <sc-if value="{{ onRoom }}" hint-placeholder-val="{{ false }}">
+        <section style="background: #fff; border: 1px solid #e5e9e6; border-radius: 16px; padding: 26px 28px;">
+          <div style="display: flex; align-items: center; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid #eef1ef; margin-bottom: 22px;">
+            <span style="width: 24px; height: 24px; border-radius: 999px; background: #15803d; color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 700;">4</span>
+            <h2 style="margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;">Logement &amp; prestations</h2>
+          </div>
+          <span style="display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570; margin-bottom: 10px;">Catégorie de logement *</span>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <sc-for list="{{ rooms }}" as="r" hint-placeholder-count="3">
+              <button onClick="{{ r.select }}" style="{{ r.style }}">
+                <span style="display: flex; flex-direction: column; gap: 3px; text-align: left;">
+                  <span style="font-size: 15px; font-weight: 500;">{{ r.name }}</span>
+                  <span style="font-size: 13px; color: #8b958f;">{{ r.detail }}</span>
+                </span>
+                <span style="display: flex; flex-direction: column; align-items: flex-end; gap: 2px;">
+                  <span style="font-size: 15px; font-weight: 500;">{{ r.priceLabel }}</span>
+                  <span style="font-size: 12px; color: #8b958f;">par nuit</span>
+                </span>
+              </button>
+            </sc-for>
+          </div>
+          <span style="display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570; margin: 22px 0 10px;">Prestations annexes</span>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <sc-for list="{{ extras }}" as="e" hint-placeholder-count="4">
+              <button onClick="{{ e.toggle }}" style="{{ e.style }}">{{ e.label }}</button>
+            </sc-for>
+          </div>
+          <label style="display: flex; flex-direction: column; gap: 7px; margin-top: 22px;">
+            <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570;">Note interne</span>
+            <textarea rows="3" placeholder="Arrivée tardive, préférences, transfert aéroport…" style="padding: 12px 14px; border: 1px solid #dfe4e0; border-radius: 10px; resize: vertical;"></textarea>
+          </label>
+        </section>
+      </sc-if>
+
+      <sc-if value="{{ onPay }}" hint-placeholder-val="{{ false }}">
+        <section style="background: #fff; border: 1px solid #e5e9e6; border-radius: 16px; padding: 26px 28px;">
+          <div style="display: flex; align-items: center; gap: 12px; padding-bottom: 18px; border-bottom: 1px solid #eef1ef; margin-bottom: 22px;">
+            <span style="width: 24px; height: 24px; border-radius: 999px; background: #15803d; color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 700;">5</span>
+            <h2 style="margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;">Garantie &amp; tarif</h2>
+          </div>
+          <span style="display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570; margin-bottom: 10px;">Garantie de la réservation</span>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <sc-for list="{{ guarantees }}" as="g" hint-placeholder-count="2">
+              <button onClick="{{ g.select }}" style="{{ g.style }}">
+                <span style="font-size: 15px; font-weight: 500;">{{ g.name }}</span>
+                <span style="font-size: 13px; color: #8b958f;">{{ g.detail }}</span>
+              </button>
+            </sc-for>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 22px;">
+            <label style="display: flex; flex-direction: column; gap: 7px;">
+              <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570;">Canal d'origine</span>
+              <select style="padding: 12px 14px; border: 1px solid #dfe4e0; border-radius: 10px; background: #fff;">
+                <option>Direct</option>
+                <option>Téléphone</option>
+                <option>Agence</option>
+                <option>Site web</option>
+                <option>OTA</option>
+              </select>
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 7px;">
+              <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570;">Devise</span>
+              <select style="padding: 12px 14px; border: 1px solid #dfe4e0; border-radius: 10px; background: #fff;">
+                <option>XOF</option>
+                <option>EUR</option>
+                <option>USD</option>
+              </select>
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 7px;">
+              <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570;">Remise</span>
+              <input value="{{ discount }}" onChange="{{ onDiscount }}" placeholder="0" style="padding: 12px 14px; border: 1px solid #dfe4e0; border-radius: 10px;" />
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 7px;">
+              <span style="font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b7570;">Acompte encaissé</span>
+              <input value="{{ deposit }}" onChange="{{ onDeposit }}" placeholder="0" style="padding: 12px 14px; border: 1px solid #dfe4e0; border-radius: 10px;" />
+            </label>
+          </div>
+        </section>
+      </sc-if>
+
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+        <button onClick="{{ prev }}" style="{{ prevStyle }}">← Précédent</button>
+        <button onClick="{{ next }}" style="padding: 12px 22px; border-radius: 10px; border: none; background: #15803d; color: #fff; font-weight: 500; cursor: pointer;" style-hover="background:#116830">{{ nextLabel }}</button>
+      </div>
+    </main>
+
+    <aside style="position: sticky; top: 84px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="background: #14181a; color: #eef2ef; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 18px;">
+        <div>
+          <div style="font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #8c9691; margin-bottom: 8px;">Récapitulatif</div>
+          <div style="font-size: 19px; font-weight: 500;">{{ clientLabel }}</div>
+          <div style="font-size: 13px; color: #8c9691; margin-top: 4px;">{{ guestsLabel }} · {{ nightsLabel }}</div>
+        </div>
+        <div style="height: 1px; background: #2a2f31;"></div>
+        <div style="display: flex; flex-direction: column; gap: 11px; font-size: 14px;">
+          <div style="display: flex; justify-content: space-between; gap: 12px;">
+            <span style="color: #8c9691;">Dates</span><span>{{ datesLabel }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; gap: 12px;">
+            <span style="color: #8c9691;">Logement</span><span>{{ roomLabel }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; gap: 12px;">
+            <span style="color: #8c9691;">Hébergement</span><span>{{ roomTotalLabel }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; gap: 12px;">
+            <span style="color: #8c9691;">Prestations</span><span>{{ extrasTotalLabel }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; gap: 12px;">
+            <span style="color: #8c9691;">Remise</span><span>{{ discountLabel }}</span>
+          </div>
+        </div>
+        <div style="height: 1px; background: #2a2f31;"></div>
+        <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px;">
+          <span style="font-size: 13px; color: #8c9691;">Total</span>
+          <span style="font-size: 26px; font-weight: 700;">{{ totalLabel }}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: #8c9691;">
+          <span>Reste à payer</span><span style="color: #7fc79b;">{{ balanceLabel }}</span>
+        </div>
+        <button style="padding: 13px; border: none; border-radius: 10px; background: #22a15a; color: #062d17; font-weight: 700; cursor: pointer;" style-hover="background:#2cb968">Confirmer la réservation</button>
+      </div>
+      <div style="background: #fff; border: 1px solid #e5e9e6; border-radius: 14px; padding: 16px 18px; font-size: 13px; color: #6b7570; text-wrap: pretty;">
+        La fiche client est créée dès l'étape 1 : elle reste liée à toutes les réservations suivantes.
+      </div>
+    </aside>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;accentColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#15803d&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#15803d&quot;,&quot;#0f766e&quot;,&quot;#1d4ed8&quot;,&quot;#b45309&quot;]}}">
+const STEPS = ["Client", "Séjour", "Occupants", "Logement", "Garantie"];
+const STEP_TITLES = ["Client titulaire du séjour", "Période du séjour", "Nombre d'occupants", "Logement & prestations", "Garantie & tarif"];
+const CLIENTS = [
+  { id: 1, name: "Awa Diop", meta: "awa.diop@mail.com · +225 07 45 12 88", tag: "Fidèle" },
+  { id: 2, name: "Koffi N'Guessan", meta: "k.nguessan@mail.ci · +225 01 22 09 44", tag: "3 séjours" },
+  { id: 3, name: "Groupe Sahel Voyages", meta: "resa@sahelvoyages.com · +226 70 11 22 33", tag: "Agence" },
+  { id: 4, name: "Marie Kouadio", meta: "marie.kouadio@mail.ci · +225 05 78 34 10", tag: "Nouveau" }
+];
+const ROOMS = [
+  { id: "std", name: "Chambre Standard", detail: "20 m² · lit double · ventilée", price: 28000 },
+  { id: "clim", name: "Chambre Climatisée", detail: "24 m² · lit queen · balcon", price: 42000 },
+  { id: "ste", name: "Suite Familiale", detail: "40 m² · salon séparé · 2 chambres", price: 68000 }
+];
+const EXTRAS = [
+  { id: "bf", label: "Petit-déjeuner · 3 500 / pers", price: 3500, perGuest: true },
+  { id: "transfer", label: "Transfert aéroport · 15 000", price: 15000 },
+  { id: "laundry", label: "Blanchisserie · 5 000 / nuit", price: 5000, perNight: true },
+  { id: "crib", label: "Lit bébé · offert", price: 0 }
+];
+const GUARANTEES = [
+  { id: "cash", name: "Dépôt en espèces", detail: "Montant versé à l'accueil" },
+  { id: "card", name: "Carte bancaire", detail: "Empreinte de garantie" }
+];
+
+class Component extends DCLogic {
+  state = {
+    step: 0, mode: "existing", query: "", clientId: 1,
+    checkIn: "2026-09-12", checkOut: "2026-09-15",
+    adults: 2, kids: 0, roomId: "clim", extras: ["bf"],
+    guarantee: "cash", discount: "0", deposit: "20000"
+  };
+
+  fcfa(n) { return Math.round(n).toLocaleString("fr-FR").replace(/\u202f|\u00a0/g, " ") + " F"; }
+
+  nights() {
+    const a = this.parse(this.state.checkIn), b = this.parse(this.state.checkOut);
+    if (!a || !b) return 1;
+    const n = Math.round((b - a) / 86400000);
+    return n < 1 ? 1 : n;
+  }
+
+  parse(v) {
+    const p = String(v || "").split("-").map(Number);
+    if (p.length !== 3 || p.some(isNaN)) return null;
+    return new Date(p[0], p[1] - 1, p[2]);
+  }
+
+  iso(d) {
+    const p = n => String(n).padStart(2, "0");
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+  }
+
+  addNights(n) {
+    const a = this.parse(this.state.checkIn);
+    if (!a) return;
+    this.setState({ checkOut: this.iso(new Date(a.getFullYear(), a.getMonth(), a.getDate() + n)) });
+  }
+
+  fmtDate(v) {
+    const d = this.parse(v);
+    return d ? d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) : "—";
+  }
+
+  renderVals() {
+    const accent = this.props.accentColor ?? "#15803d";
+    const s = this.state;
+    const nights = this.nights();
+    const guests = Number(s.adults) + Number(s.kids);
+    const room = ROOMS.find(r => r.id === s.roomId) || ROOMS[0];
+    const roomTotal = room.price * nights;
+    const extrasTotal = EXTRAS.filter(e => s.extras.includes(e.id)).reduce((t, e) =>
+      t + (e.perGuest ? e.price * guests * nights : e.perNight ? e.price * nights : e.price), 0);
+    const discount = Math.max(0, Number(String(s.discount).replace(/\D/g, "")) || 0);
+    const deposit = Math.max(0, Number(String(s.deposit).replace(/\D/g, "")) || 0);
+    const total = Math.max(0, roomTotal + extrasTotal - discount);
+    const client = CLIENTS.find(c => c.id === s.clientId);
+    const q = s.query.trim().toLowerCase();
+
+    const tab = on => "padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:14px;font-weight:500;transition:background .15s;" +
+      (on ? "background:#fff;color:#14181a;box-shadow:0 1px 2px rgba(20,24,26,.1);" : "background:transparent;color:#6b7570;");
+    const chip = on => "padding:9px 15px;border-radius:999px;cursor:pointer;font-size:14px;transition:all .15s;background:" +
+      (on ? accent : "#fff") + ";color:" + (on ? "#fff" : "#5c6660") + ";border:1px solid " + (on ? accent : "#dfe4e0");
+    const card = on => "display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 18px;border-radius:12px;cursor:pointer;transition:border-color .15s,background .15s;background:" +
+      (on ? "#f2f8f4" : "#fff") + ";border:1px solid " + (on ? accent : "#e8ebe9");
+
+    return {
+      stepNumber: s.step + 1,
+      stepTitle: STEP_TITLES[s.step],
+      steps: STEPS.map((label, i) => {
+        const done = i < s.step, on = i === s.step;
+        return {
+          label, dot: done ? "✓" : String(i + 1),
+          go: () => this.setState({ step: i }),
+          style: "display:flex;align-items:center;gap:9px;padding:10px 14px;border:none;border-radius:10px;cursor:pointer;white-space:nowrap;font-size:13px;font-weight:" +
+            (on ? "700" : "400") + ";color:" + (on ? "#14181a" : done ? "#5c6660" : "#a3aca7") + ";background:" + (on ? "#eef5f0" : "transparent"),
+          dotStyle: "flex: 0 0 auto;width:22px;height:22px;border-radius:999px;display:grid;place-items:center;font-size:11px;font-weight:700;background:" +
+            (on || done ? accent : "#edf0ee") + ";color:" + (on || done ? "#fff" : "#a3aca7")
+        };
+      }),
+      onClient: s.step === 0, onStay: s.step === 1, onGuests: s.step === 2, onRoom: s.step === 3, onPay: s.step === 4,
+      isExisting: s.mode === "existing", isNew: s.mode === "new",
+      tabExistingStyle: tab(s.mode === "existing"), tabNewStyle: tab(s.mode === "new"),
+      pickExisting: e => { if (e && e.preventDefault) e.preventDefault(); this.setState({ mode: "existing" }); },
+      pickNew: e => { if (e && e.preventDefault) e.preventDefault(); this.setState({ mode: "new" }); },
+      query: s.query,
+      onQuery: e => this.setState({ query: e.target.value }),
+      results: CLIENTS.filter(c => !q || (c.name + c.meta).toLowerCase().includes(q)).map(c => {
+        const on = c.id === s.clientId && s.mode === "existing";
+        return {
+          name: c.name, meta: c.meta, tag: c.tag,
+          initials: c.name.split(" ").map(w => w[0]).slice(0, 2).join(""),
+          select: () => this.setState({ clientId: c.id }),
+          rowStyle: "width:100%;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 16px;border:none;border-bottom:1px solid #eef1ef;cursor:pointer;transition:background .15s;background:" +
+            (on ? "#f2f8f4" : "#fff") + ";box-shadow:" + (on ? "inset 3px 0 0 " + accent : "none"),
+          avatarStyle: "flex:0 0 auto;width:34px;height:34px;border-radius:999px;display:grid;place-items:center;font-size:12px;font-weight:700;background:" +
+            (on ? accent : "#edf0ee") + ";color:" + (on ? "#fff" : "#6b7570"),
+          tagStyle: "flex:0 0 auto;font-size:12px;padding:4px 10px;border-radius:999px;background:" + (on ? accent : "#f1f4f2") + ";color:" + (on ? "#fff" : "#6b7570")
+        };
+      }),
+      checkIn: s.checkIn, checkOut: s.checkOut,
+      onCheckIn: e => this.setState({ checkIn: e.target.value }),
+      onCheckOut: e => this.setState({ checkOut: e.target.value }),
+      durations: [1, 2, 3, 7].map(n => ({
+        label: n + (n > 1 ? " nuits" : " nuit"),
+        apply: () => this.addNights(n),
+        style: chip(nights === n)
+      })),
+      nightsLabel: nights + (nights > 1 ? " nuits" : " nuit"),
+      adults: s.adults, kids: s.kids,
+      adultsUp: () => this.setState(st => ({ adults: st.adults + 1 })),
+      adultsDown: () => this.setState(st => ({ adults: Math.max(1, st.adults - 1) })),
+      kidsUp: () => this.setState(st => ({ kids: st.kids + 1 })),
+      kidsDown: () => this.setState(st => ({ kids: Math.max(0, st.kids - 1) })),
+      guestsLabel: guests + " personne" + (guests > 1 ? "s" : ""),
+      rooms: ROOMS.map(r => ({
+        name: r.name, detail: r.detail, priceLabel: this.fcfa(r.price),
+        select: () => this.setState({ roomId: r.id }),
+        style: card(r.id === s.roomId)
+      })),
+      extras: EXTRAS.map(e => {
+        const on = s.extras.includes(e.id);
+        return {
+          label: e.label,
+          toggle: () => this.setState(st => ({ extras: on ? st.extras.filter(x => x !== e.id) : st.extras.concat(e.id) })),
+          style: chip(on)
+        };
+      }),
+      guarantees: GUARANTEES.map(g => {
+        const on = g.id === s.guarantee;
+        return {
+          name: g.name, detail: g.detail,
+          select: () => this.setState({ guarantee: g.id }),
+          style: "display:flex;flex-direction:column;gap:3px;align-items:flex-start;text-align:left;padding:15px 18px;border-radius:12px;cursor:pointer;transition:all .15s;background:" +
+            (on ? "#f2f8f4" : "#fff") + ";border:1px solid " + (on ? accent : "#e8ebe9")
+        };
+      }),
+      discount: s.discount, deposit: s.deposit,
+      onDiscount: e => this.setState({ discount: e.target.value }),
+      onDeposit: e => this.setState({ deposit: e.target.value }),
+      prev: () => this.setState(st => ({ step: Math.max(0, st.step - 1) })),
+      next: () => this.setState(st => ({ step: Math.min(4, st.step + 1) })),
+      nextLabel: s.step === 4 ? "Créer la réservation" : "Continuer",
+      prevStyle: "padding:12px 20px;border-radius:10px;border:1px solid #dfe4e0;background:#fff;color:#5c6660;cursor:pointer;visibility:" + (s.step === 0 ? "hidden" : "visible"),
+      clientLabel: s.mode === "new" ? "Nouveau client" : (client ? client.name : "—"),
+      datesLabel: this.fmtDate(s.checkIn) + " → " + this.fmtDate(s.checkOut),
+      roomLabel: room.name,
+      roomTotalLabel: this.fcfa(roomTotal),
+      extrasTotalLabel: extrasTotal ? this.fcfa(extrasTotal) : "—",
+      discountLabel: discount ? "− " + this.fcfa(discount) : "—",
+      totalLabel: this.fcfa(total),
+      balanceLabel: this.fcfa(Math.max(0, total - deposit))
+    };
+  }
+}
+
+</script>
+</body>
+</html>
