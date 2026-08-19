@@ -26,12 +26,13 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
-
+// Les photos uploadées sont servies via une rewrite Next.js /uploads/* → API
+// (voir juweirat-admin/next.config.ts). On garde le filePath tel quel — jamais préfixé
+// par NEXT_PUBLIC_API_URL qui pointerait vers /api/uploads/... (404 côté API).
 function getImgSrc(filePath?: string | null): string {
   if (!filePath) return '/img/placeholder.jpg';
   if (filePath.startsWith('http://') || filePath.startsWith('https://')) return filePath;
-  return `${API_URL}${filePath}`;
+  return filePath;
 }
 
 const GAMME_COLORS: Record<string, string> = {

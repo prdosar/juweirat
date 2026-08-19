@@ -8,7 +8,6 @@ import type { RoomDto, AmenityDto, RoomImageDto } from '@/lib/types';
 import { ArrowLeft, Save, ImagePlus, Trash2, Star } from 'lucide-react';
 import Link from 'next/link';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 const STATUSES = ['Available', 'Occupied', 'Maintenance', 'Inactive'];
 const STATUS_FR: Record<string, string> = {
@@ -406,7 +405,7 @@ export default function RoomFormPage() {
                     <div className="aspect-video relative bg-gray-100">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={`${API_URL}${img.filePath}`}
+                        src={img.filePath}
                         alt={img.altTextFr ?? ''}
                         className="object-cover w-full h-full"
                       />
