@@ -26,7 +26,7 @@ public class Facture
 public class FactureSnapshot
 {
     public List<FactureSnapshotLine> Lines { get; set; } = [];
-    public int Total { get; set; }
+    public int Total { get; set; }        // rétro-compat = TotalTtc pour les nouvelles factures
     public int Arrhes { get; set; }
     public int Paid { get; set; }
     public string? PayMode { get; set; }
@@ -39,6 +39,14 @@ public class FactureSnapshot
     public DateOnly? Departure { get; set; }
     public int Nights { get; set; }
     public int Pax { get; set; }
+
+    // Fiscalité — figée à l'émission de la facture.
+    // TvaExonere = null sur les factures antérieures à cette feature (fallback = affichage Total seul).
+    public bool? TvaExonere { get; set; }
+    public int? TotalHt { get; set; }
+    public int? Tva { get; set; }
+    public int? TotalTtc { get; set; }
+    public decimal? TvaRate { get; set; }   // ex : 0.18m
 }
 
 public class FactureSnapshotLine

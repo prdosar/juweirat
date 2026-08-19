@@ -58,9 +58,23 @@ export function printVenteDirecte(vente: VenteDirecteDto): void {
     ),
     '',
     sep('-', W),
-    line('TOTAL', `${vente.total.toLocaleString('fr')} FCFA`, W),
-    sep('=', W),
   ];
+
+  // Décomposition TVA — 18% Togo. Prix stockés = TTC.
+  const TVA_RATE = 0.18;
+  const exonere  = vente.tvaExonere === true;
+  const ttc      = vente.total;
+  const ht       = exonere ? ttc : Math.round(ttc / (1 + TVA_RATE));
+  const tva      = exonere ? 0   : ttc - ht;
+
+  if (!exonere) {
+    lines.push(line('Sous-total HT', `${ht.toLocaleString('fr')} FCFA`, W));
+    lines.push(line('TVA (18%)',     `${tva.toLocaleString('fr')} FCFA`, W));
+    lines.push(line('TOTAL TTC',     `${ttc.toLocaleString('fr')} FCFA`, W));
+  } else {
+    lines.push(line('TOTAL (exonéré TVA)', `${ttc.toLocaleString('fr')} FCFA`, W));
+  }
+  lines.push(sep('=', W));
 
   if (vente.mode === 'Encaissement' && vente.paymentMethod) {
     lines.push(line('Règlement :', vente.paymentMethod, W));
@@ -134,7 +148,7 @@ export function printVenteDirecte(vente: VenteDirecteDto): void {
     .map(l => {
       if (l.startsWith('Résidence') || l.startsWith('Lomé')) return `<div class="center">${l.trim()}</div>`;
       if (l.startsWith('Merci'))            return `<div class="center">${l.trim()}</div>`;
-      if (l.startsWith('PRESTATION') || l.startsWith('TOTAL')) return `<div class="bold">${l}</div>`;
+      if (l.startsWith('PRESTATION') || l.startsWith('TOTAL TTC') || l.startsWith('TOTAL (exonéré')) return `<div class="bold">${l}</div>`;
       return `<div>${l}</div>`;
     })
     .join('\n')}

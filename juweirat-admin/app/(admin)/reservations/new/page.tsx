@@ -171,6 +171,7 @@ function NewReservationPageInner() {
   const [carteExpiration, setCarteExpiration] = useState('');
   const [source,   setSource]   = useState<string>(SOURCES[0]);
   const [currency, setCurrency] = useState<string>(CURRENCIES[0]);
+  const [tvaExonere, setTvaExonere] = useState(false);
   const [discount, setDiscount] = useState('0');
   const [deposit,  setDeposit]  = useState('0');
 
@@ -408,6 +409,7 @@ function NewReservationPageInner() {
         carteSuffix,
         carteExpiration:     garantieType === 'Carte' ? carteExpiration : null,
         prestations:         prestationsPayload.length > 0 ? prestationsPayload : null,
+        tvaExonere,
       };
       const created = await reservations.create(body);
       router.push(`/reservations/${created.id}`);
@@ -1026,6 +1028,25 @@ function NewReservationPageInner() {
                   <input inputMode="numeric" value={deposit} onChange={e => setDeposit(e.target.value)} placeholder="0" style={fieldInput} />
                 </label>
               </div>
+
+              <label style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 20,
+                padding: '13px 14px', border: `1px solid ${C.sep}`,
+                borderRadius: 10, background: '#f8faf9', cursor: 'pointer',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={tvaExonere}
+                  onChange={e => setTvaExonere(e.target.checked)}
+                  style={{ marginTop: 2, accentColor: C.accent }}
+                />
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: C.ink }}>Exonération de TVA</span>
+                  <span style={{ fontSize: 11, color: C.ink4 }}>
+                    Si coché, les factures liées à ce séjour ne feront pas apparaître de TVA. Sinon la facture est décomposée en HT + TVA 18% + TTC.
+                  </span>
+                </span>
+              </label>
             </section>
           )}
 

@@ -174,6 +174,7 @@ export const reservations = {
     checkInDate: string; checkOutDate: string;
     prestations: Array<{ prestationId: number; quantite: number }> | null;
     acceptRefundImbalance: boolean;
+    tvaExonere: boolean;
   }>) => request<import('./types').ReservationDto>(`/api/reservations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 };
 

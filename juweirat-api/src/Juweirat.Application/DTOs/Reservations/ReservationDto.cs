@@ -42,7 +42,8 @@ public record ReservationDto(
     string? CarteExpiration,
     decimal TotalHebergement,
     decimal TotalPrestations,
-    List<ReservationPrestationDto> Prestations
+    List<ReservationPrestationDto> Prestations,
+    bool TvaExonere = false
 );
 
 public record CreateReservationRequest(
@@ -62,7 +63,8 @@ public record CreateReservationRequest(
     string? CarteNom = null,
     string? CarteSuffix = null,
     string? CarteExpiration = null,
-    List<PrestationLigneRequest>? Prestations = null
+    List<PrestationLigneRequest>? Prestations = null,
+    bool TvaExonere = false
 );
 
 public record UpdateReservationStatusRequest(
@@ -126,5 +128,7 @@ public record UpdateReservationRequest(
     // Prestations : si non null, remplace la liste actuelle (delete-then-add).
     List<PrestationLigneRequest>? Prestations = null,
     // Confirmation explicite requise si le nouveau total est inférieur à AmountPaid.
-    bool AcceptRefundImbalance    = false
+    bool AcceptRefundImbalance    = false,
+    // Exonération TVA (bool? = pas de modification si null).
+    bool? TvaExonere              = null
 );

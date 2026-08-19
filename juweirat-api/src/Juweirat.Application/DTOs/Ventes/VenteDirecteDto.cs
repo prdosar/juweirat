@@ -18,7 +18,8 @@ public record VenteDirecteDto(
     string Mode,
     string? PaymentMethod,
     string? Notes,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    bool TvaExonere = false
 );
 
 public record CreateVenteDirecteRequest(

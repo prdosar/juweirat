@@ -172,6 +172,7 @@ export interface VenteDirecteDto {
   paymentMethod: string | null;
   notes: string | null;
   createdAt: string;
+  tvaExonere?: boolean;
 }
 
 export interface PrestationAnnexeDto {
@@ -253,6 +254,7 @@ export interface ReservationDto {
   totalHebergement: number;
   totalPrestations: number;
   prestations: ReservationPrestationDto[];
+  tvaExonere?: boolean;
 }
 
 export interface PaymentDto {

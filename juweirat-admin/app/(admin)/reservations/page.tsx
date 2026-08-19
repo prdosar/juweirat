@@ -615,6 +615,7 @@ function EditReservationModal({ reservation, onClose, onSaved }: { reservation: 
     garantieMontantCash: reservation.garantieMontantCash?.toString() ?? '',
     carteNom:            reservation.carteNom ?? '',
     carteExpiration:     reservation.carteExpiration ?? '',
+    tvaExonere:          reservation.tvaExonere ?? false,
   });
 
   // Prestations : Map<prestationId, quantite>. Init depuis la résa.
@@ -711,6 +712,7 @@ function EditReservationModal({ reservation, onClose, onSaved }: { reservation: 
         checkOutDate:        form.checkOutDate,
         prestations:         prestationsPayload,
         acceptRefundImbalance: overpaid,
+        tvaExonere:          form.tvaExonere,
       });
       await onSaved();
     } catch (err: unknown) {
@@ -882,6 +884,17 @@ function EditReservationModal({ reservation, onClose, onSaved }: { reservation: 
                     </div>
                   </>
                 )}
+                <label className="sm:col-span-2 flex items-start gap-2.5 p-3 border border-gray-100 rounded-lg bg-gray-50/60 cursor-pointer">
+                  <input type="checkbox" checked={form.tvaExonere}
+                    onChange={e => setForm(f => ({ ...f, tvaExonere: e.target.checked }))}
+                    className="mt-0.5 accent-green" />
+                  <span className="flex flex-col gap-0.5">
+                    <span className="text-sm font-medium text-charcoal">Exonération de TVA</span>
+                    <span className="text-[11px] text-gray-500">
+                      Si coché, les factures n'appliqueront pas de TVA. Sinon la facture est décomposée en HT + TVA 18% + TTC.
+                    </span>
+                  </span>
+                </label>
               </div>
             </section>
           </div>

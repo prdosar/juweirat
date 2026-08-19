@@ -154,6 +154,12 @@ export interface FactureSnapshotDto {
   departure: string | null;
   nights: number;
   pax: number;
+  // Fiscalité — nullable pour rétro-compat avec les factures antérieures.
+  tvaExonere?: boolean | null;
+  totalHt?: number | null;
+  tva?: number | null;
+  totalTtc?: number | null;
+  tvaRate?: number | null;
 }
 
 export interface MaintenanceTicketDto {

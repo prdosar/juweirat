@@ -88,6 +88,8 @@ public class VenteDirecteService(AppDbContext db)
             Mode                 = req.Mode,
             PaymentMethod        = req.PaymentMethod,
             Notes                = req.Notes?.Trim(),
+            // TVA figée à la vente : SurChambre hérite du folio, sinon pas exonéré.
+            TvaExonere           = folio?.TvaExonere ?? false,
         };
 
         db.VentesDirectes.Add(vente);
@@ -121,7 +123,8 @@ public class VenteDirecteService(AppDbContext db)
             v.Mode,
             v.PaymentMethod,
             v.Notes,
-            v.CreatedAt
+            v.CreatedAt,
+            v.TvaExonere
         );
     }
 }

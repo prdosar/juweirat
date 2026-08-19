@@ -217,6 +217,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             CarteNom              = req.CarteNom,
             CarteSuffix           = req.CarteSuffix,
             CarteExpiration       = req.CarteExpiration,
+            TvaExonere            = req.TvaExonere,
         };
 
         db.Reservations.Add(reservation);
@@ -554,6 +555,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         if (req.CarteNom is not null)             r.CarteNom            = req.CarteNom;
         if (req.CarteSuffix is not null)          r.CarteSuffix         = req.CarteSuffix;
         if (req.CarteExpiration is not null)      r.CarteExpiration     = req.CarteExpiration;
+        if (req.TvaExonere.HasValue)              r.TvaExonere          = req.TvaExonere.Value;
 
         // ── Champs impactant le tarif : dates, catégorie, chambre ──────────────
         var newCheckIn   = req.CheckInDate  ?? r.CheckInDate;
@@ -726,6 +728,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             ResaStatus    = FolioStatus.Confirmee,
             ReservationId = r.Id,
             Note          = r.SpecialRequests,
+            TvaExonere    = r.TvaExonere,
         };
 
         db.Folios.Add(folio);
@@ -760,7 +763,8 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             r.AmountPaid, r.AmountDue,
             r.ConfirmedAt, r.CancelledAt, r.CreatedAt,
             r.GarantieType, r.GarantieMontantCash, r.CarteNom, r.CarteSuffix, r.CarteExpiration,
-            totalHeb, totalPrestations, prestationsDto
+            totalHeb, totalPrestations, prestationsDto,
+            r.TvaExonere
         );
     }
 }

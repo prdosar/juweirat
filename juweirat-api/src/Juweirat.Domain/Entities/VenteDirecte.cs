@@ -21,5 +21,8 @@ public class VenteDirecte
     public string? PaymentMethod { get; set; }          // "Espèces" | "Carte bancaire" | "Mobile Money"
     public string? Notes { get; set; }
 
+    // Figé au moment de la vente : hérite du folio si SurChambre, sinon false par défaut.
+    public bool TvaExonere { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
