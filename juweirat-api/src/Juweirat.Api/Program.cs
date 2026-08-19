@@ -158,6 +158,7 @@ using (var scope = app.Services.CreateScope())
     db.Database.Migrate();
     await PmsSeeder.SeedAsync(db);
     await AccountingSeeder.SeedAsync(db);
+    await UserSeeder.SeedAsync(db);
 }
 
 app.Run();
