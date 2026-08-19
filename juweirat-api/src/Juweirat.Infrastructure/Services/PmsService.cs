@@ -83,12 +83,70 @@ public class PmsService(AppDbContext db)
         if (!Enum.TryParse<MenageStatus>(req.StatutMenage, true, out var status))
             return (null, $"Invalid StatutMenage: {req.StatutMenage}. Valid: Propre, Sale");
 
-        room.StatutMenage = status;
+        // Passage à Propre : StaffId obligatoire pour tracer qui a nettoyé.
         if (status == MenageStatus.Propre)
-            room.LastCleaned = DateOnly.FromDateTime(DateTime.UtcNow);
+        {
+            if (req.StaffId is null)
+                return (null, "Merci d'indiquer la femme/valet de chambre qui a nettoyé.");
 
+            var staff = await db.MaintenanceStaff.FirstOrDefaultAsync(s => s.Id == req.StaffId.Value && s.IsActive);
+            if (staff is null)
+                return (null, "Personnel introuvable ou inactif.");
+
+            db.HousekeepingLogs.Add(new HousekeepingLog
+            {
+                RoomId    = room.Id,
+                StaffId   = staff.Id,
+                CleanedAt = DateTime.UtcNow,
+                Notes     = string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
+            });
+
+            room.LastCleaned = DateOnly.FromDateTime(DateTime.UtcNow);
+        }
+
+        room.StatutMenage = status;
         await db.SaveChangesAsync();
         return (await GetUnitByIdAsync(id), null);
+    }
+
+    public async Task<RoomHistoryDto?> GetRoomHistoryAsync(long roomId, int limit = 50)
+    {
+        var exists = await db.Rooms.AnyAsync(r => r.Id == roomId);
+        if (!exists) return null;
+
+        var housekeeping = await db.HousekeepingLogs
+            .Include(h => h.Staff)
+            .Where(h => h.RoomId == roomId)
+            .OrderByDescending(h => h.CleanedAt)
+            .Take(limit)
+            .Select(h => new HousekeepingLogDto(
+                h.Id, h.RoomId, h.StaffId,
+                h.Staff.FirstName + " " + h.Staff.LastName,
+                h.Staff.Phone,
+                h.CleanedAt, h.Notes
+            ))
+            .ToListAsync();
+
+        var tickets = await db.MaintenanceTickets
+            .Include(t => t.Staff)
+            .Include(t => t.Unit)
+            .Where(t => t.UnitId == roomId)
+            .OrderByDescending(t => t.CreatedAt)
+            .Take(limit)
+            .ToListAsync();
+
+        var maintenance = tickets.Select(t => new MaintenanceTicketDto(
+            t.Id, t.Zone,
+            t.UnitId, t.Unit?.NameFr,
+            t.Spot, t.Category,
+            t.Priority.ToString(), t.Title, t.Description,
+            t.Tech, t.Cost, t.Status.ToString(),
+            t.ResolvedAt, t.Note,
+            t.CreatedAt, t.UpdatedAt,
+            t.StaffId, t.Staff?.FullName, t.Staff?.Phone
+        )).ToList();
+
+        return new RoomHistoryDto(housekeeping, maintenance);
     }
 
     public async Task<(UnitDto? dto, string? error)> PatchHorsServiceAsync(long id, PatchHorsServiceRequest req)

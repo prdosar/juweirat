@@ -50,10 +50,15 @@ export const pmsConfig = {
 export const pmsUnits = {
   getAll:      () => pmsReq<UnitDto[]>('/api/pms/units'),
   getById:     (id: number) => pmsReq<UnitDto>(`/api/pms/units/${id}`),
-  patchMenage: (id: number, statutMenage: string) =>
-    pmsReq<UnitDto>(`/api/pms/units/${id}/menage`, { method: 'PATCH', body: JSON.stringify({ statutMenage }) }),
+  patchMenage: (id: number, statutMenage: string, staffId?: number, notes?: string) =>
+    pmsReq<UnitDto>(`/api/pms/units/${id}/menage`, {
+      method: 'PATCH',
+      body: JSON.stringify({ statutMenage, staffId: staffId ?? null, notes: notes ?? null }),
+    }),
   patchHs:     (id: number, horsService: boolean) =>
     pmsReq<UnitDto>(`/api/pms/units/${id}/hs`, { method: 'PATCH', body: JSON.stringify({ horsService }) }),
+  getHistory:  (id: number, limit = 50) =>
+    pmsReq<import('./pmsTypes').RoomHistoryDto>(`/api/pms/units/${id}/history?limit=${limit}`),
 };
 
 // ── Folios ────────────────────────────────────────────────────────────────────

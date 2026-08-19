@@ -42,8 +42,27 @@ public record UnitDto(
     string? CurrentFolioNumber
 );
 
-public record PatchMenageRequest([Required] string StatutMenage);   // Propre | Sale
+public record PatchMenageRequest(
+    [Required] string StatutMenage,   // Propre | Sale
+    long? StaffId = null,             // requis quand StatutMenage=Propre
+    string? Notes = null
+);
 public record PatchHorsServiceRequest([Required] bool HorsService);
+
+public record HousekeepingLogDto(
+    long Id,
+    long RoomId,
+    long StaffId,
+    string StaffFullName,
+    string? StaffPhone,
+    DateTime CleanedAt,
+    string? Notes
+);
+
+public record RoomHistoryDto(
+    List<HousekeepingLogDto> Housekeeping,
+    List<MaintenanceTicketDto> Maintenance
+);
 
 public record FolioDto(
     long Id,

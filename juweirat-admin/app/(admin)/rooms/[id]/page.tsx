@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import { rooms, amenities, categories, roomImages } from '@/lib/api';
+import { pmsUnits } from '@/lib/pms';
 import type { RoomDto, AmenityDto, RoomCategoryDto, RoomImageDto } from '@/lib/types';
-import { ArrowLeft, Save, ImagePlus, Trash2, Star } from 'lucide-react';
+import type { RoomHistoryDto } from '@/lib/pmsTypes';
+import { ArrowLeft, Save, ImagePlus, Trash2, Star, Sparkles, Wrench, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
 
 
@@ -71,6 +73,24 @@ export default function RoomFormPage() {
   const [uploadErr, setUploadErr] = useState('');
   const fileInputRef              = useRef<HTMLInputElement>(null);
 
+  // Historique (only for existing rooms)
+  const [history,        setHistory]        = useState<RoomHistoryDto | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError,   setHistoryError]   = useState('');
+
+  const loadHistory = useCallback(async (roomId: number) => {
+    setHistoryLoading(true);
+    setHistoryError('');
+    try {
+      const h = await pmsUnits.getHistory(roomId);
+      setHistory(h);
+    } catch (e: unknown) {
+      setHistoryError(e instanceof Error ? e.message : "Impossible de charger l'historique.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
   const [form, setForm] = useState({
     roomNumber: '', floor: 2, nameFr: '', nameEn: '',
     descriptionFr: '', descriptionEn: '',
@@ -101,8 +121,9 @@ export default function RoomFormPage() {
         });
         setImages(r.images ?? []);
       }).finally(() => setLoading(false));
+      loadHistory(Number(id));
     }
-  }, [id, isNew]);
+  }, [id, isNew, loadHistory]);
 
   function set(field: string, value: unknown) {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -471,6 +492,116 @@ export default function RoomFormPage() {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── Historique (chambre existante uniquement) ─────────────── */}
+        {!isNew && (
+          <div className="mt-6 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div>
+                <h2 className="text-sm font-semibold text-charcoal">Historique de la chambre</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Ménage et travaux effectués sur cette chambre</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => loadHistory(Number(id))}
+                disabled={historyLoading}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-charcoal disabled:opacity-50"
+              >
+                <RotateCcw size={12} className={historyLoading ? 'animate-spin' : ''} />
+                Rafraîchir
+              </button>
+            </div>
+
+            {historyError && (
+              <div className="mx-5 mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2">
+                {historyError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100">
+              {/* Ménage */}
+              <div className="p-5 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles size={14} className="text-blue-600" />
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Nettoyages</h3>
+                  {history && (
+                    <span className="text-[10px] text-gray-400">({history.housekeeping.length})</span>
+                  )}
+                </div>
+                {!history ? (
+                  <p className="text-xs text-gray-400">Chargement…</p>
+                ) : history.housekeeping.length === 0 ? (
+                  <p className="text-xs text-gray-400">Aucun nettoyage enregistré.</p>
+                ) : (
+                  <ul className="space-y-2 max-h-80 overflow-auto">
+                    {history.housekeeping.map(h => (
+                      <li key={h.id} className="border-l-2 border-blue-200 pl-3 py-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-sm font-medium text-charcoal">{h.staffFullName}</span>
+                          <span className="text-[10px] text-gray-400 whitespace-nowrap">
+                            {new Date(h.cleanedAt).toLocaleString('fr-FR', {
+                              day: '2-digit', month: 'short', year: 'numeric',
+                              hour: '2-digit', minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+                        {h.notes && (
+                          <p className="text-xs text-gray-500 italic mt-0.5">{h.notes}</p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {/* Maintenance */}
+              <div className="p-5 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Wrench size={14} className="text-amber-600" />
+                  <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Maintenance</h3>
+                  {history && (
+                    <span className="text-[10px] text-gray-400">({history.maintenance.length})</span>
+                  )}
+                </div>
+                {!history ? (
+                  <p className="text-xs text-gray-400">Chargement…</p>
+                ) : history.maintenance.length === 0 ? (
+                  <p className="text-xs text-gray-400">Aucun ticket de maintenance.</p>
+                ) : (
+                  <ul className="space-y-2 max-h-80 overflow-auto">
+                    {history.maintenance.map(t => {
+                      const statusColor =
+                        t.status === 'Resolu'  ? 'text-green-dark' :
+                        t.status === 'EnCours' ? 'text-amber-700'  :
+                        'text-gray-500';
+                      return (
+                        <li key={t.id} className="border-l-2 border-amber-200 pl-3 py-1">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-sm font-medium text-charcoal">{t.title}</span>
+                            <span className="text-[10px] text-gray-400 whitespace-nowrap">
+                              {new Date(t.createdAt).toLocaleString('fr-FR', {
+                                day: '2-digit', month: 'short', year: 'numeric',
+                                hour: '2-digit', minute: '2-digit',
+                              })}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-500 mt-0.5">
+                            <span className="font-medium">{t.category}</span>
+                            {t.staffNom && <span>· {t.staffNom}</span>}
+                            <span className={`font-semibold ${statusColor}`}>· {t.status}</span>
+                          </div>
+                          {t.description && (
+                            <p className="text-xs text-gray-500 italic mt-1">{t.description}</p>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>

@@ -33,6 +33,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<CompanyTarif>          CompanyTarifs          { get; set; }
     public DbSet<MaintenanceCategory>   MaintenanceCategories  { get; set; }
     public DbSet<MaintenanceStaff>      MaintenanceStaff       { get; set; }
+    public DbSet<HousekeepingLog>       HousekeepingLogs       { get; set; }
 
     // ── Compta : comptes, mouvements, caisses, sessions ─────────────────────
     public DbSet<Account>          Accounts          { get; set; }
@@ -363,6 +364,23 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
              .HasForeignKey(d => d.FolioId)
              .IsRequired(false)
              .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ── Housekeeping logs ─────────────────────────────────────
+        modelBuilder.Entity<HousekeepingLog>(e =>
+        {
+            e.HasOne(h => h.Room)
+             .WithMany()
+             .HasForeignKey(h => h.RoomId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(h => h.Staff)
+             .WithMany()
+             .HasForeignKey(h => h.StaffId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasIndex(h => new { h.RoomId, h.CleanedAt });
+            e.HasIndex(h => h.StaffId);
         });
 
         // ── Compta : accounts ─────────────────────────────────────

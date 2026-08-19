@@ -2,19 +2,21 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Header from '@/components/Header';
-import { pmsUnits } from '@/lib/pms';
-import type { UnitDto } from '@/lib/pmsTypes';
-import { CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { pmsUnits, pmsMaintenanceCategories, pmsMaintenanceStaff } from '@/lib/pms';
+import type { UnitDto, MaintenanceStaffDto } from '@/lib/pmsTypes';
+import { CheckCircle, XCircle, AlertTriangle, X } from 'lucide-react';
 
 const FLOORS = [2, 4, 5, 6];
+const HOUSEKEEPING_CATEGORY_NAME = 'Femme/Valet de chambre';
 
 type MenageAction = 'Propre' | 'Sale';
 
-function UnitCard({ unit, onUpdate }: { unit: UnitDto; onUpdate: () => void }) {
+function UnitCard({ unit, onUpdate, onOpenPropreModal }: { unit: UnitDto; onUpdate: () => void; onOpenPropreModal: (unit: UnitDto) => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr]   = useState('');
 
   async function patch(statut: MenageAction) {
+    if (statut === 'Propre') { onOpenPropreModal(unit); return; }
     setBusy(true); setErr('');
     try { await pmsUnits.patchMenage(unit.id, statut); onUpdate(); }
     catch (e: unknown) { setErr(e instanceof Error ? e.message : 'Erreur'); }
@@ -79,11 +81,41 @@ function UnitCard({ unit, onUpdate }: { unit: UnitDto; onUpdate: () => void }) {
 export default function GouvernantePage() {
   const [units, setUnits]   = useState<UnitDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [modalUnit, setModalUnit] = useState<UnitDto | null>(null);
+  const [staffList, setStaffList] = useState<MaintenanceStaffDto[]>([]);
+  const [staffLoading, setStaffLoading] = useState(false);
+  const [staffError, setStaffError] = useState('');
 
   const load = useCallback(() => {
     pmsUnits.getAll().then(u => { setUnits(u); setLoading(false); });
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  // Charge la liste des femmes/valets de chambre à la première ouverture de la modale.
+  const openPropreModal = useCallback(async (unit: UnitDto) => {
+    setModalUnit(unit);
+    setStaffError('');
+    if (staffList.length > 0) return;
+    setStaffLoading(true);
+    try {
+      const categories = await pmsMaintenanceCategories.getAll();
+      const cat = categories.find(c => c.name === HOUSEKEEPING_CATEGORY_NAME && c.isActive);
+      if (!cat) {
+        setStaffError(`Catégorie "${HOUSEKEEPING_CATEGORY_NAME}" introuvable. Créez-la via /pms/personnel.`);
+        setStaffList([]);
+        return;
+      }
+      const staff = await pmsMaintenanceStaff.getAll({ categoryId: cat.id, activeOnly: true });
+      setStaffList(staff);
+      if (staff.length === 0) {
+        setStaffError('Aucun personnel actif dans cette catégorie. Ajoutez-en via /pms/personnel.');
+      }
+    } catch (e: unknown) {
+      setStaffError(e instanceof Error ? e.message : "Impossible de charger la liste du personnel.");
+    } finally {
+      setStaffLoading(false);
+    }
+  }, [staffList.length]);
 
   const toClean = units.filter(u => u.statutMenage === 'Sale' && !u.horsService).length;
   const hs      = units.filter(u => u.horsService).length;
@@ -134,7 +166,7 @@ export default function GouvernantePage() {
                       {/* Left column */}
                       <div className="space-y-2">
                         {leftCol.map(u => (
-                          <UnitCard key={u.id} unit={u} onUpdate={load} />
+                          <UnitCard key={u.id} unit={u} onUpdate={load} onOpenPropreModal={openPropreModal} />
                         ))}
                         {Array.from({ length: maxRows - leftCol.length }).map((_, i) => (
                           <div key={i} className="rounded-xl border border-dashed border-gray-100 p-3.5 min-h-[4rem]" />
@@ -149,7 +181,7 @@ export default function GouvernantePage() {
                       {/* Right column */}
                       <div className="space-y-2">
                         {rightCol.map(u => (
-                          <UnitCard key={u.id} unit={u} onUpdate={load} />
+                          <UnitCard key={u.id} unit={u} onUpdate={load} onOpenPropreModal={openPropreModal} />
                         ))}
                         {Array.from({ length: maxRows - rightCol.length }).map((_, i) => (
                           <div key={i} className="rounded-xl border border-dashed border-gray-100 p-3.5 min-h-[4rem]" />
@@ -162,6 +194,107 @@ export default function GouvernantePage() {
             })}
           </>
         )}
+      </div>
+
+      {modalUnit && (
+        <PropreConfirmModal
+          unit={modalUnit}
+          staffList={staffList}
+          staffLoading={staffLoading}
+          staffError={staffError}
+          onClose={() => setModalUnit(null)}
+          onDone={async () => { setModalUnit(null); load(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function PropreConfirmModal({
+  unit, staffList, staffLoading, staffError, onClose, onDone,
+}: {
+  unit: UnitDto;
+  staffList: MaintenanceStaffDto[];
+  staffLoading: boolean;
+  staffError: string;
+  onClose: () => void;
+  onDone: () => void | Promise<void>;
+}) {
+  const [staffId, setStaffId] = useState<number>(0);
+  const [notes,   setNotes]   = useState('');
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState('');
+
+  useEffect(() => {
+    function onEsc(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', onEsc);
+    document.body.style.overflow = 'hidden';
+    return () => { document.removeEventListener('keydown', onEsc); document.body.style.overflow = ''; };
+  }, [onClose]);
+
+  async function submit() {
+    if (!staffId) { setError('Sélectionnez la personne qui a nettoyé.'); return; }
+    setSaving(true); setError('');
+    try {
+      await pmsUnits.patchMenage(unit.id, 'Propre', staffId, notes.trim() || undefined);
+      await onDone();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Erreur');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100">
+          <div>
+            <h2 className="text-sm font-bold text-charcoal">Chambre remise propre</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Apt {unit.pmsRoomNo} · {unit.pmsType} {unit.pmsGamme}</p>
+          </div>
+          <button type="button" onClick={onClose} className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-charcoal flex items-center justify-center">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          {(error || staffError) && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">
+              {error || staffError}
+            </div>
+          )}
+          <div>
+            <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+              Personne qui a nettoyé <span className="text-red-500">*</span>
+            </label>
+            <select value={staffId} onChange={e => setStaffId(Number(e.target.value))}
+              disabled={staffLoading || staffList.length === 0}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green/30 focus:border-green/40 disabled:opacity-50">
+              <option value={0}>{staffLoading ? 'Chargement…' : '— Sélectionner —'}</option>
+              {staffList.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.fullName}{s.phone ? ` · ${s.phone}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+              Observations (optionnel)
+            </label>
+            <textarea rows={2} value={notes} onChange={e => setNotes(e.target.value)}
+              placeholder="Ex : linge changé, dégât signalé…"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green/30 focus:border-green/40 resize-none" />
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-gray-100 bg-gray-50/50">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:text-charcoal">Annuler</button>
+          <button type="button" onClick={submit} disabled={saving || !staffId}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-green-dark text-white text-sm font-medium rounded-lg hover:bg-green disabled:opacity-60">
+            {saving ? 'Enregistrement…' : 'Confirmer'}
+          </button>
+        </div>
       </div>
     </div>
   );

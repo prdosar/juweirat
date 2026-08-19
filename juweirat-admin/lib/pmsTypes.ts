@@ -191,6 +191,21 @@ export interface MaintenanceCategoryDto {
   staffCount: number;
 }
 
+export interface HousekeepingLogDto {
+  id: number;
+  roomId: number;
+  staffId: number;
+  staffFullName: string;
+  staffPhone: string | null;
+  cleanedAt: string;
+  notes: string | null;
+}
+
+export interface RoomHistoryDto {
+  housekeeping: HousekeepingLogDto[];
+  maintenance: MaintenanceTicketDto[];
+}
+
 export interface MaintenanceStaffDto {
   id: number;
   categoryId: number;
