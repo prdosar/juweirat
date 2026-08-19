@@ -2,7 +2,8 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# fetch-timeout élevé + retries pour tolérer les networks lents/instables (VPS ou Windows local)
+RUN npm ci --fetch-timeout=600000 --fetch-retries=5 --fetch-retry-mintimeout=20000
 
 # Stage 2 — builder
 FROM node:22-alpine AS builder
