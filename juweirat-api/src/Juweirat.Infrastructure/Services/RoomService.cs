@@ -24,7 +24,8 @@ public class RoomService(AppDbContext db)
             query = query.Where(r => r.Floor == floor);
 
         var rooms = await query.OrderBy(r => r.Floor).ThenBy(r => r.RoomNumber).ToListAsync();
-        return rooms.Select(ToDto).ToList();
+        var occupations = await LoadCurrentOccupationsAsync(rooms.Select(r => r.Id).ToList());
+        return rooms.Select(r => ToDto(r, occupations.GetValueOrDefault(r.Id))).ToList();
     }
 
     public async Task<RoomDto?> GetByIdAsync(long id)
@@ -34,7 +35,43 @@ public class RoomService(AppDbContext db)
             .Include(r => r.Amenities)
             .Include(r => r.Category)
             .FirstOrDefaultAsync(r => r.Id == id);
-        return room is null ? null : ToDto(room);
+        if (room is null) return null;
+        var occupations = await LoadCurrentOccupationsAsync(new List<long> { room.Id });
+        return ToDto(room, occupations.GetValueOrDefault(room.Id));
+    }
+
+    /// <summary>
+    /// Pour chaque roomId fourni, renvoie la réservation "active" qui couvre la journée
+    /// courante (checkIn ≤ today AND checkOut > today, statuts non-terminés).
+    /// </summary>
+    private async Task<Dictionary<long, RoomOccupationDto>> LoadCurrentOccupationsAsync(List<long> roomIds)
+    {
+        if (roomIds.Count == 0) return new();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        var resas = await db.Reservations
+            .Include(r => r.Client).ThenInclude(c => c!.Company)
+            .Where(r =>
+                r.RoomId != null && roomIds.Contains(r.RoomId.Value) &&
+                r.Status != ReservationStatus.Cancelled &&
+                r.Status != ReservationStatus.NoShow &&
+                r.Status != ReservationStatus.CheckedOut &&
+                r.CheckInDate  <= today &&
+                r.CheckOutDate  > today)
+            .ToListAsync();
+
+        var dict = new Dictionary<long, RoomOccupationDto>();
+        foreach (var r in resas)
+        {
+            dict[r.RoomId!.Value] = new RoomOccupationDto(
+                r.Id, r.Reference,
+                r.Client.FullName,
+                r.Client.Company?.Name,
+                r.CheckInDate, r.CheckOutDate,
+                r.Status.ToString()
+            );
+        }
+        return dict;
     }
 
     public async Task<RoomDto> CreateAsync(CreateRoomRequest req)
@@ -253,10 +290,10 @@ public class RoomService(AppDbContext db)
             .OrderBy(r => r.Floor)
             .ToListAsync();
 
-        return rooms.Select(ToDto).ToList();
+        return rooms.Select(r => ToDto(r)).ToList();
     }
 
-    private static RoomDto ToDto(Room r) => new(
+    private static RoomDto ToDto(Room r, RoomOccupationDto? occupation = null) => new(
         r.Id, r.RoomNumber, r.Floor,
         r.NameFr, r.NameEn, r.DescriptionFr, r.DescriptionEn,
         r.CapacityAdults, r.CapacityChildren, r.SizeSqm,
@@ -265,6 +302,7 @@ public class RoomService(AppDbContext db)
         r.IsFeatured,
         r.CategoryId, r.Category?.Slug, r.PmsType, r.PmsGamme,
         r.Images.Select(i => new RoomImageDto(i.Id, i.FilePath, i.AltTextFr, i.AltTextEn, i.SortOrder, i.IsCover)).ToList(),
-        r.Amenities.Select(a => new AmenityDto(a.Id, a.NameFr, a.NameEn, a.Icon)).ToList()
+        r.Amenities.Select(a => new AmenityDto(a.Id, a.NameFr, a.NameEn, a.Icon)).ToList(),
+        occupation
     );
 }

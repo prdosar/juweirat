@@ -23,7 +23,19 @@ public record RoomDto(
     string? PmsType,
     string? PmsGamme,
     List<RoomImageDto> Images,
-    List<AmenityDto> Amenities
+    List<AmenityDto> Amenities,
+    RoomOccupationDto? CurrentOccupation = null
+);
+
+/// <summary>Résa qui couvre la journée courante (client + jusqu'à quelle date).</summary>
+public record RoomOccupationDto(
+    long ReservationId,
+    string Reference,
+    string ClientName,
+    string? CompanyName,
+    DateOnly CheckInDate,
+    DateOnly CheckOutDate,
+    string Status
 );
 
 public record RoomImageDto(

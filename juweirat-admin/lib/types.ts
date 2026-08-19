@@ -63,6 +63,17 @@ export interface RoomDto {
   pmsGamme: string | null;
   images: RoomImageDto[];
   amenities: AmenityDto[];
+  currentOccupation?: RoomOccupationDto | null;
+}
+
+export interface RoomOccupationDto {
+  reservationId: number;
+  reference: string;
+  clientName: string;
+  companyName: string | null;
+  checkInDate: string;
+  checkOutDate: string;
+  status: string;
 }
 
 export interface ClientDto {
