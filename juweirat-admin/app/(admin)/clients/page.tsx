@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import PaginationControl from '@/components/PaginationControl';
+import DuplicateClientDialog from '@/components/DuplicateClientDialog';
 import { clients, companies as companiesApi } from '@/lib/api';
 import type { ClientDto, CompanyDto, PagedResult } from '@/lib/types';
 import {
@@ -268,6 +269,7 @@ function ClientModal({
   const [companyList, setCompanyList] = useState<CompanyDto[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
+  const [duplicates, setDuplicates] = useState<ClientDto[] | null>(null); // null = pas encore checké
 
   useEffect(() => {
     companiesApi.getAll().then(setCompanyList).catch(() => setCompanyList([]));
@@ -280,10 +282,7 @@ function ClientModal({
     };
   }, [onClose]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.firstName.trim()) { setError('Le prénom est obligatoire.'); return; }
-    if (!form.lastName.trim())  { setError('Le nom est obligatoire.'); return; }
+  async function submitClient(force: boolean) {
     setSaving(true); setError('');
     try {
       const body = {
@@ -311,6 +310,29 @@ function ClientModal({
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.firstName.trim()) { setError('Le prénom est obligatoire.'); return; }
+    if (!form.lastName.trim())  { setError('Le nom est obligatoire.'); return; }
+
+    // Vérification homonymes uniquement à la création (pas en édition)
+    if (!isEdit) {
+      setSaving(true); setError('');
+      try {
+        const fullName = `${form.firstName.trim()} ${form.lastName.trim()}`.trim().toLowerCase();
+        const results = await clients.getAll(fullName);
+        const matches = results.filter(c => c.fullName.trim().toLowerCase() === fullName);
+        if (matches.length > 0) {
+          setDuplicates(matches);
+          setSaving(false);
+          return; // affiche le dialog de confirmation
+        }
+      } catch { /* si l'API échoue, on tente la création (le backend ne rejettera pas les homonymes) */ }
+    }
+
+    await submitClient(false);
   }
 
   const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green/30 focus:border-green/40';
@@ -483,6 +505,17 @@ function ClientModal({
           </div>
         </form>
       </div>
+
+      {duplicates && (
+        <DuplicateClientDialog
+          duplicates={duplicates}
+          firstName={form.firstName}
+          lastName={form.lastName}
+          saving={saving}
+          onCancel={() => setDuplicates(null)}
+          onConfirm={async () => { setDuplicates(null); await submitClient(true); }}
+        />
+      )}
     </div>
   );
 }

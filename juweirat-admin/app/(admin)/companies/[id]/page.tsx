@@ -5,6 +5,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import { companies, categories as categoriesApi, clients as clientsApi } from '@/lib/api';
 import type { ClientDto, CompanyDetailDto, CompanyStayDto, RoomCategoryDto } from '@/lib/types';
+import DuplicateClientDialog from '@/components/DuplicateClientDialog';
 
 const COUNTRIES  = ["Côte d'Ivoire", 'Sénégal', 'Burkina Faso', 'France', 'Togo', 'Bénin', 'Ghana', 'Autre'];
 const DOC_TYPES  = ['Passeport', "Carte d'identité", 'Carte de séjour', 'Permis de conduire'];
@@ -394,6 +395,7 @@ function AddClientToCompanyModal({
   const [mode, setMode] = useState<'new' | 'existing'>('new');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [duplicates, setDuplicates] = useState<ClientDto[] | null>(null);
 
   // Create-client form
   const [form, setForm] = useState({
@@ -423,10 +425,7 @@ function AddClientToCompanyModal({
     return () => clearTimeout(t);
   }, [mode, pickerQuery]);
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.firstName.trim()) { setError('Le prénom est obligatoire.'); return; }
-    if (!form.lastName.trim())  { setError('Le nom est obligatoire.'); return; }
+  async function createClientDirect() {
     setSaving(true); setError('');
     try {
       await clientsApi.create({
@@ -449,6 +448,27 @@ function AddClientToCompanyModal({
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.firstName.trim()) { setError('Le prénom est obligatoire.'); return; }
+    if (!form.lastName.trim())  { setError('Le nom est obligatoire.'); return; }
+
+    // Vérification homonymes exacts avant création
+    setSaving(true); setError('');
+    try {
+      const fullName = `${form.firstName.trim()} ${form.lastName.trim()}`.trim().toLowerCase();
+      const results = await clientsApi.getAll(fullName);
+      const matches = results.filter(c => c.fullName.trim().toLowerCase() === fullName);
+      if (matches.length > 0) {
+        setDuplicates(matches);
+        setSaving(false);
+        return;
+      }
+    } catch { /* on tente quand même la création */ }
+
+    await createClientDirect();
   }
 
   async function assignExisting(clientId: number) {
@@ -679,6 +699,17 @@ function AddClientToCompanyModal({
           </div>
         )}
       </div>
+
+      {duplicates && (
+        <DuplicateClientDialog
+          duplicates={duplicates}
+          firstName={form.firstName}
+          lastName={form.lastName}
+          saving={saving}
+          onCancel={() => setDuplicates(null)}
+          onConfirm={async () => { setDuplicates(null); await createClientDirect(); }}
+        />
+      )}
     </div>
   );
 }

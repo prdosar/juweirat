@@ -21,11 +21,16 @@ public class PrestationAnnexeService(AppDbContext db)
         return p is null ? null : ToDto(p);
     }
 
-    public async Task<PrestationAnnexeDto> CreateAsync(CreatePrestationRequest req)
+    public async Task<(PrestationAnnexeDto? dto, string? error)> CreateAsync(CreatePrestationRequest req)
     {
+        var name = req.NameFr.Trim();
+        var lower = name.ToLower();
+        var exists = await db.PrestationsAnnexes.AnyAsync(p => p.NameFr.ToLower() == lower);
+        if (exists) return (null, $"Une prestation nommée « {name} » existe déjà.");
+
         var p = new PrestationAnnexe
         {
-            NameFr    = req.NameFr,
+            NameFr    = name,
             NameEn    = req.NameEn,
             Icon      = req.Icon,
             Mode      = req.Mode,
@@ -35,15 +40,22 @@ public class PrestationAnnexeService(AppDbContext db)
         };
         db.PrestationsAnnexes.Add(p);
         await db.SaveChangesAsync();
-        return ToDto(p);
+        return (ToDto(p), null);
     }
 
-    public async Task<PrestationAnnexeDto?> UpdateAsync(long id, UpdatePrestationRequest req)
+    public async Task<(PrestationAnnexeDto? dto, string? error)> UpdateAsync(long id, UpdatePrestationRequest req)
     {
         var p = await db.PrestationsAnnexes.FindAsync(id);
-        if (p is null) return null;
+        if (p is null) return (null, null);
 
-        if (req.NameFr is not null) p.NameFr = req.NameFr;
+        if (req.NameFr is not null)
+        {
+            var name = req.NameFr.Trim();
+            var lower = name.ToLower();
+            var conflict = await db.PrestationsAnnexes.AnyAsync(x => x.Id != id && x.NameFr.ToLower() == lower);
+            if (conflict) return (null, $"Une prestation nommée « {name} » existe déjà.");
+            p.NameFr = name;
+        }
         if (req.NameEn is not null) p.NameEn = req.NameEn;
         if (req.Icon is not null)   p.Icon   = req.Icon;
         if (req.Mode is not null)   p.Mode   = req.Mode;
@@ -54,7 +66,7 @@ public class PrestationAnnexeService(AppDbContext db)
         p.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
-        return ToDto(p);
+        return (ToDto(p), null);
     }
 
     public async Task<bool> DeleteAsync(long id)

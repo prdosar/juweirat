@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { categories, clients, companies, rooms, reservations, prestations } from '@/lib/api';
 import type { ClientDto, CompanyDto, CompanyTarifDto, PrestationAnnexeDto, RoomCategoryDto, RoomDto, TarifPreviewDto } from '@/lib/types';
+import DuplicateClientDialog from '@/components/DuplicateClientDialog';
 
 /* ────────────────────────── Design tokens ───────────────────────── */
 const C = {
@@ -197,6 +198,8 @@ export default function NewReservationPage() {
   // ── Submit ──
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
+  const [duplicates, setDuplicates] = useState<ClientDto[] | null>(null);
+  const [homonymConfirmed, setHomonymConfirmed] = useState(false);
 
   // ── Derived ──
   const nights   = nightsBetween(checkIn, checkOut);
@@ -315,20 +318,43 @@ export default function NewReservationPage() {
   function goPrev() { setError(''); setStep(s => Math.max(0, s - 1)); }
 
   /* ────────────────────────── Submit ────────────────────────── */
+  // Split firstname/lastname from the wizard's single-line "fullName" input
+  function splitNewClientName() {
+    const trimmed = newClient.fullName.trim().replace(/\s+/g, ' ');
+    const [firstName, ...rest] = trimmed.split(' ');
+    const lastName = rest.join(' ') || firstName;
+    return { firstName, lastName };
+  }
+
   async function handleConfirm() {
     setError('');
     for (let i = 0; i <= 4; i++) {
       const msg = validateStep(i);
       if (msg) { setStep(i); setError(msg); return; }
     }
+
+    // Homonym check for new-client mode — unless the user already confirmed via dialog
+    if (clientMode === 'new' && !homonymConfirmed) {
+      setSaving(true);
+      try {
+        const { firstName, lastName } = splitNewClientName();
+        const full = `${firstName} ${lastName}`.trim().toLowerCase();
+        const results = await clients.getAll(full);
+        const matches = results.filter(c => c.fullName.trim().toLowerCase() === full);
+        if (matches.length > 0) {
+          setDuplicates(matches);
+          setSaving(false);
+          return;
+        }
+      } catch { /* on continue quand même */ }
+    }
+
     setSaving(true);
     try {
       let finalClientId = clientId;
 
       if (clientMode === 'new') {
-        const trimmed = newClient.fullName.trim().replace(/\s+/g, ' ');
-        const [firstName, ...rest] = trimmed.split(' ');
-        const lastName = rest.join(' ') || firstName;
+        const { firstName, lastName } = splitNewClientName();
         const notesParts: string[] = [];
         if (newClient.type && newClient.type !== 'Particulier') notesParts.push(`Type : ${newClient.type}`);
         if (!newClient.saveToDirectory) notesParts.push('Fiche créée pour un séjour ponctuel.');
@@ -1092,6 +1118,17 @@ export default function NewReservationPage() {
           </div>
         </aside>
       </div>
+
+      {duplicates && (
+        <DuplicateClientDialog
+          duplicates={duplicates}
+          firstName={splitNewClientName().firstName}
+          lastName={splitNewClientName().lastName}
+          saving={saving}
+          onCancel={() => setDuplicates(null)}
+          onConfirm={() => { setDuplicates(null); setHomonymConfirmed(true); void handleConfirm(); }}
+        />
+      )}
     </div>
   );
 }

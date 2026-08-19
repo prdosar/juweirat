@@ -24,7 +24,8 @@ public class PrestationsController(PrestationAnnexeService svc) : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreatePrestationRequest req)
     {
-        var dto = await svc.CreateAsync(req);
+        var (dto, error) = await svc.CreateAsync(req);
+        if (error is not null) return Conflict(new { error });
         return StatusCode(201, dto);
     }
 
@@ -32,7 +33,8 @@ public class PrestationsController(PrestationAnnexeService svc) : ControllerBase
     [HttpPatch("{id:long}")]
     public async Task<IActionResult> Update(long id, [FromBody] UpdatePrestationRequest req)
     {
-        var dto = await svc.UpdateAsync(id, req);
+        var (dto, error) = await svc.UpdateAsync(id, req);
+        if (error is not null) return Conflict(new { error });
         return dto is null ? NotFound() : Ok(dto);
     }
 

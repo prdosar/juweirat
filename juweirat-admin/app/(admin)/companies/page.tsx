@@ -305,6 +305,19 @@ function CompanyModal({
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
+  // Preload all companies to detect duplicate names client-side
+  const [allCompanies, setAllCompanies] = useState<CompanyDto[]>([]);
+  useEffect(() => {
+    companies.getAll().then(setAllCompanies).catch(() => setAllCompanies([]));
+  }, []);
+
+  // Detect duplicate name (case-insensitive, trim), excluding current company when editing
+  const trimmedName = form.name.trim();
+  const nameLower = trimmedName.toLowerCase();
+  const duplicate = trimmedName.length > 0 && allCompanies.some(c =>
+    c.name.trim().toLowerCase() === nameLower && c.id !== initial?.id
+  );
+
   useEffect(() => {
     function onEsc(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
     document.addEventListener('keydown', onEsc);
@@ -318,6 +331,7 @@ function CompanyModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) { setError('Le nom est obligatoire.'); return; }
+    if (duplicate) { setError(`Une compagnie nommée « ${trimmedName} » existe déjà.`); return; }
     setSaving(true);
     setError('');
     try {
@@ -391,9 +405,15 @@ function CompanyModal({
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                 placeholder="Ex : Total Togo SA"
-                className={inputCls}
+                className={`${inputCls} ${duplicate ? 'border-red-300 focus:ring-red-100 focus:border-red-400' : ''}`}
                 autoFocus
               />
+              {duplicate && (
+                <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1">
+                  <span className="text-red-500">⚠</span>
+                  Ce nom est déjà utilisé par une autre compagnie.
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -467,8 +487,9 @@ function CompanyModal({
             >Annuler</button>
             <button
               type="submit"
-              disabled={saving}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-charcoal text-white text-sm font-medium rounded-lg hover:bg-charcoal-800 transition-colors disabled:opacity-60"
+              disabled={saving || duplicate || !form.name.trim()}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-charcoal text-white text-sm font-medium rounded-lg hover:bg-charcoal-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              title={duplicate ? `Nom déjà utilisé — choisissez un autre nom` : undefined}
             >
               {saving ? 'Enregistrement…' : (isEdit ? 'Mettre à jour' : 'Créer la compagnie')}
             </button>

@@ -149,15 +149,19 @@ public class ReservationService(AppDbContext db)
             }
         }
 
-        // Tarification selon le palier — priorité : tarif compagnie > tarif catégorie > tarif chambre
+        // Tarification selon le palier — priorité : tarif compagnie > tarif catégorie > tarif chambre.
+        // Exception : une résa venue du site web (source=website) N'APPLIQUE JAMAIS le tarif compagnie
+        // même si le client est rattaché à une entreprise. Les compagnies négocient et réservent
+        // uniquement via le back-office.
         var client = await db.Clients
             .Include(c => c.Company)
             .FirstOrDefaultAsync(c => c.Id == req.ClientId);
-        var resolved = await ResolveTarifAsync(client, category, room);
+        var isWebBooking = string.Equals(req.Source, "website", StringComparison.OrdinalIgnoreCase);
+        var resolved = await ResolveTarifAsync(client, category, room, applyCompanyTarif: !isWebBooking);
 
         Console.WriteLine(
             $"[TARIF] reservation.create clientId={req.ClientId} clientCompanyId={client?.CompanyId?.ToString() ?? "none"} " +
-            $"catId={category.Id} catName={category.NameFr} → source={resolved.Source} " +
+            $"source={req.Source ?? "n/a"} catId={category.Id} catName={category.NameFr} → tarifSource={resolved.Source} " +
             $"tarifNuit={resolved.TarifNuit} tarifN15={resolved.TarifN15} tarifN30={resolved.TarifN30} nights={nights}");
 
         var tarifResult   = TarifEngine.ForStay(resolved.TarifNuit, resolved.TarifN15, resolved.TarifN30, nights);
@@ -438,10 +442,10 @@ public class ReservationService(AppDbContext db)
         );
     }
 
-    private async Task<(int TarifNuit, int TarifN15, int TarifN30, string Source)> ResolveTarifAsync(Client? client, RoomCategory category, Room? room)
+    private async Task<(int TarifNuit, int TarifN15, int TarifN30, string Source)> ResolveTarifAsync(Client? client, RoomCategory category, Room? room, bool applyCompanyTarif = true)
     {
         CompanyTarif? companyTarif = null;
-        if (client?.CompanyId is not null)
+        if (applyCompanyTarif && client?.CompanyId is not null)
         {
             companyTarif = await db.CompanyTarifs.FirstOrDefaultAsync(
                 t => t.CompanyId == client.CompanyId && t.CategoryId == category.Id);

@@ -53,11 +53,16 @@ public class CompanyService(AppDbContext db)
         return company is null ? null : ToDetailDto(company);
     }
 
-    public async Task<CompanyDto> CreateAsync(CreateCompanyRequest req)
+    public async Task<(CompanyDto? dto, string? error)> CreateAsync(CreateCompanyRequest req)
     {
+        var name = req.Name.Trim();
+        var lower = name.ToLower();
+        var exists = await db.Companies.AnyAsync(c => c.Name.ToLower() == lower);
+        if (exists) return (null, $"Une compagnie nommée « {name} » existe déjà.");
+
         var company = new Company
         {
-            Name           = req.Name,
+            Name           = name,
             ResponsableNom = req.ResponsableNom,
             Phone          = req.Phone,
             Email          = req.Email,
@@ -68,15 +73,22 @@ public class CompanyService(AppDbContext db)
         db.Companies.Add(company);
         await db.SaveChangesAsync();
         company.Clients = [];
-        return ToDto(company);
+        return (ToDto(company), null);
     }
 
-    public async Task<CompanyDto?> UpdateAsync(long id, UpdateCompanyRequest req)
+    public async Task<(CompanyDto? dto, string? error)> UpdateAsync(long id, UpdateCompanyRequest req)
     {
         var company = await db.Companies.Include(c => c.Clients).FirstOrDefaultAsync(c => c.Id == id);
-        if (company is null) return null;
+        if (company is null) return (null, null); // controller returns 404 on null dto + null error
 
-        if (req.Name is not null)           company.Name           = req.Name;
+        if (req.Name is not null)
+        {
+            var name = req.Name.Trim();
+            var lower = name.ToLower();
+            var conflict = await db.Companies.AnyAsync(c => c.Id != id && c.Name.ToLower() == lower);
+            if (conflict) return (null, $"Une compagnie nommée « {name} » existe déjà.");
+            company.Name = name;
+        }
         if (req.ResponsableNom is not null) company.ResponsableNom = req.ResponsableNom;
         if (req.Phone is not null)          company.Phone          = req.Phone;
         if (req.Email is not null)          company.Email          = req.Email;
@@ -86,7 +98,7 @@ public class CompanyService(AppDbContext db)
         if (req.IsActive is not null)       company.IsActive       = req.IsActive.Value;
 
         await db.SaveChangesAsync();
-        return ToDto(company);
+        return (ToDto(company), null);
     }
 
     public async Task<(bool success, string? error)> SetTarifAsync(long companyId, SetCompanyTarifRequest req)

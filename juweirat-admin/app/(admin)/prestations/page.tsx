@@ -237,6 +237,18 @@ function PrestationModal({
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
+  // Preload all prestations to detect duplicate names client-side
+  const [allPrestations, setAllPrestations] = useState<PrestationAnnexeDto[]>([]);
+  useEffect(() => {
+    prestations.getAll(false).then(setAllPrestations).catch(() => setAllPrestations([]));
+  }, []);
+
+  const trimmedName = form.nameFr.trim();
+  const nameLower = trimmedName.toLowerCase();
+  const duplicate = trimmedName.length > 0 && allPrestations.some(p =>
+    p.nameFr.trim().toLowerCase() === nameLower && p.id !== initial?.id
+  );
+
   useEffect(() => {
     function onEsc(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
     document.addEventListener('keydown', onEsc);
@@ -254,6 +266,7 @@ function PrestationModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.nameFr.trim()) { setError('Le nom français est requis.'); return; }
+    if (duplicate) { setError(`Une prestation nommée « ${trimmedName} » existe déjà.`); return; }
     setSaving(true);
     setError('');
     try {
@@ -326,9 +339,15 @@ function PrestationModal({
                   value={form.nameFr}
                   onChange={e => set('nameFr', e.target.value)}
                   placeholder="Ex : Petit-déjeuner"
-                  className={inputCls}
+                  className={`${inputCls} ${duplicate ? 'border-red-300 focus:ring-red-100 focus:border-red-400' : ''}`}
                   autoFocus
                 />
+                {duplicate && (
+                  <p className="mt-1.5 text-xs text-red-600 flex items-center gap-1">
+                    <span className="text-red-500">⚠</span>
+                    Ce nom est déjà utilisé par une autre prestation.
+                  </p>
+                )}
               </div>
               <div>
                 <label className={labelCls}>Nom anglais</label>
@@ -404,8 +423,9 @@ function PrestationModal({
             >Annuler</button>
             <button
               type="submit"
-              disabled={saving}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-charcoal text-white text-sm font-medium rounded-lg hover:bg-charcoal-800 transition-colors disabled:opacity-60"
+              disabled={saving || duplicate || !form.nameFr.trim()}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-charcoal text-white text-sm font-medium rounded-lg hover:bg-charcoal-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              title={duplicate ? `Nom déjà utilisé — choisissez un autre nom` : undefined}
             >
               {saving ? 'Enregistrement…' : (isEdit ? 'Mettre à jour' : 'Créer la prestation')}
             </button>

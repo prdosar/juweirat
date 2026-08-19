@@ -28,14 +28,16 @@ public class CompaniesController(CompanyService companyService) : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateCompanyRequest req)
     {
-        var dto = await companyService.CreateAsync(req);
-        return CreatedAtAction(nameof(GetById), new { id = dto.Id }, dto);
+        var (dto, error) = await companyService.CreateAsync(req);
+        if (error is not null) return Conflict(new { error });
+        return CreatedAtAction(nameof(GetById), new { id = dto!.Id }, dto);
     }
 
     [HttpPatch("{id:long}")]
     public async Task<IActionResult> Update(long id, [FromBody] UpdateCompanyRequest req)
     {
-        var dto = await companyService.UpdateAsync(id, req);
+        var (dto, error) = await companyService.UpdateAsync(id, req);
+        if (error is not null) return Conflict(new { error });
         return dto is null ? NotFound() : Ok(dto);
     }
 
