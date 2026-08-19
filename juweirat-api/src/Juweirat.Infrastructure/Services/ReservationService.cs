@@ -533,15 +533,17 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         var r = await db.Reservations
             .Include(r => r.Room)
             .Include(r => r.Category)
-            .Include(r => r.Client)
+            .Include(r => r.Client).ThenInclude(c => c!.Company)
             .Include(r => r.Payments)
             .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
             .FirstOrDefaultAsync(r => r.Id == id);
 
         if (r is null) return (null, "Réservation introuvable");
-        if (r.Status is ReservationStatus.Cancelled or ReservationStatus.CheckedOut or ReservationStatus.NoShow)
-            return (null, "Une réservation terminée/annulée ne peut plus être modifiée");
+        if (r.Status is ReservationStatus.Cancelled or ReservationStatus.CheckedIn
+                       or ReservationStatus.CheckedOut or ReservationStatus.NoShow)
+            return (null, "Cette réservation ne peut plus être modifiée (annulée, en cours ou terminée). Utilisez le PMS pour intervenir sur un séjour en cours.");
 
+        // Champs simples (aucun impact tarifaire)
         if (req.Source is not null)               r.Source              = req.Source;
         if (req.SpecialRequests is not null)      r.SpecialRequests     = req.SpecialRequests;
         if (req.InternalNotes is not null)        r.InternalNotes       = req.InternalNotes;
@@ -553,8 +555,122 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         if (req.CarteSuffix is not null)          r.CarteSuffix         = req.CarteSuffix;
         if (req.CarteExpiration is not null)      r.CarteExpiration     = req.CarteExpiration;
 
+        // ── Champs impactant le tarif : dates, catégorie, chambre ──────────────
+        var newCheckIn   = req.CheckInDate  ?? r.CheckInDate;
+        var newCheckOut  = req.CheckOutDate ?? r.CheckOutDate;
+        var newCategoryId = req.CategoryId  ?? r.CategoryId;
+        var newRoomId     = req.RoomId      ?? r.RoomId;
+
+        var stayChanged = newCheckIn   != r.CheckInDate
+                       || newCheckOut  != r.CheckOutDate
+                       || newCategoryId != r.CategoryId
+                       || newRoomId     != r.RoomId;
+
+        var prestationsChanged = req.Prestations is not null;
+
+        if (stayChanged)
+        {
+            if (newCheckOut <= newCheckIn)
+                return (null, "La date de départ doit être postérieure à la date d'arrivée.");
+
+            var category = await db.RoomCategories.FindAsync(newCategoryId);
+            if (category is null) return (null, "Catégorie introuvable.");
+
+            Room? room = null;
+            if (newRoomId is not null)
+            {
+                room = await db.Rooms.Include(rm => rm.Category)
+                                     .FirstOrDefaultAsync(rm => rm.Id == newRoomId.Value);
+                if (room is null) return (null, "Chambre introuvable.");
+
+                var overlap = await db.Reservations.AnyAsync(x =>
+                    x.Id != r.Id &&
+                    x.RoomId == room.Id &&
+                    x.Status != ReservationStatus.Cancelled &&
+                    x.Status != ReservationStatus.NoShow &&
+                    x.CheckInDate  < newCheckOut &&
+                    x.CheckOutDate > newCheckIn);
+                if (overlap) return (null, "Cette chambre est déjà réservée pour la nouvelle période.");
+            }
+
+            var isWebBooking = string.Equals(r.Source, "website", StringComparison.OrdinalIgnoreCase);
+            var resolved = await ResolveTarifAsync(r.Client, category, room, applyCompanyTarif: !isWebBooking);
+            var nights   = newCheckOut.DayNumber - newCheckIn.DayNumber;
+            var tarif    = TarifEngine.ForStay(resolved.TarifNuit, resolved.TarifN15, resolved.TarifN30, nights);
+
+            r.CheckInDate           = newCheckIn;
+            r.CheckOutDate          = newCheckOut;
+            r.Nights                = nights;
+            r.CategoryId            = category.Id;
+            r.RoomId                = room?.Id;
+            r.PricePerNightSnapshot = tarif.PerNight;
+            r.Category              = category;
+            r.Room                  = room;
+        }
+
+        // ── Prestations : delete-then-add si liste envoyée ────────────────────
+        if (prestationsChanged)
+        {
+            db.ReservationPrestations.RemoveRange(r.Prestations);
+            r.Prestations = [];
+
+            if (req.Prestations!.Count > 0)
+            {
+                var ids = req.Prestations.Select(p => p.PrestationId).Distinct().ToList();
+                var catalogue = await db.PrestationsAnnexes
+                    .Where(p => ids.Contains(p.Id) && p.IsActive)
+                    .ToDictionaryAsync(p => p.Id);
+
+                foreach (var ligne in req.Prestations)
+                {
+                    if (!catalogue.TryGetValue(ligne.PrestationId, out var prestation)) continue;
+                    var totalLigne = prestation.PrixInclus * ligne.Quantite;
+                    r.Prestations.Add(new ReservationPrestation
+                    {
+                        ReservationId        = r.Id,
+                        PrestationId         = prestation.Id,
+                        Quantite             = ligne.Quantite,
+                        PrixUnitaireSnapshot = prestation.PrixInclus,
+                        TotalLigne           = totalLigne,
+                        Prestation           = prestation,
+                    });
+                }
+            }
+        }
+
+        // ── Recalcul total et garde-fou paiement ──────────────────────────────
+        if (stayChanged || prestationsChanged)
+        {
+            var totalHeb          = r.PricePerNightSnapshot * r.Nights;
+            var totalPrestations  = r.Prestations.Sum(p => p.TotalLigne);
+            var newTotal          = totalHeb + totalPrestations;
+
+            var amountPaid = r.Payments
+                .Where(p => p.Status == PaymentStatus.Completed)
+                .Sum(p => p.Amount);
+
+            if (newTotal < amountPaid && !req.AcceptRefundImbalance)
+            {
+                return (null,
+                    $"Le nouveau total ({newTotal:0}) est inférieur au montant déjà encaissé ({amountPaid:0}). " +
+                    "Confirmez la modification pour créer un avoir client de la différence.");
+            }
+
+            r.TotalPrice = newTotal;
+        }
+
         await db.SaveChangesAsync();
-        return (ToDto(r), null);
+
+        // Re-fetch pour récupérer les nouvelles prestations avec leurs Ids et le mapping DTO complet.
+        var updated = await db.Reservations
+            .Include(x => x.Room)
+            .Include(x => x.Category)
+            .Include(x => x.Client)
+            .Include(x => x.Payments)
+            .Include(x => x.Prestations).ThenInclude(p => p.Prestation)
+            .FirstAsync(x => x.Id == r.Id);
+
+        return (ToDto(updated), null);
     }
 
     private async Task<bool> CheckOverlapAsync(long roomId, DateOnly checkIn, DateOnly checkOut)

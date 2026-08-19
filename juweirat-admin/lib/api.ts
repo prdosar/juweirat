@@ -169,6 +169,11 @@ export const reservations = {
     adults: number; children: number;
     garantieType: string; garantieMontantCash: number;
     carteNom: string; carteSuffix: string; carteExpiration: string;
+    // Édition étendue : séjour + prestations
+    categoryId: number; roomId: number | null;
+    checkInDate: string; checkOutDate: string;
+    prestations: Array<{ prestationId: number; quantite: number }> | null;
+    acceptRefundImbalance: boolean;
   }>) => request<import('./types').ReservationDto>(`/api/reservations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 };
 

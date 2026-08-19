@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import PaginationControl from '@/components/PaginationControl';
-import { reservations } from '@/lib/api';
-import type { ReservationDto, PagedResult } from '@/lib/types';
+import { reservations, categories as categoriesApi, rooms as roomsApi, prestations as prestationsApi } from '@/lib/api';
+import type { ReservationDto, PagedResult, RoomCategoryDto, RoomDto, PrestationAnnexeDto } from '@/lib/types';
 import {
   Plus, Search, Filter, Calendar, ArrowUpDown, DollarSign, X,
   Eye, PencilLine, Ban, UserX, AlertTriangle,
@@ -600,10 +600,15 @@ function NoShowConfirmModal({ reservation, onClose, onDone }: { reservation: Res
 const SOURCES = ['Direct', 'Téléphone', 'Agence', 'Site web', 'OTA'];
 
 function EditReservationModal({ reservation, onClose, onSaved }: { reservation: ReservationDto; onClose: () => void; onSaved: () => void | Promise<void> }) {
+  // ── State ────────────────────────────────────────────────────────
   const [form, setForm] = useState({
-    source:              reservation.source ?? SOURCES[0],
+    checkInDate:         reservation.checkInDate,
+    checkOutDate:        reservation.checkOutDate,
+    categoryId:          reservation.categoryId,
+    roomId:              reservation.roomId ?? 0,
     adults:              reservation.adults,
     children:            reservation.children,
+    source:              reservation.source ?? SOURCES[0],
     specialRequests:     reservation.specialRequests ?? '',
     internalNotes:       reservation.internalNotes ?? '',
     garantieType:        reservation.garantieType ?? '',
@@ -611,13 +616,84 @@ function EditReservationModal({ reservation, onClose, onSaved }: { reservation: 
     carteNom:            reservation.carteNom ?? '',
     carteExpiration:     reservation.carteExpiration ?? '',
   });
+
+  // Prestations : Map<prestationId, quantite>. Init depuis la résa.
+  const [selectedPrestations, setSelectedPrestations] = useState<Map<number, number>>(() => {
+    const m = new Map<number, number>();
+    for (const p of reservation.prestations) m.set(p.prestationId, p.quantite);
+    return m;
+  });
+
+  const [categoryList,   setCategoryList]   = useState<RoomCategoryDto[]>([]);
+  const [roomList,       setRoomList]       = useState<RoomDto[]>([]);
+  const [prestationList, setPrestationList] = useState<PrestationAnnexeDto[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
 
+  useEffect(() => {
+    categoriesApi.getAll().then(setCategoryList).catch(() => setCategoryList([]));
+    roomsApi.getAll().then(setRoomList).catch(() => setRoomList([]));
+    prestationsApi.getAll(true).then(setPrestationList).catch(() => setPrestationList([]));
+  }, []);
+
+  // ── Derived ──────────────────────────────────────────────────────
+  const nightsFromDates = (() => {
+    const [y1, m1, d1] = form.checkInDate.split('-').map(Number);
+    const [y2, m2, d2] = form.checkOutDate.split('-').map(Number);
+    if (!y1 || !y2) return 0;
+    const diff = Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1);
+    return Math.max(0, Math.round(diff / 86_400_000));
+  })();
+
+  const selectedCat = categoryList.find(c => c.id === form.categoryId) ?? null;
+
+  // Tarif effectif (waterfall côté serveur)
+  const [previewPerNight, setPreviewPerNight] = useState<number>(reservation.pricePerNightSnapshot);
+  useEffect(() => {
+    if (!form.categoryId || nightsFromDates <= 0) return;
+    let cancelled = false;
+    reservations.getTarifPreview(reservation.clientId, form.categoryId, nightsFromDates)
+      .then(res => { if (!cancelled) setPreviewPerNight(res.pricePerNight); })
+      .catch(() => { /* garde valeur précédente */ });
+    return () => { cancelled = true; };
+  }, [reservation.clientId, form.categoryId, nightsFromDates]);
+
+  const hebergement = previewPerNight * nightsFromDates;
+  const extrasTotal = [...selectedPrestations.entries()].reduce((acc, [pid, qte]) => {
+    const p = prestationList.find(x => x.id === pid);
+    return p ? acc + p.prixInclus * qte : acc;
+  }, 0);
+  const newTotal   = hebergement + extrasTotal;
+  const paid       = reservation.amountPaid;
+  const overpaid   = newTotal < paid;
+
+  // Chambres compatibles avec la catégorie choisie
+  const categoryRooms = roomList.filter(r => r.categoryId === form.categoryId && r.status === 'Available');
+
+  // ── Helpers ──────────────────────────────────────────────────────
+  function togglePrestation(p: PrestationAnnexeDto) {
+    setSelectedPrestations(prev => {
+      const next = new Map(prev);
+      if (next.has(p.id)) next.delete(p.id);
+      else {
+        const defaultQte = p.mode === 'ParPersonneParNuit'
+          ? Math.max(1, (form.adults + form.children) * Math.max(1, nightsFromDates))
+          : p.mode === 'ParPersonne'
+            ? Math.max(1, form.adults + form.children)
+            : 1;
+        next.set(p.id, defaultQte);
+      }
+      return next;
+    });
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (nightsFromDates <= 0) { setError("La date de départ doit être postérieure à la date d'arrivée."); return; }
+    if (!form.categoryId)     { setError('Sélectionnez une catégorie de logement.'); return; }
     setSaving(true); setError('');
     try {
+      const prestationsPayload = [...selectedPrestations.entries()].map(([prestationId, quantite]) => ({ prestationId, quantite }));
       await reservations.update(reservation.id, {
         source:              form.source,
         specialRequests:     form.specialRequests,
@@ -628,6 +704,13 @@ function EditReservationModal({ reservation, onClose, onSaved }: { reservation: 
         garantieMontantCash: form.garantieMontantCash ? Number(form.garantieMontantCash) : undefined,
         carteNom:            form.carteNom || undefined,
         carteExpiration:     form.carteExpiration || undefined,
+        // Édition étendue
+        categoryId:          form.categoryId,
+        roomId:              form.roomId > 0 ? form.roomId : null,
+        checkInDate:         form.checkInDate,
+        checkOutDate:        form.checkOutDate,
+        prestations:         prestationsPayload,
+        acceptRefundImbalance: overpaid,
       });
       await onSaved();
     } catch (err: unknown) {
@@ -640,10 +723,11 @@ function EditReservationModal({ reservation, onClose, onSaved }: { reservation: 
 
   const inputCls = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green/30 focus:border-green/40';
   const labelCls = 'block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5';
+  const sectionH  = 'text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-3 pb-1.5 border-b border-gray-100';
 
   return (
     <ModalShell onClose={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-green/15 flex items-center justify-center">
@@ -662,78 +746,184 @@ function EditReservationModal({ reservation, onClose, onSaved }: { reservation: 
         </div>
 
         <form onSubmit={submit} className="flex-1 overflow-auto">
-          <div className="p-6 space-y-4">
+          <div className="p-6 space-y-6">
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-2.5 rounded-lg">{error}</div>
             )}
-            <p className="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-lg p-2.5">
-              Les dates, le logement et les prestations ne sont pas modifiables ici. Utilisez le PMS pour ces changements.
-            </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className={labelCls}>Adultes</label>
-                <input type="number" min={1} max={20} value={form.adults}
-                  onChange={e => setForm(f => ({ ...f, adults: Number(e.target.value) }))} className={inputCls} />
-              </div>
-              <div>
-                <label className={labelCls}>Enfants</label>
-                <input type="number" min={0} max={10} value={form.children}
-                  onChange={e => setForm(f => ({ ...f, children: Number(e.target.value) }))} className={inputCls} />
-              </div>
-              <div className="sm:col-span-2">
-                <label className={labelCls}>Canal d'origine</label>
-                <select value={form.source} onChange={e => setForm(f => ({ ...f, source: e.target.value }))} className={inputCls}>
-                  {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div className="sm:col-span-2">
-                <label className={labelCls}>Demandes spéciales du client</label>
-                <textarea rows={2} value={form.specialRequests}
-                  onChange={e => setForm(f => ({ ...f, specialRequests: e.target.value }))}
-                  className={`${inputCls} resize-none`} />
-              </div>
-              <div className="sm:col-span-2">
-                <label className={labelCls}>Notes internes</label>
-                <textarea rows={2} value={form.internalNotes}
-                  onChange={e => setForm(f => ({ ...f, internalNotes: e.target.value }))}
-                  className={`${inputCls} resize-none`} />
-              </div>
-              <div>
-                <label className={labelCls}>Garantie</label>
-                <select value={form.garantieType} onChange={e => setForm(f => ({ ...f, garantieType: e.target.value }))} className={inputCls}>
-                  <option value="">— Aucune —</option>
-                  <option value="Cash">Dépôt en espèces</option>
-                  <option value="Carte">Carte bancaire</option>
-                </select>
-              </div>
-              {form.garantieType === 'Cash' && (
+            {/* ── Section Séjour ─────────────────────────────────────── */}
+            <section>
+              <h3 className={sectionH}>Séjour</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className={labelCls}>Montant du dépôt (FCFA)</label>
-                  <input type="number" min={0} step={500} value={form.garantieMontantCash}
-                    onChange={e => setForm(f => ({ ...f, garantieMontantCash: e.target.value }))} className={inputCls} />
+                  <label className={labelCls}>Date d'arrivée</label>
+                  <input type="date" value={form.checkInDate}
+                    onChange={e => setForm(f => ({ ...f, checkInDate: e.target.value }))} className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>Date de départ</label>
+                  <input type="date" value={form.checkOutDate} min={form.checkInDate}
+                    onChange={e => setForm(f => ({ ...f, checkOutDate: e.target.value }))} className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>Adultes</label>
+                  <input type="number" min={1} max={20} value={form.adults}
+                    onChange={e => setForm(f => ({ ...f, adults: Number(e.target.value) }))} className={inputCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>Enfants</label>
+                  <input type="number" min={0} max={10} value={form.children}
+                    onChange={e => setForm(f => ({ ...f, children: Number(e.target.value) }))} className={inputCls} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className={labelCls}>Catégorie de logement</label>
+                  <select value={form.categoryId}
+                    onChange={e => setForm(f => ({ ...f, categoryId: Number(e.target.value), roomId: 0 }))}
+                    className={inputCls}>
+                    <option value={0}>— Sélectionner —</option>
+                    {categoryList.map(c => <option key={c.id} value={c.id}>{c.nameFr}</option>)}
+                  </select>
+                  {selectedCat && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      Tarif effectif : {fmt(previewPerNight, reservation.currency)} / nuit
+                    </p>
+                  )}
+                </div>
+                {form.categoryId > 0 && (
+                  <div className="sm:col-span-2">
+                    <label className={labelCls}>Logement spécifique (optionnel)</label>
+                    <select value={form.roomId}
+                      onChange={e => setForm(f => ({ ...f, roomId: Number(e.target.value) }))}
+                      className={inputCls}>
+                      <option value={0}>— Attribution automatique —</option>
+                      {categoryRooms.map(r => (
+                        <option key={r.id} value={r.id}>Apt. {r.roomNumber} — {r.nameFr}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {/* ── Section Prestations ────────────────────────────────── */}
+            <section>
+              <h3 className={sectionH}>Prestations annexes</h3>
+              {prestationList.length === 0 ? (
+                <p className="text-xs text-gray-400">Aucune prestation configurée.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {prestationList.map(p => {
+                    const on = selectedPrestations.has(p.id);
+                    const modeLabel = p.mode === 'ParPersonneParNuit' ? ' /pers./nuit' : p.mode === 'ParPersonne' ? ' /pers.' : '';
+                    return (
+                      <button type="button" key={p.id} onClick={() => togglePrestation(p)}
+                        className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-medium border transition-colors ${
+                          on ? 'bg-green text-white border-green' : 'bg-white text-charcoal/70 border-gray-200 hover:border-gray-300'
+                        }`}>
+                        {p.nameFr} · {fmt(p.prixInclus, reservation.currency)}{modeLabel}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
-              {form.garantieType === 'Carte' && (
-                <>
-                  <div>
-                    <label className={labelCls}>Nom sur la carte</label>
-                    <input value={form.carteNom} onChange={e => setForm(f => ({ ...f, carteNom: e.target.value.toUpperCase() }))} className={inputCls} />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Expiration (MM/AAAA)</label>
-                    <input value={form.carteExpiration} onChange={e => setForm(f => ({ ...f, carteExpiration: e.target.value }))} className={inputCls} />
-                  </div>
-                </>
+              {selectedPrestations.size > 0 && (
+                <p className="text-xs text-gray-400 mt-2">
+                  {selectedPrestations.size} prestation{selectedPrestations.size > 1 ? 's' : ''} sélectionnée{selectedPrestations.size > 1 ? 's' : ''}
+                </p>
               )}
-            </div>
+            </section>
+
+            {/* ── Section Divers ─────────────────────────────────────── */}
+            <section>
+              <h3 className={sectionH}>Divers</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className={labelCls}>Canal d'origine</label>
+                  <select value={form.source} onChange={e => setForm(f => ({ ...f, source: e.target.value }))} className={inputCls}>
+                    {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className={labelCls}>Demandes spéciales du client</label>
+                  <textarea rows={2} value={form.specialRequests}
+                    onChange={e => setForm(f => ({ ...f, specialRequests: e.target.value }))}
+                    className={`${inputCls} resize-none`} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className={labelCls}>Notes internes</label>
+                  <textarea rows={2} value={form.internalNotes}
+                    onChange={e => setForm(f => ({ ...f, internalNotes: e.target.value }))}
+                    className={`${inputCls} resize-none`} />
+                </div>
+                <div>
+                  <label className={labelCls}>Garantie</label>
+                  <select value={form.garantieType} onChange={e => setForm(f => ({ ...f, garantieType: e.target.value }))} className={inputCls}>
+                    <option value="">— Aucune —</option>
+                    <option value="Cash">Dépôt en espèces</option>
+                    <option value="Carte">Carte bancaire</option>
+                  </select>
+                </div>
+                {form.garantieType === 'Cash' && (
+                  <div>
+                    <label className={labelCls}>Montant du dépôt (FCFA)</label>
+                    <input type="number" min={0} step={500} value={form.garantieMontantCash}
+                      onChange={e => setForm(f => ({ ...f, garantieMontantCash: e.target.value }))} className={inputCls} />
+                  </div>
+                )}
+                {form.garantieType === 'Carte' && (
+                  <>
+                    <div>
+                      <label className={labelCls}>Nom sur la carte</label>
+                      <input value={form.carteNom} onChange={e => setForm(f => ({ ...f, carteNom: e.target.value.toUpperCase() }))} className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Expiration (MM/AAAA)</label>
+                      <input value={form.carteExpiration} onChange={e => setForm(f => ({ ...f, carteExpiration: e.target.value }))} className={inputCls} />
+                    </div>
+                  </>
+                )}
+              </div>
+            </section>
           </div>
-          <div className="flex items-center justify-end gap-2 px-6 py-3 border-t border-gray-100 bg-gray-50/50">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:text-charcoal transition-colors">Annuler</button>
-            <button type="submit" disabled={saving}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-charcoal text-white text-sm font-medium rounded-lg hover:bg-charcoal-800 transition-colors disabled:opacity-60">
-              {saving ? 'Enregistrement…' : 'Enregistrer les modifications'}
-            </button>
+
+          {/* ── Footer avec récap tarif ─────────────────────────────── */}
+          <div className="border-t border-gray-100 bg-gray-50/50">
+            <div className="px-6 py-3 grid grid-cols-4 gap-4 text-xs">
+              <div>
+                <p className="text-gray-400 uppercase tracking-wider text-[10px]">Nuits</p>
+                <p className="font-semibold text-charcoal mt-0.5">{nightsFromDates}</p>
+              </div>
+              <div>
+                <p className="text-gray-400 uppercase tracking-wider text-[10px]">Hébergement</p>
+                <p className="font-semibold text-charcoal mt-0.5">{fmt(hebergement, reservation.currency)}</p>
+              </div>
+              <div>
+                <p className="text-gray-400 uppercase tracking-wider text-[10px]">Prestations</p>
+                <p className="font-semibold text-charcoal mt-0.5">{fmt(extrasTotal, reservation.currency)}</p>
+              </div>
+              <div>
+                <p className="text-gray-400 uppercase tracking-wider text-[10px]">Nouveau total</p>
+                <p className={`font-bold mt-0.5 ${overpaid ? 'text-amber-700' : 'text-green-dark'}`}>{fmt(newTotal, reservation.currency)}</p>
+              </div>
+            </div>
+            {overpaid && (
+              <div className="px-6 pb-3">
+                <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg px-3 py-2">
+                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                  <span>
+                    Le nouveau total ({fmt(newTotal, reservation.currency)}) est inférieur au déjà payé ({fmt(paid, reservation.currency)}).
+                    Un avoir de {fmt(paid - newTotal, reservation.currency)} sera dû au client. Confirmez pour continuer.
+                  </span>
+                </div>
+              </div>
+            )}
+            <div className="flex items-center justify-end gap-2 px-6 py-3 border-t border-gray-100">
+              <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:text-charcoal transition-colors">Annuler</button>
+              <button type="submit" disabled={saving}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-charcoal text-white text-sm font-medium rounded-lg hover:bg-charcoal-800 transition-colors disabled:opacity-60">
+                {saving ? 'Enregistrement…' : overpaid ? 'Confirmer et créer avoir' : 'Enregistrer les modifications'}
+              </button>
+            </div>
           </div>
         </form>
       </div>

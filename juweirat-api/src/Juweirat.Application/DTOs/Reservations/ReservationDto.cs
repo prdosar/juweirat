@@ -117,5 +117,14 @@ public record UpdateReservationRequest(
     decimal? GarantieMontantCash  = null,
     string? CarteNom              = null,
     string? CarteSuffix           = null,
-    string? CarteExpiration       = null
+    string? CarteExpiration       = null,
+    // Édition du séjour : dates, catégorie, chambre. Déclenchent un recalcul tarif waterfall.
+    long? CategoryId              = null,
+    long? RoomId                  = null,
+    DateOnly? CheckInDate         = null,
+    DateOnly? CheckOutDate        = null,
+    // Prestations : si non null, remplace la liste actuelle (delete-then-add).
+    List<PrestationLigneRequest>? Prestations = null,
+    // Confirmation explicite requise si le nouveau total est inférieur à AmountPaid.
+    bool AcceptRefundImbalance    = false
 );
