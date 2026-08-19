@@ -159,10 +159,10 @@ export const reservations = {
     request<import('./types').TarifPreviewDto>(
       `/api/reservations/tarif-preview?clientId=${clientId}&categoryId=${categoryId}&nights=${nights}`,
     ),
-  processCancellation: (id: number, reason?: string) =>
+  processCancellation: (id: number, reason?: string, paymentMethod?: string) =>
     request<import('./types').CancellationBillingResultDto>(
       `/api/reservations/${id}/process-cancellation`,
-      { method: 'POST', body: JSON.stringify({ reason: reason ?? null }) },
+      { method: 'POST', body: JSON.stringify({ reason: reason ?? null, paymentMethod: paymentMethod ?? null }) },
     ),
   update: (id: number, body: Partial<{
     source: string; specialRequests: string; internalNotes: string;

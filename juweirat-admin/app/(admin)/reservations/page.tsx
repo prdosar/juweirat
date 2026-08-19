@@ -254,7 +254,7 @@ export default function ReservationsPage() {
                       const s = STATUS_CONFIG[r.status] ?? { label: r.status, cls: 'bg-gray-100 text-gray-600' };
                       const isEditable   = r.status === 'Pending' || r.status === 'Confirmed' || r.status === 'CheckedIn';
                       const isCancelable = r.status === 'Pending' || r.status === 'Confirmed';
-                      const showNoShow   = (r.status === 'Pending' || r.status === 'Confirmed') && r.checkInDate === today;
+                      const showNoShow   = (r.status === 'Pending' || r.status === 'Confirmed') && r.checkInDate < today;
                       return (
                         <tr
                           key={r.id}
@@ -387,17 +387,35 @@ function ModalShell({ children, onClose }: { children: React.ReactNode; onClose:
   );
 }
 
+const CANCEL_PAY_METHODS: Array<{ value: string; label: string }> = [
+  { value: 'Cash',         label: 'Espèces' },
+  { value: 'MobileMoney',  label: 'Mobile Money (T-Money / Flooz)' },
+  { value: 'BankTransfer', label: 'Virement bancaire' },
+  { value: 'CreditCard',   label: 'Carte bancaire' },
+];
+
 function CancelConfirmModal({ reservation, onClose, onDone }: { reservation: ReservationDto; onClose: () => void; onDone: () => void | Promise<void> }) {
   const preview = previewCancellationPenalty(reservation.nights, reservation.checkInDate);
   const [reason, setReason] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
   const [result, setResult] = useState<{ penaltyNights: number; penaltyAmount: number; currency: string; deadlineLabel: string } | null>(null);
 
+  const needsPayment = preview.deadlinePassed && preview.penaltyNights > 0;
+
   async function submit() {
+    if (needsPayment && !paymentMethod) {
+      setError('Sélectionnez le mode de paiement de la retenue.');
+      return;
+    }
     setSaving(true); setError('');
     try {
-      const res = await reservations.processCancellation(reservation.id, reason || undefined);
+      const res = await reservations.processCancellation(
+        reservation.id,
+        reason || undefined,
+        needsPayment ? paymentMethod : undefined,
+      );
       setResult({
         penaltyNights: res.penaltyNights,
         penaltyAmount: res.penaltyAmount,
@@ -451,6 +469,23 @@ function CancelConfirmModal({ reservation, onClose, onDone }: { reservation: Res
                   </p>
                 )}
               </div>
+              {needsPayment && (
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+                    Mode de paiement de la retenue <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={paymentMethod}
+                    onChange={e => setPaymentMethod(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-red-300"
+                  >
+                    <option value="">— Choisir —</option>
+                    {CANCEL_PAY_METHODS.map(m => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Raison (optionnel)</label>
                 <textarea rows={2} value={reason} onChange={e => setReason(e.target.value)}
@@ -474,7 +509,7 @@ function CancelConfirmModal({ reservation, onClose, onDone }: { reservation: Res
           {!result ? (
             <>
               <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:text-charcoal transition-colors">Fermer</button>
-              <button type="button" onClick={submit} disabled={saving}
+              <button type="button" onClick={submit} disabled={saving || (needsPayment && !paymentMethod)}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors disabled:opacity-60">
                 {saving ? 'Annulation…' : 'Confirmer l\'annulation'}
               </button>

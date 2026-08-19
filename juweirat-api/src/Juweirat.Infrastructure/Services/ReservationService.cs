@@ -255,6 +255,10 @@ public class ReservationService(AppDbContext db)
         if (!Enum.TryParse<ReservationStatus>(req.Status, true, out var newStatus))
             return (null, $"Invalid status: {req.Status}");
 
+        if (newStatus == ReservationStatus.NoShow &&
+            r.CheckInDate >= DateOnly.FromDateTime(DateTime.UtcNow))
+            return (null, "Le No Show ne peut être marqué qu'après la clôture du jour d'arrivée");
+
         r.Status = newStatus;
         if (req.InternalNotes is not null) r.InternalNotes = req.InternalNotes;
 
@@ -287,13 +291,13 @@ public class ReservationService(AppDbContext db)
 
         if (r is null) return (null, "Réservation introuvable");
 
-        // No Show ne peut être appliqué que le jour où le séjour est censé commencer
-        // et uniquement si la réservation n'est pas déjà terminée / annulée.
+        // No Show ne peut être traité qu'après la clôture du jour d'arrivée
+        // (si arrivée = 18, on traite le 19 ou plus tard).
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         if (r.Status is ReservationStatus.Cancelled or ReservationStatus.CheckedIn or ReservationStatus.CheckedOut)
             return (null, "Cette réservation ne peut plus être marquée No Show");
-        if (r.CheckInDate != today)
-            return (null, "Le No Show ne peut être appliqué que le jour prévu de l'arrivée");
+        if (r.CheckInDate >= today)
+            return (null, "Le No Show ne peut être traité qu'après la clôture du jour d'arrivée");
 
         var alreadyBilled = r.Payments.Any(p => p.Notes != null && p.Notes.StartsWith("Retenue No Show"));
         if (alreadyBilled) return (null, "Une retenue No Show a déjà été appliquée");
@@ -334,7 +338,7 @@ public class ReservationService(AppDbContext db)
     ///   - Séjour 15-29 nuits : gratuit si annulation ≥ 4 jours avant l'arrivée, sinon 2 nuitées
     ///   - Séjour ≥ 30 nuits  : gratuit si annulation ≥ 7 jours avant l'arrivée, sinon 4 nuitées
     /// </summary>
-    public async Task<(CancellationBillingResultDto? dto, string? error)> ProcessCancellationAsync(long id, string? reason = null)
+    public async Task<(CancellationBillingResultDto? dto, string? error)> ProcessCancellationAsync(long id, string? reason = null, string? paymentMethod = null)
     {
         var r = await db.Reservations
             .Include(r => r.Room)
@@ -354,12 +358,17 @@ public class ReservationService(AppDbContext db)
         var alreadyBilled = r.Payments.Any(p => p.Notes != null && p.Notes.StartsWith("Retenue annulation"));
         if (deadlinePassed && penaltyNights > 0 && !alreadyBilled)
         {
+            if (string.IsNullOrWhiteSpace(paymentMethod))
+                return (null, "Mode de paiement requis pour enregistrer la retenue.");
+            if (!Enum.TryParse<PaymentMethod>(paymentMethod, ignoreCase: true, out var method))
+                return (null, $"Mode de paiement invalide : « {paymentMethod} ».");
+
             db.Payments.Add(new Payment
             {
                 ReservationId = r.Id,
                 Amount        = penaltyAmount,
                 Currency      = r.Currency,
-                Method        = PaymentMethod.Cash,
+                Method        = method,
                 Status        = PaymentStatus.Completed,
                 PaidAt        = DateTime.UtcNow,
                 Notes         = $"Retenue annulation — {penaltyNights} nuit{(penaltyNights > 1 ? "s" : "")} ({deadlineLabel})",

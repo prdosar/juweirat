@@ -112,7 +112,9 @@ export default function ReservationDetailPage() {
   );
 
   const s = STATUS_CONFIG[r.status] ?? { label: r.status, cls: 'bg-gray-100 text-gray-600' };
-  const nextStatuses = TRANSITIONS[r.status] ?? [];
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const noShowEligible = r.checkInDate < todayIso;
+  const nextStatuses = (TRANSITIONS[r.status] ?? []).filter(ns => ns !== 'NoShow' || noShowEligible);
 
   return (
     <div className="flex flex-col min-h-full">

@@ -49,12 +49,12 @@ public class ReservationsController(ReservationService reservationService) : Con
         return dto is null ? NotFound() : Ok(dto);
     }
 
-    public record ProcessCancellationRequest(string? Reason = null);
+    public record ProcessCancellationRequest(string? Reason = null, string? PaymentMethod = null);
 
     [HttpPost("{id:long}/process-cancellation")]
     public async Task<IActionResult> ProcessCancellation(long id, [FromBody] ProcessCancellationRequest? req)
     {
-        var (dto, error) = await reservationService.ProcessCancellationAsync(id, req?.Reason);
+        var (dto, error) = await reservationService.ProcessCancellationAsync(id, req?.Reason, req?.PaymentMethod);
         if (error is not null) return BadRequest(new { error });
         return dto is null ? NotFound() : Ok(dto);
     }
