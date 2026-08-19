@@ -6,6 +6,7 @@ import Header from '@/components/Header';
 import { companies, categories as categoriesApi, clients as clientsApi } from '@/lib/api';
 import type { ClientDto, CompanyDetailDto, CompanyStayDto, RoomCategoryDto } from '@/lib/types';
 import DuplicateClientDialog from '@/components/DuplicateClientDialog';
+import ClientModal from '@/components/ClientModal';
 
 const COUNTRIES  = ["Côte d'Ivoire", 'Sénégal', 'Burkina Faso', 'France', 'Togo', 'Bénin', 'Ghana', 'Autre'];
 const DOC_TYPES  = ['Passeport', "Carte d'identité", 'Carte de séjour', 'Permis de conduire'];
@@ -304,6 +305,9 @@ function InfoTab({ company, onSaved }: { company: CompanyDetailDto; onSaved: () 
 function ClientsTab({ company, onChanged }: { company: CompanyDetailDto; onChanged: () => void | Promise<void> }) {
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingClient, setEditingClient]   = useState<ClientDto | null>(null);
+  const [editLoadingId, setEditLoadingId]   = useState<number | null>(null);
+  const [editError, setEditError]           = useState('');
 
   const filtered = company.clients.filter(c => {
     if (!search) return true;
@@ -318,6 +322,19 @@ function ClientsTab({ company, onChanged }: { company: CompanyDetailDto; onChang
   async function remove(clientId: number) {
     if (!confirm('Retirer ce client de la compagnie ?')) return;
     try { await companies.removeClient(company.id, clientId); await onChanged(); } catch { /* ignore */ }
+  }
+
+  async function openEdit(clientId: number) {
+    setEditError('');
+    setEditLoadingId(clientId);
+    try {
+      const full = await clientsApi.getById(clientId);
+      setEditingClient(full);
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Impossible de charger la fiche client.');
+    } finally {
+      setEditLoadingId(null);
+    }
   }
 
   return (
@@ -340,6 +357,12 @@ function ClientsTab({ company, onChanged }: { company: CompanyDetailDto; onChang
         </button>
       </div>
 
+      {editError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">
+          {editError}
+        </div>
+      )}
+
       {filtered.length === 0 ? (
         <div className="text-center py-10 text-gray-400 text-sm">Aucun client rattaché.</div>
       ) : (
@@ -357,13 +380,27 @@ function ClientsTab({ company, onChanged }: { company: CompanyDetailDto; onChang
                   <p className="text-xs text-gray-400 truncate">{c.email ?? c.phone ?? `#${c.id}`}</p>
                 </div>
               </div>
-              <button
-                onClick={() => remove(c.id)}
-                title="Retirer"
-                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
-              >
-                <Trash2 size={15} />
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => openEdit(c.id)}
+                  disabled={editLoadingId === c.id}
+                  title="Modifier la fiche client"
+                  className="p-1.5 text-gray-400 hover:text-charcoal hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {editLoadingId === c.id ? (
+                    <div className="w-[15px] h-[15px] border-2 border-gray-300 border-t-charcoal rounded-full animate-spin" />
+                  ) : (
+                    <PencilLine size={15} />
+                  )}
+                </button>
+                <button
+                  onClick={() => remove(c.id)}
+                  title="Retirer"
+                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -376,6 +413,14 @@ function ClientsTab({ company, onChanged }: { company: CompanyDetailDto; onChang
           disabledClientIds={currentClientIds}
           onClose={() => setModalOpen(false)}
           onDone={async () => { setModalOpen(false); await onChanged(); }}
+        />
+      )}
+
+      {editingClient && (
+        <ClientModal
+          initial={editingClient}
+          onClose={() => setEditingClient(null)}
+          onSaved={async () => { setEditingClient(null); await onChanged(); }}
         />
       )}
     </div>
