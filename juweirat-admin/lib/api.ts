@@ -113,6 +113,41 @@ export const comptabilite = {
   backfill: () =>
     request<{ payments: number; ventes: number; factures: number; noShow: number; cancellations: number }>(
       '/api/comptabilite/backfill', { method: 'POST' }),
+  getLedger: (accountId: number, params?: { from?: string; to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set('from', params.from);
+    if (params?.to)   qs.set('to',   params.to);
+    return request<import('./types').LedgerReportDto>(`/api/comptabilite/grand-livre/${accountId}?${qs}`);
+  },
+  getBalance: (params?: { from?: string; to?: string; kind?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set('from', params.from);
+    if (params?.to)   qs.set('to',   params.to);
+    if (params?.kind) qs.set('kind', params.kind);
+    return request<import('./types').BalanceReportDto>(`/api/comptabilite/balance?${qs}`);
+  },
+  getTvaReport: (params?: { from?: string; to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set('from', params.from);
+    if (params?.to)   qs.set('to',   params.to);
+    return request<import('./types').TvaReportDto>(`/api/comptabilite/tva?${qs}`);
+  },
+  postOd: (body: {
+    date?: string;
+    label: string;
+    lines: Array<{ accountId: number; direction: 'debit' | 'credit'; amount: number; label?: string }>;
+  }) => request<{ lignes: number }>('/api/comptabilite/od', { method: 'POST', body: JSON.stringify(body) }),
+};
+
+// ── Comptes (utilisé par grand-livre, balance et OD) ──────────────────────────
+export const accounts = {
+  getAll: (params?: { kind?: string; search?: string; pageSize?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.kind)     qs.set('kind', params.kind);
+    if (params?.search)   qs.set('search', params.search);
+    qs.set('pageSize', String(params?.pageSize ?? 100));
+    return request<{ items: import('./types').AccountDto[]; totalCount: number }>(`/api/accounts?${qs}`);
+  },
 };
 
 // ── Caisse (sessions par caissier) ────────────────────────────────────────────

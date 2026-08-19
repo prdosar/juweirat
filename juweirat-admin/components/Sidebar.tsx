@@ -8,7 +8,7 @@ import {
   CreditCard, LogOut, CalendarDays, Building2,
   ClipboardList, Wrench, Receipt, FileText, Settings,
   BarChart2, Printer, Mail, ShoppingCart, Package, Briefcase,
-  ShieldCheck, BookOpen, Wallet,
+  ShieldCheck, BookOpen, Wallet, BookText, Scale, Percent, FilePlus,
 } from 'lucide-react';
 import { clearAuth, getUser } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
@@ -141,7 +141,11 @@ export default function Sidebar() {
               <p className="px-3 text-[10px] text-white/25 uppercase tracking-[0.2em] font-medium">Comptabilité</p>
             </div>
             {[
-              { href: '/comptabilite/journal', label: 'Journal de caisse', icon: BookOpen },
+              { href: '/comptabilite/journal',     label: 'Journal de caisse', icon: BookOpen },
+              { href: '/comptabilite/grand-livre', label: 'Grand livre',       icon: BookText },
+              { href: '/comptabilite/balance',     label: 'Balance',           icon: Scale    },
+              { href: '/comptabilite/tva',         label: 'État TVA',          icon: Percent  },
+              { href: '/comptabilite/od',          label: 'Opérations diverses', icon: FilePlus },
             ].map(({ href, label, icon: Icon }) => {
               const active = pathname === href || pathname.startsWith(href + '/');
               return (

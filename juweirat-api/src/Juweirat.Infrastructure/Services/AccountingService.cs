@@ -102,6 +102,234 @@ public class AccountingService(AppDbContext db, IHttpContextAccessor? httpContex
         }).ToList();
     }
 
+    // ── Grand livre / Balance / TVA / OD (paquet 3) ─────────────────
+
+    // Grand livre : parcours chrono des mouvements d'un compte avec solde progressif.
+    // Formalisme comptable : "debit" = le compte perd (est débité), "credit" = le compte reçoit (est crédité).
+    // Rappel : dans notre modèle Balance = SUM(mvts To=X) - SUM(mvts From=X).
+    public async Task<LedgerReportDto?> GetLedgerAsync(long accountId, DateTime? from, DateTime? to)
+    {
+        var account = await db.Accounts.FindAsync(accountId);
+        if (account is null) return null;
+
+        var all = await db.AccountMovements
+            .Include(m => m.FromAccount)
+            .Include(m => m.ToAccount)
+            .Where(m => m.FromAccountId == accountId || m.ToAccountId == accountId)
+            .OrderBy(m => m.Date)
+            .ToListAsync();
+
+        // Solde d'ouverture = solde à la date "from" (mouvements strictement antérieurs).
+        decimal opening = 0m;
+        if (from.HasValue)
+        {
+            opening = all.Where(m => m.Date < from.Value)
+                         .Sum(m => m.ToAccountId == accountId ? m.Amount : -m.Amount);
+        }
+
+        var window = all.AsEnumerable();
+        if (from.HasValue) window = window.Where(m => m.Date >= from.Value);
+        if (to.HasValue)   window = window.Where(m => m.Date <= to.Value);
+        var lines = window.ToList();
+
+        decimal runningBalance = opening;
+        decimal debit  = 0m;
+        decimal credit = 0m;
+        var dtos = new List<LedgerLineDto>(lines.Count);
+        foreach (var m in lines)
+        {
+            var isCredit = m.ToAccountId == accountId;
+            var amount   = m.Amount;
+            if (isCredit) { runningBalance += amount; credit += amount; }
+            else          { runningBalance -= amount; debit  += amount; }
+
+            dtos.Add(new LedgerLineDto(
+                MovementId:            m.Id,
+                Date:                  m.Date,
+                Direction:             isCredit ? "credit" : "debit",
+                Amount:                amount,
+                Balance:               runningBalance,
+                Reason:                m.Reason.ToString(),
+                CounterpartAccountName: isCredit ? m.FromAccount.Name : m.ToAccount.Name,
+                Label:                 m.Label,
+                SourceType:            m.SourceType,
+                SourceId:              m.SourceId
+            ));
+        }
+
+        return new LedgerReportDto(
+            Account:        ToDto(account),
+            From:           from,
+            To:             to,
+            OpeningBalance: opening,
+            TotalDebit:     debit,
+            TotalCredit:    credit,
+            ClosingBalance: runningBalance,
+            Lines:          dtos
+        );
+    }
+
+    public async Task<BalanceReportDto> GetBalanceAsync(DateTime? from, DateTime? to, string? kindFilter)
+    {
+        var accountsQuery = db.Accounts.AsQueryable();
+        if (!string.IsNullOrWhiteSpace(kindFilter)
+            && Enum.TryParse<AccountKind>(kindFilter, ignoreCase: true, out var k))
+        {
+            accountsQuery = accountsQuery.Where(a => a.Kind == k);
+        }
+        var accounts = await accountsQuery.OrderBy(a => a.Kind).ThenBy(a => a.Name).ToListAsync();
+        var accountIds = accounts.Select(a => a.Id).ToHashSet();
+
+        // Récupère tous les mouvements touchant nos comptes.
+        var mvts = await db.AccountMovements
+            .Where(m => accountIds.Contains(m.FromAccountId) || accountIds.Contains(m.ToAccountId))
+            .ToListAsync();
+
+        var lines = new List<BalanceLineDto>(accounts.Count);
+        decimal totalDebit = 0, totalCredit = 0;
+        foreach (var a in accounts)
+        {
+            decimal opening = 0;
+            if (from.HasValue)
+            {
+                opening = mvts.Where(m => m.Date < from.Value)
+                              .Sum(m => (m.ToAccountId == a.Id ? m.Amount : 0m) - (m.FromAccountId == a.Id ? m.Amount : 0m));
+            }
+            var inPeriod = mvts.Where(m =>
+                (!from.HasValue || m.Date >= from.Value) &&
+                (!to.HasValue   || m.Date <= to.Value));
+            var debit  = inPeriod.Where(m => m.FromAccountId == a.Id).Sum(m => m.Amount);
+            var credit = inPeriod.Where(m => m.ToAccountId   == a.Id).Sum(m => m.Amount);
+            var closing = opening + credit - debit;
+
+            // Skip les comptes sans activité en période et sans solde d'ouverture.
+            if (opening == 0 && debit == 0 && credit == 0) continue;
+
+            lines.Add(new BalanceLineDto(
+                a.Id, a.Kind.ToString(), a.Name, a.OwnerRefId,
+                opening, debit, credit, closing
+            ));
+            totalDebit  += debit;
+            totalCredit += credit;
+        }
+
+        return new BalanceReportDto(from, to, kindFilter, lines, totalDebit, totalCredit);
+    }
+
+    public async Task<TvaReportDto> GetTvaReportAsync(DateTime? from, DateTime? to)
+    {
+        var query = db.AccountMovements.AsQueryable();
+        if (from.HasValue) query = query.Where(m => m.Date >= from.Value);
+        if (to.HasValue)   query = query.Where(m => m.Date <= to.Value);
+
+        var mvts = await query.ToListAsync();
+
+        var grouped = mvts
+            .Where(m => !string.IsNullOrEmpty(m.SourceType) && m.SourceId.HasValue)
+            .GroupBy(m => new { m.SourceType, m.SourceId });
+
+        var lines = new List<TvaReportLineDto>();
+        foreach (var g in grouped)
+        {
+            var ht  = g.Where(x => x.Reason == MovementReason.Vente).Sum(x => x.Amount);
+            var tva = g.Where(x => x.Reason == MovementReason.TvaCollectee).Sum(x => x.Amount);
+            if (ht == 0 && tva == 0) continue;
+            var first = g.OrderBy(x => x.Date).First();
+            lines.Add(new TvaReportLineDto(
+                g.Key.SourceType!, g.Key.SourceId!.Value,
+                first.Date,
+                first.Label ?? $"{g.Key.SourceType} #{g.Key.SourceId}",
+                ht, tva, ht + tva
+            ));
+        }
+        lines = lines.OrderByDescending(l => l.Date).ToList();
+
+        return new TvaReportDto(
+            From: from, To: to,
+            TotalHt:  lines.Sum(l => l.Ht),
+            TotalTva: lines.Sum(l => l.Tva),
+            TotalTtc: lines.Sum(l => l.Ttc),
+            TvaRate:  TVA_RATE,
+            Lines: lines
+        );
+    }
+
+    // OD manuelle : crée un ensemble de mouvements équilibrés (débit = crédit).
+    // Toutes les paires sont routées via un compte "pivot" — ici l'ordre débit → crédit.
+    // Pour rester dans notre modèle from→to, on associe débits et crédits deux à deux
+    // par montant : première ligne débit avec première ligne crédit, etc.
+    // Contrainte : SUM(debit) = SUM(credit).
+    public async Task<(int lignesCreees, string? error)> PostManualOdAsync(CreateOdRequest req, long? userId)
+    {
+        if (req.Lines is null || req.Lines.Count < 2)
+            return (0, "Une OD doit contenir au moins deux lignes.");
+
+        var debits  = req.Lines.Where(l => l.Direction?.ToLowerInvariant() == "debit").ToList();
+        var credits = req.Lines.Where(l => l.Direction?.ToLowerInvariant() == "credit").ToList();
+        if (debits.Count == 0 || credits.Count == 0)
+            return (0, "L'OD doit contenir au moins un débit et un crédit.");
+
+        var sumD = debits.Sum(l => l.Amount);
+        var sumC = credits.Sum(l => l.Amount);
+        if (sumD != sumC)
+            return (0, $"OD non équilibrée : débit {sumD:0.##} ≠ crédit {sumC:0.##}.");
+
+        // Charge tous les comptes concernés.
+        var accountIds = req.Lines.Select(l => l.AccountId).Distinct().ToList();
+        var accounts = await db.Accounts.Where(a => accountIds.Contains(a.Id)).ToListAsync();
+        var accDict = accounts.ToDictionary(a => a.Id);
+        if (accountIds.Any(id => !accDict.ContainsKey(id)))
+            return (0, "Compte introuvable dans la liste des lignes.");
+
+        // Association naïve : pour chaque débit, on tire des crédits jusqu'à couvrir son montant.
+        // Génère N mouvements équilibrés from(debit) → to(credit).
+        var date = req.Date ?? DateTime.UtcNow;
+        // Génère un "SourceId" partagé pour permettre de retrouver les lignes de l'écriture.
+        var sourceId = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var creditsQueue = new Queue<(long AccountId, decimal Remaining, string? Label)>(
+            credits.Select(c => (c.AccountId, c.Amount, c.Label))
+        );
+
+        int created = 0;
+        foreach (var d in debits)
+        {
+            var remaining = d.Amount;
+            while (remaining > 0 && creditsQueue.Count > 0)
+            {
+                var top = creditsQueue.Peek();
+                var take = Math.Min(remaining, top.Remaining);
+                var fromAccount = accDict[d.AccountId];
+                var toAccount   = accDict[top.AccountId];
+
+                db.AccountMovements.Add(new Juweirat.Domain.Entities.AccountMovement
+                {
+                    Date            = date,
+                    FromAccountId   = fromAccount.Id,
+                    ToAccountId     = toAccount.Id,
+                    Amount          = take,
+                    Reason          = MovementReason.Correction,
+                    SourceType      = "Manual",
+                    SourceId        = sourceId,
+                    CreatedByUserId = userId,
+                    Label           = string.IsNullOrWhiteSpace(req.Label)
+                        ? $"{d.Label ?? ""} / {top.Label ?? ""}".Trim(' ', '/')
+                        : req.Label,
+                });
+                fromAccount.Balance -= take;
+                toAccount.Balance   += take;
+                created++;
+
+                remaining -= take;
+                var newRemaining = top.Remaining - take;
+                creditsQueue.Dequeue();
+                if (newRemaining > 0) creditsQueue.Enqueue((top.AccountId, newRemaining, top.Label));
+            }
+        }
+
+        await db.SaveChangesAsync();
+        return (created, null);
+    }
+
     // ── Journal de caisse (paquet 2c) ────────────────────────────────
     // Retourne un tableau chronologique des événements comptables, chaque
     // ligne = un événement (Payment/VenteDirecte/Facture) avec ses totaux

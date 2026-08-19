@@ -91,3 +91,84 @@ public class JournalFilterParams
     // Filtre optionnel sur le mode de paiement (Cash / MobileMoney / …).
     public string? PaymentMethod { get; set; }
 }
+
+// ── Grand livre : mouvements d'un compte avec solde progressif ─────────
+public record LedgerLineDto(
+    long MovementId,
+    DateTime Date,
+    string Direction,     // "debit" (le compte perd) | "credit" (le compte reçoit)
+    decimal Amount,
+    decimal Balance,      // solde après ce mouvement
+    string Reason,
+    string CounterpartAccountName,
+    string? Label,
+    string? SourceType,
+    long? SourceId
+);
+
+public record LedgerReportDto(
+    AccountDto Account,
+    DateTime? From,
+    DateTime? To,
+    decimal OpeningBalance,     // solde à From (0 si From=null)
+    decimal TotalDebit,          // mvts d'où le compte perd
+    decimal TotalCredit,         // mvts d'où le compte reçoit
+    decimal ClosingBalance,      // solde à To
+    List<LedgerLineDto> Lines
+);
+
+// ── Balance : liste des comptes avec débit/crédit/solde ────────────────
+public record BalanceLineDto(
+    long AccountId,
+    string Kind,
+    string Name,
+    long? OwnerRefId,
+    decimal OpeningBalance,
+    decimal TotalDebit,
+    decimal TotalCredit,
+    decimal ClosingBalance
+);
+
+public record BalanceReportDto(
+    DateTime? From,
+    DateTime? To,
+    string? KindFilter,
+    List<BalanceLineDto> Lines,
+    decimal TotalDebit,
+    decimal TotalCredit
+);
+
+// ── État TVA : ventes taxables + TVA collectée par période ────────────
+public record TvaReportLineDto(
+    string SourceType,
+    long SourceId,
+    DateTime Date,
+    string Label,
+    decimal Ht,
+    decimal Tva,
+    decimal Ttc
+);
+
+public record TvaReportDto(
+    DateTime? From,
+    DateTime? To,
+    decimal TotalHt,
+    decimal TotalTva,
+    decimal TotalTtc,
+    decimal TvaRate,
+    List<TvaReportLineDto> Lines
+);
+
+// ── OD manuelle : saisie multi-lignes équilibrées débit/crédit ─────────
+public record OdLineRequest(
+    long AccountId,
+    string Direction,   // "debit" | "credit"
+    decimal Amount,
+    string? Label = null
+);
+
+public record CreateOdRequest(
+    DateTime? Date,
+    string Label,       // libellé général de l'écriture
+    List<OdLineRequest> Lines
+);

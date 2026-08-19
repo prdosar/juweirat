@@ -69,6 +69,81 @@ export interface CashRegisterDto {
   createdAt: string;
 }
 
+export interface AccountDto {
+  id: number;
+  kind: string;
+  name: string;
+  ownerRefId: number | null;
+  balance: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LedgerLineDto {
+  movementId: number;
+  date: string;
+  direction: 'debit' | 'credit';
+  amount: number;
+  balance: number;
+  reason: string;
+  counterpartAccountName: string;
+  label: string | null;
+  sourceType: string | null;
+  sourceId: number | null;
+}
+
+export interface LedgerReportDto {
+  account: AccountDto;
+  from: string | null;
+  to: string | null;
+  openingBalance: number;
+  totalDebit: number;
+  totalCredit: number;
+  closingBalance: number;
+  lines: LedgerLineDto[];
+}
+
+export interface BalanceLineDto {
+  accountId: number;
+  kind: string;
+  name: string;
+  ownerRefId: number | null;
+  openingBalance: number;
+  totalDebit: number;
+  totalCredit: number;
+  closingBalance: number;
+}
+
+export interface BalanceReportDto {
+  from: string | null;
+  to: string | null;
+  kindFilter: string | null;
+  lines: BalanceLineDto[];
+  totalDebit: number;
+  totalCredit: number;
+}
+
+export interface TvaReportLineDto {
+  sourceType: string;
+  sourceId: number;
+  date: string;
+  label: string;
+  ht: number;
+  tva: number;
+  ttc: number;
+}
+
+export interface TvaReportDto {
+  from: string | null;
+  to: string | null;
+  totalHt: number;
+  totalTva: number;
+  totalTtc: number;
+  tvaRate: number;
+  lines: TvaReportLineDto[];
+}
+
 export interface UserDto {
   id: number;
   firstName: string;
