@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Infrastructure.Services;
 
-public class PaymentService(AppDbContext db)
+public class PaymentService(AppDbContext db, AccountingService accountingService)
 {
     public async Task<PagedResult<PaymentDto>> GetPagedAsync(PaymentFilterParams filter)
     {
@@ -116,6 +116,19 @@ public class PaymentService(AppDbContext db)
         await db.SaveChangesAsync();
 
         await db.Entry(payment).Reference(p => p.Reservation).LoadAsync();
+
+        // Journal comptable — mouvement Client → Caisse. Fire-and-forget non bloquant.
+        try
+        {
+            await accountingService.PostEncaissementAsync(
+                clientId:   reservation.ClientId,
+                amount:     payment.Amount,
+                sourceType: "Payment",
+                sourceId:   payment.Id,
+                label:      $"Paiement résa {reservation.Reference} · {method}");
+        }
+        catch { /* silent — écriture manquante corrigeable via OD */ }
+
         return (ToDto(payment), null);
     }
 

@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Infrastructure.Services;
 
-public class FactureService(AppDbContext db)
+public class FactureService(AppDbContext db, AccountingService accountingService)
 {
     // ── List / Get ────────────────────────────────────────────────────────────
 
@@ -42,7 +42,10 @@ public class FactureService(AppDbContext db)
 
     public async Task<(FactureDto? dto, string? error)> EmettreAsync(long folioId)
     {
-        var folio = await db.Folios.Include(f => f.Unit).FirstOrDefaultAsync(f => f.Id == folioId);
+        var folio = await db.Folios
+            .Include(f => f.Unit)
+            .Include(f => f.Reservation)
+            .FirstOrDefaultAsync(f => f.Id == folioId);
         if (folio is null) return (null, null);
 
         var existingActive = await db.Factures.AnyAsync(f => f.FolioId == folioId && f.Status == FactureStatus.Emise);
@@ -72,6 +75,26 @@ public class FactureService(AppDbContext db)
         // Maintain denormalized FactureId on Folio
         folio.FactureId = facture.Id;
         await db.SaveChangesAsync();
+
+        // Journal comptable — vente hébergement HT + TVA au compte client.
+        // Fire-and-forget non bloquant.
+        try
+        {
+            var clientId = folio.Reservation?.ClientId;
+            if (clientId is not null && snapshot.Total > 0)
+            {
+                await accountingService.PostSaleAsync(
+                    clientId:          clientId,
+                    revenueKind:       AccountKind.RevenueHebergement,
+                    revenueOwnerRefId: null,
+                    amountTtc:         snapshot.Total,
+                    tvaExonere:        folio.TvaExonere,
+                    sourceType:        "Facture",
+                    sourceId:          facture.Id,
+                    label:             $"Facture {facture.Number} · {snapshot.UnitLabel ?? folio.Unit?.RoomNumber}");
+            }
+        }
+        catch { /* silent */ }
 
         var created = await db.Factures.Include(f => f.Folio).FirstAsync(f => f.Id == facture.Id);
         return (ToDto(created), null);

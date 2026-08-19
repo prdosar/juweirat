@@ -101,6 +101,17 @@ export const amenities = {
   delete:  (id: number) => request<void>(`/api/amenities/${id}`, { method: 'DELETE' }),
 };
 
+// ── Comptabilité ──────────────────────────────────────────────────────────────
+export const comptabilite = {
+  getJournal: (params?: { from?: string; to?: string; paymentMethod?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.from)          qs.set('from', params.from);
+    if (params?.to)            qs.set('to', params.to);
+    if (params?.paymentMethod) qs.set('paymentMethod', params.paymentMethod);
+    return request<import('./types').JournalReportDto>(`/api/comptabilite/journal?${qs}`);
+  },
+};
+
 // ── Users (admin only côté backend) ───────────────────────────────────────────
 export const users = {
   getAll: (includeInactive = true) =>

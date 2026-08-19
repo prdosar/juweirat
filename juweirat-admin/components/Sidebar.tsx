@@ -8,7 +8,7 @@ import {
   CreditCard, LogOut, CalendarDays, Building2,
   ClipboardList, Wrench, Receipt, FileText, Settings,
   BarChart2, Printer, Mail, ShoppingCart, Package, Briefcase,
-  ShieldCheck,
+  ShieldCheck, BookOpen,
 } from 'lucide-react';
 import { clearAuth, getUser } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
@@ -44,10 +44,12 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router   = useRouter();
   // Rôle courant — chargé côté client car localStorage n'est pas dispo au SSR.
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin]         = useState(false);
+  const [isAccountant, setIsAccountant] = useState(false);
   useEffect(() => {
     const u = getUser();
     setIsAdmin(u?.role === 'admin');
+    setIsAccountant(u?.role === 'admin' || u?.role === 'comptable');
   }, [pathname]);
 
   function logout() {
@@ -112,6 +114,29 @@ export default function Sidebar() {
             </Link>
           );
         })}
+
+        {/* Section comptabilité — visible pour admin et comptable */}
+        {isAccountant && (
+          <>
+            <div className="pt-4 pb-1">
+              <p className="px-3 text-[10px] text-white/25 uppercase tracking-[0.2em] font-medium">Comptabilité</p>
+            </div>
+            {[
+              { href: '/comptabilite/journal', label: 'Journal de caisse', icon: BookOpen },
+            ].map(({ href, label, icon: Icon }) => {
+              const active = pathname === href || pathname.startsWith(href + '/');
+              return (
+                <Link key={href} href={href}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                    active ? 'bg-green text-charcoal' : 'text-white/55 hover:bg-white/8 hover:text-white'
+                  }`}>
+                  <Icon size={16} />
+                  {label}
+                </Link>
+              );
+            })}
+          </>
+        )}
 
         {/* Section administration — visible uniquement pour role=admin */}
         {isAdmin && (

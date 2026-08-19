@@ -56,3 +56,38 @@ public class MovementFilterParams : PaginationParams
     public string? SourceType { get; set; }
     public long? SessionId { get; set; }
 }
+
+// Ligne du journal de caisse — agrégation par événement métier (Payment, VenteDirecte, Facture…).
+// Chaque événement produit 1 à 3 mouvements comptables (HT, TVA, encaissement) — on les regroupe
+// ici pour un affichage humain : une ligne = un événement avec HT/TVA/TTC/encaissé.
+public record JournalEntryDto(
+    string SourceType,       // "Payment" | "VenteDirecte" | "Facture" | "Manual"
+    long SourceId,
+    DateTime Date,
+    string Label,
+    decimal Ht,              // somme des mouvements Reason=Vente
+    decimal Tva,             // somme des mouvements Reason=TvaCollectee
+    decimal Ttc,             // Ht + Tva
+    decimal Encaisse,        // somme des mouvements Reason=Encaissement vers une caisse
+    decimal Decaisse,        // somme des mouvements SortieCaisse depuis une caisse
+    string? PaymentMethod    // mode de règlement récupéré depuis la source (Payment/VenteDirecte)
+);
+
+public record JournalReportDto(
+    DateTime? From,
+    DateTime? To,
+    List<JournalEntryDto> Entries,
+    decimal TotalHt,
+    decimal TotalTva,
+    decimal TotalTtc,
+    decimal TotalEncaisse,
+    decimal TotalDecaisse
+);
+
+public class JournalFilterParams
+{
+    public DateTime? From { get; set; }
+    public DateTime? To { get; set; }
+    // Filtre optionnel sur le mode de paiement (Cash / MobileMoney / …).
+    public string? PaymentMethod { get; set; }
+}

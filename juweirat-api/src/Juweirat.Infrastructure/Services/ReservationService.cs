@@ -11,7 +11,7 @@ using FolioStatus = Juweirat.Domain.Enums.FolioResaStatus;
 
 namespace Juweirat.Infrastructure.Services;
 
-public class ReservationService(AppDbContext db, EmailService emailService, ILogger<ReservationService> logger)
+public class ReservationService(AppDbContext db, EmailService emailService, ILogger<ReservationService> logger, AccountingService accountingService)
 {
     public async Task<PagedResult<ReservationDto>> GetPagedAsync(ReservationFilterParams filter)
     {
@@ -360,7 +360,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         var penaltyNights = r.Nights < 15 ? 1 : r.Nights < 30 ? 2 : 4;
         var penaltyAmount = penaltyNights * r.PricePerNightSnapshot;
 
-        db.Payments.Add(new Payment
+        var penaltyPayment = new Payment
         {
             ReservationId = r.Id,
             Amount        = penaltyAmount,
@@ -369,8 +369,33 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             Status        = PaymentStatus.Completed,
             PaidAt        = DateTime.UtcNow,
             Notes         = $"Retenue No Show — {penaltyNights} nuit{(penaltyNights > 1 ? "s" : "")}",
-        });
+        };
+        db.Payments.Add(penaltyPayment);
         await db.SaveChangesAsync();
+
+        // Journal comptable — retenue No Show : vente HT+TVA sur compte RevenueNoShow puis encaissement caisse.
+        try
+        {
+            await accountingService.PostSaleAsync(
+                clientId:          r.ClientId,
+                revenueKind:       AccountKind.RevenueNoShow,
+                revenueOwnerRefId: null,
+                amountTtc:         penaltyAmount,
+                tvaExonere:        r.TvaExonere,
+                sourceType:        "Payment",
+                sourceId:          penaltyPayment.Id,
+                label:             $"Retenue No Show · résa {r.Reference} · {penaltyNights} nuit(s)");
+            // L'encaissement est déjà écrit par le hook PaymentService — SAUF ici où le
+            // Payment a été créé directement en base sans passer par PaymentService.CreateAsync.
+            // On complète donc manuellement l'écriture d'encaissement.
+            await accountingService.PostEncaissementAsync(
+                clientId:   r.ClientId,
+                amount:     penaltyAmount,
+                sourceType: "Payment",
+                sourceId:   penaltyPayment.Id,
+                label:      $"Encaissement retenue No Show · résa {r.Reference}");
+        }
+        catch (Exception ex) { logger.LogError(ex, "Accounting NoShow hook failed for resa {ResaId}", r.Id); }
 
         var updated = await db.Reservations
             .Include(r => r.Room)
@@ -407,6 +432,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         var penaltyAmount = penaltyNights * r.PricePerNightSnapshot;
 
         var alreadyBilled = r.Payments.Any(p => p.Notes != null && p.Notes.StartsWith("Retenue annulation"));
+        Payment? cancellationPayment = null;
         if (deadlinePassed && penaltyNights > 0 && !alreadyBilled)
         {
             if (string.IsNullOrWhiteSpace(paymentMethod))
@@ -414,7 +440,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             if (!Enum.TryParse<PaymentMethod>(paymentMethod, ignoreCase: true, out var method))
                 return (null, $"Mode de paiement invalide : « {paymentMethod} ».");
 
-            db.Payments.Add(new Payment
+            cancellationPayment = new Payment
             {
                 ReservationId = r.Id,
                 Amount        = penaltyAmount,
@@ -423,7 +449,8 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
                 Status        = PaymentStatus.Completed,
                 PaidAt        = DateTime.UtcNow,
                 Notes         = $"Retenue annulation — {penaltyNights} nuit{(penaltyNights > 1 ? "s" : "")} ({deadlineLabel})",
-            });
+            };
+            db.Payments.Add(cancellationPayment);
         }
 
         r.Status             = ReservationStatus.Cancelled;
@@ -431,6 +458,30 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         r.CancellationReason = reason;
 
         await db.SaveChangesAsync();
+
+        // Journal comptable — retenue annulation : vente HT+TVA sur compte RevenueCancellation + encaissement.
+        if (cancellationPayment is not null)
+        {
+            try
+            {
+                await accountingService.PostSaleAsync(
+                    clientId:          r.ClientId,
+                    revenueKind:       AccountKind.RevenueCancellation,
+                    revenueOwnerRefId: null,
+                    amountTtc:         penaltyAmount,
+                    tvaExonere:        r.TvaExonere,
+                    sourceType:        "Payment",
+                    sourceId:          cancellationPayment.Id,
+                    label:             $"Retenue annulation · résa {r.Reference} · {penaltyNights} nuit(s)");
+                await accountingService.PostEncaissementAsync(
+                    clientId:   r.ClientId,
+                    amount:     penaltyAmount,
+                    sourceType: "Payment",
+                    sourceId:   cancellationPayment.Id,
+                    label:      $"Encaissement retenue annulation · résa {r.Reference}");
+            }
+            catch (Exception ex) { logger.LogError(ex, "Accounting Cancellation hook failed for resa {ResaId}", r.Id); }
+        }
 
         var updated = await db.Reservations
             .Include(r => r.Room)

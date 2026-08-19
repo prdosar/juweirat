@@ -8,6 +8,30 @@ export interface LoginResponse {
 
 export type UserRole = 'admin' | 'utilisateur' | 'comptable';
 
+export interface JournalEntryDto {
+  sourceType: string;      // "Payment" | "VenteDirecte" | "Facture"
+  sourceId: number;
+  date: string;
+  label: string;
+  ht: number;
+  tva: number;
+  ttc: number;
+  encaisse: number;
+  decaisse: number;
+  paymentMethod: string | null;
+}
+
+export interface JournalReportDto {
+  from: string | null;
+  to: string | null;
+  entries: JournalEntryDto[];
+  totalHt: number;
+  totalTva: number;
+  totalTtc: number;
+  totalEncaisse: number;
+  totalDecaisse: number;
+}
+
 export interface UserDto {
   id: number;
   firstName: string;

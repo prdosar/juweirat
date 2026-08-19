@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Infrastructure.Services;
 
-public class VenteDirecteService(AppDbContext db)
+public class VenteDirecteService(AppDbContext db, AccountingService accountingService)
 {
     public async Task<List<VenteDirecteDto>> GetAllAsync(DateOnly? date = null)
     {
@@ -57,7 +57,10 @@ public class VenteDirecteService(AppDbContext db)
             if (req.FolioId is null)
                 return (null, "FolioId requis pour le mode SurChambre");
 
-            folio = await db.Folios.Include(f => f.Unit).FirstOrDefaultAsync(f => f.Id == req.FolioId.Value);
+            folio = await db.Folios
+                .Include(f => f.Unit)
+                .Include(f => f.Reservation)
+                .FirstOrDefaultAsync(f => f.Id == req.FolioId.Value);
             if (folio is null)  return (null, "Folio introuvable");
             if (folio.Closed)   return (null, "Ce folio est déjà clôturé");
             if (!folio.CheckedIn) return (null, "Le client n'est pas encore enregistré sur ce folio");
@@ -94,6 +97,36 @@ public class VenteDirecteService(AppDbContext db)
 
         db.VentesDirectes.Add(vente);
         await db.SaveChangesAsync();
+
+        // Journal comptable — vente + éventuel encaissement immédiat.
+        // Fire-and-forget non bloquant.
+        try
+        {
+            // Client comptable : le client rattaché à la vente (via ID ou via le folio si SurChambre).
+            long? clientForAccounting = vente.ClientId ?? folio?.Reservation?.ClientId;
+
+            await accountingService.PostSaleAsync(
+                clientId:          clientForAccounting,
+                revenueKind:       AccountKind.Prestation,
+                revenueOwnerRefId: vente.PrestationId,
+                amountTtc:         vente.Total,
+                tvaExonere:        vente.TvaExonere,
+                sourceType:        "VenteDirecte",
+                sourceId:          vente.Id,
+                label:             $"{prestation.NameFr} × {vente.Quantite}");
+
+            // Mode=Encaissement → l'argent rentre en caisse immédiatement.
+            if (vente.Mode == "Encaissement")
+            {
+                await accountingService.PostEncaissementAsync(
+                    clientId:   clientForAccounting,
+                    amount:     vente.Total,
+                    sourceType: "VenteDirecte",
+                    sourceId:   vente.Id,
+                    label:      $"Encaissement {prestation.NameFr} · {vente.PaymentMethod ?? "Espèces"}");
+            }
+        }
+        catch { /* silent */ }
 
         var created = await db.VentesDirectes
             .Include(v => v.Prestation)
