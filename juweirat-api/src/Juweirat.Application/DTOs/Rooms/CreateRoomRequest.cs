@@ -33,5 +33,6 @@ public record UpdateRoomRequest(
     decimal? PricePerMonth,
     string? Status,
     bool? IsFeatured,
-    List<long>? AmenityIds
+    List<long>? AmenityIds,
+    long? CategoryId = null
 );

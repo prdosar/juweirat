@@ -162,6 +162,17 @@ public class RoomService(AppDbContext db)
             room.Amenities = amenities;
         }
 
+        if (req.CategoryId is not null)
+        {
+            var category = await db.RoomCategories.FirstOrDefaultAsync(c => c.Id == req.CategoryId.Value);
+            if (category is null)
+                throw new InvalidOperationException($"Catégorie introuvable (id={req.CategoryId.Value})");
+            room.CategoryId = category.Id;
+            room.Category   = category;
+            room.PmsType    = category.PmsType;
+            room.PmsGamme   = category.PmsGamme;
+        }
+
         await db.SaveChangesAsync();
         return ToDto(room);
     }

@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Header from '@/components/Header';
-import { rooms, amenities, roomImages } from '@/lib/api';
-import type { RoomDto, AmenityDto, RoomImageDto } from '@/lib/types';
+import { rooms, amenities, categories, roomImages } from '@/lib/api';
+import type { RoomDto, AmenityDto, RoomCategoryDto, RoomImageDto } from '@/lib/types';
 import { ArrowLeft, Save, ImagePlus, Trash2, Star } from 'lucide-react';
 import Link from 'next/link';
 
@@ -60,6 +60,7 @@ export default function RoomFormPage() {
   const router   = useRouter();
 
   const [amenityList, setAmenityList] = useState<AmenityDto[]>([]);
+  const [categoryList, setCategoryList] = useState<RoomCategoryDto[]>([]);
   const [loading, setLoading]         = useState(!isNew);
   const [saving, setSaving]           = useState(false);
   const [error, setError]             = useState('');
@@ -77,10 +78,12 @@ export default function RoomFormPage() {
     sizeSqm: '', pricePerNight: '', pricePerWeek: '', pricePerMonth: '',
     status: 'Available', isFeatured: false,
     amenityIds: [] as number[],
+    categoryId: '' as number | '',
   });
 
   useEffect(() => {
     amenities.getAll().then(setAmenityList);
+    categories.getAll().then(setCategoryList);
     if (!isNew) {
       rooms.getById(Number(id)).then((r: RoomDto) => {
         setForm({
@@ -94,6 +97,7 @@ export default function RoomFormPage() {
           pricePerMonth: r.pricePerMonth ? String(r.pricePerMonth) : '',
           status: r.status, isFeatured: r.isFeatured,
           amenityIds: r.amenities.map(a => a.id),
+          categoryId: r.categoryId ?? '',
         });
         setImages(r.images ?? []);
       }).finally(() => setLoading(false));
@@ -129,6 +133,7 @@ export default function RoomFormPage() {
         pricePerMonth: form.pricePerMonth ? Number(form.pricePerMonth) : null,
         status: form.status, isFeatured: form.isFeatured,
         amenityIds: form.amenityIds,
+        categoryId: form.categoryId === '' ? null : Number(form.categoryId),
       };
       if (isNew) {
         const created = await rooms.create(body);
@@ -235,6 +240,24 @@ export default function RoomFormPage() {
                 <input required value={form.nameEn} onChange={e => set('nameEn', e.target.value)}
                   placeholder="Panorama Suite" className="input" />
               </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-500">Catégorie</label>
+              <select
+                value={form.categoryId === '' ? '' : String(form.categoryId)}
+                onChange={e => set('categoryId', e.target.value === '' ? '' : Number(e.target.value))}
+                className="input"
+              >
+                <option value="">— Aucune —</option>
+                {categoryList.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.nameFr} ({c.pmsType} · {c.pmsGamme})
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-gray-400">
+                Détermine le type PMS et la gamme (T1/T2/T3/T4 × standard/supérieure/privilège/suite).
+              </p>
             </div>
           </div>
 
