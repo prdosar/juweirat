@@ -35,10 +35,12 @@ INSERT INTO companies (name, "isActive", "createdAt", "updatedAt")
 SELECT 'SOROBAT',  TRUE, NOW(), NOW() WHERE NOT EXISTS (SELECT 1 FROM companies WHERE name = 'SOROBAT');
 
 -- ─── 2. Apt 67 : Hors Service (Abdoul Tidjani) ─────────────────────────────
+-- ⚠️ NE PAS toucher statutMenage : l'enum MenageStatus ne contient que
+-- 'Propre' et 'Sale' — toute autre valeur fait planter EF Core à la lecture.
+-- Le flag horsService=true suffit à marquer la chambre HS.
 UPDATE rooms
-SET "horsService"  = TRUE,
-    "statutMenage" = 'Occupé',
-    "updatedAt"    = NOW()
+SET "horsService" = TRUE,
+    "updatedAt"   = NOW()
 WHERE "roomNumber" = '67';
 
 -- ─── 3. Fonction d'aide : upsert client + résa pour un apt ──────────────────
