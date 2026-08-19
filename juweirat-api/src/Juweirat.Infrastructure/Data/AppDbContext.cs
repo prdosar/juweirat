@@ -34,6 +34,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<MaintenanceCategory>   MaintenanceCategories  { get; set; }
     public DbSet<MaintenanceStaff>      MaintenanceStaff       { get; set; }
 
+    // ── Compta : comptes, mouvements, caisses, sessions ─────────────────────
+    public DbSet<Account>          Accounts          { get; set; }
+    public DbSet<AccountMovement>  AccountMovements  { get; set; }
+    public DbSet<CashRegister>     CashRegisters     { get; set; }
+    public DbSet<CashSession>      CashSessions      { get; set; }
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         base.OnConfiguring(optionsBuilder);
@@ -357,6 +363,78 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
              .HasForeignKey(d => d.FolioId)
              .IsRequired(false)
              .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ── Compta : accounts ─────────────────────────────────────
+        modelBuilder.Entity<Account>(e =>
+        {
+            e.Property(a => a.Kind).HasConversion<string>();
+            e.Property(a => a.Balance).HasPrecision(14, 2).HasDefaultValue(0m);
+            e.Property(a => a.IsActive).HasDefaultValue(true);
+
+            // Unicité d'un compte auxiliaire par tiers.
+            e.HasIndex(a => new { a.Kind, a.OwnerRefId })
+             .IsUnique()
+             .HasFilter("\"ownerRefId\" IS NOT NULL");
+
+            // Un seul compte système par Kind (unicité sur Kind quand OwnerRefId est null).
+            e.HasIndex(a => a.Kind)
+             .IsUnique()
+             .HasFilter("\"ownerRefId\" IS NULL");
+        });
+
+        // ── Compta : accountMovements ─────────────────────────────
+        modelBuilder.Entity<AccountMovement>(e =>
+        {
+            e.Property(m => m.Reason).HasConversion<string>();
+            e.Property(m => m.Amount).HasPrecision(14, 2);
+
+            e.HasOne(m => m.FromAccount)
+             .WithMany()
+             .HasForeignKey(m => m.FromAccountId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(m => m.ToAccount)
+             .WithMany()
+             .HasForeignKey(m => m.ToAccountId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(m => m.Session)
+             .WithMany()
+             .HasForeignKey(m => m.SessionId)
+             .IsRequired(false)
+             .OnDelete(DeleteBehavior.SetNull);
+
+            // Index de parcours : par période, par compte, par source métier.
+            e.HasIndex(m => m.Date);
+            e.HasIndex(m => new { m.FromAccountId, m.Date });
+            e.HasIndex(m => new { m.ToAccountId, m.Date });
+            e.HasIndex(m => new { m.SourceType, m.SourceId });
+        });
+
+        // ── Compta : cashRegisters ────────────────────────────────
+        modelBuilder.Entity<CashRegister>(e =>
+        {
+            e.Property(r => r.IsActive).HasDefaultValue(true);
+            e.HasIndex(r => r.Name).IsUnique();
+        });
+
+        // ── Compta : cashSessions ─────────────────────────────────
+        modelBuilder.Entity<CashSession>(e =>
+        {
+            e.Property(s => s.Status).HasConversion<string>().HasDefaultValue(CashSessionStatus.Open);
+            e.Property(s => s.OpeningFloat).HasPrecision(14, 2);
+            e.Property(s => s.ClosingCountedTotal).HasPrecision(14, 2);
+
+            e.HasOne(s => s.Register)
+             .WithMany(r => r.Sessions)
+             .HasForeignKey(s => s.RegisterId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            // Une seule session ouverte par (caisse, caissier).
+            e.HasIndex(s => new { s.RegisterId, s.OpenedByUserId, s.Status })
+             .IsUnique()
+             .HasFilter("\"status\" = 'Open'");
         });
 
         // Apply camelCase naming to all tables and columns

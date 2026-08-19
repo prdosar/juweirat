@@ -1,11 +1,12 @@
 using Juweirat.Application.DTOs.Prestations;
 using Juweirat.Domain.Entities;
+using Juweirat.Domain.Enums;
 using Juweirat.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Infrastructure.Services;
 
-public class PrestationAnnexeService(AppDbContext db)
+public class PrestationAnnexeService(AppDbContext db, AccountingService accountingService)
 {
     public async Task<List<PrestationAnnexeDto>> GetAllAsync(bool activeOnly = false)
     {
@@ -40,6 +41,14 @@ public class PrestationAnnexeService(AppDbContext db)
         };
         db.PrestationsAnnexes.Add(p);
         await db.SaveChangesAsync();
+
+        try
+        {
+            await accountingService.EnsureAuxiliaryAccountAsync(
+                AccountKind.Prestation, p.Id, $"Prestation — {p.NameFr}");
+        }
+        catch { /* silent */ }
+
         return (ToDto(p), null);
     }
 
