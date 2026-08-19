@@ -33,8 +33,13 @@ function receiptId(id: number): string {
 export function printVenteDirecte(vente: VenteDirecteDto): void {
   const W = 32; // largeur en caractères pour 80mm ~32 cols à 11px Courier
 
+  // URL absolue vers le logo : le reçu est écrit dans une nouvelle fenêtre,
+  // les chemins relatifs y échouent.
+  const logoUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/img/logo.png`
+    : '/img/logo.png';
+
   const lines: string[] = [
-    pad('JUWEIRAT', W, true).trimEnd(),
     pad('Résidence Meublée', W, true).trimEnd(),
     pad('Lomé, Togo', W, true).trimEnd(),
     sep('=', W),
@@ -103,6 +108,13 @@ export function printVenteDirecte(vente: VenteDirecteDto): void {
     .center { text-align: center; }
     .bold   { font-weight: bold; }
     .big    { font-size: 13px; font-weight: bold; }
+    .brand-logo {
+      display: block;
+      width: 80px;
+      height: 80px;
+      object-fit: contain;
+      margin: 0 auto 4px;
+    }
     @media screen {
       body {
         max-width: 300px;
@@ -118,9 +130,8 @@ export function printVenteDirecte(vente: VenteDirecteDto): void {
   </style>
 </head>
 <body>
-<div class="paper">${lines
+<div class="paper"><img class="brand-logo" src="${logoUrl}" alt="Juweirat" />${lines
     .map(l => {
-      if (l.startsWith('JUWEIRAT'))         return `<div class="center big">${l.trim()}</div>`;
       if (l.startsWith('Résidence') || l.startsWith('Lomé')) return `<div class="center">${l.trim()}</div>`;
       if (l.startsWith('Merci'))            return `<div class="center">${l.trim()}</div>`;
       if (l.startsWith('PRESTATION') || l.startsWith('TOTAL')) return `<div class="bold">${l}</div>`;
