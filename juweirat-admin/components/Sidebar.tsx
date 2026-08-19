@@ -8,9 +8,11 @@ import {
   CreditCard, LogOut, CalendarDays, Building2,
   ClipboardList, Wrench, Receipt, FileText, Settings,
   BarChart2, Printer, Mail, ShoppingCart, Package, Briefcase,
+  ShieldCheck,
 } from 'lucide-react';
-import { clearAuth } from '@/lib/auth';
+import { clearAuth, getUser } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 const navItems = [
   { href: '/dashboard',    label: 'Tableau de bord', icon: LayoutDashboard },
@@ -41,6 +43,12 @@ const pmsItems = [
 export default function Sidebar() {
   const pathname = usePathname();
   const router   = useRouter();
+  // Rôle courant — chargé côté client car localStorage n'est pas dispo au SSR.
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    const u = getUser();
+    setIsAdmin(u?.role === 'admin');
+  }, [pathname]);
 
   function logout() {
     clearAuth();
@@ -104,6 +112,29 @@ export default function Sidebar() {
             </Link>
           );
         })}
+
+        {/* Section administration — visible uniquement pour role=admin */}
+        {isAdmin && (
+          <>
+            <div className="pt-4 pb-1">
+              <p className="px-3 text-[10px] text-white/25 uppercase tracking-[0.2em] font-medium">Administration</p>
+            </div>
+            {[
+              { href: '/users', label: 'Utilisateurs', icon: ShieldCheck },
+            ].map(({ href, label, icon: Icon }) => {
+              const active = pathname === href || pathname.startsWith(href + '/');
+              return (
+                <Link key={href} href={href}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                    active ? 'bg-green text-charcoal' : 'text-white/55 hover:bg-white/8 hover:text-white'
+                  }`}>
+                  <Icon size={16} />
+                  {label}
+                </Link>
+              );
+            })}
+          </>
+        )}
       </nav>
 
       {/* Logout */}

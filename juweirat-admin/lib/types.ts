@@ -6,6 +6,20 @@ export interface LoginResponse {
   expiresAt: string;
 }
 
+export type UserRole = 'admin' | 'utilisateur' | 'comptable';
+
+export interface UserDto {
+  id: number;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  email: string;
+  role: UserRole;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+}
+
 export interface RoomImageDto {
   id: number;
   filePath: string;

@@ -101,6 +101,20 @@ export const amenities = {
   delete:  (id: number) => request<void>(`/api/amenities/${id}`, { method: 'DELETE' }),
 };
 
+// ── Users (admin only côté backend) ───────────────────────────────────────────
+export const users = {
+  getAll: (includeInactive = true) =>
+    request<import('./types').UserDto[]>(`/api/users?includeInactive=${includeInactive}`),
+  getById: (id: number) =>
+    request<import('./types').UserDto>(`/api/users/${id}`),
+  create: (body: { firstName: string; lastName: string; email: string; password: string; role: string }) =>
+    request<import('./types').UserDto>('/api/users', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: number, body: Partial<{
+    firstName: string; lastName: string; email: string;
+    password: string; role: string; isActive: boolean;
+  }>) => request<import('./types').UserDto>(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+};
+
 // ── Clients ───────────────────────────────────────────────────────────────────
 export const clients = {
   getAll:  (search?: string) => {

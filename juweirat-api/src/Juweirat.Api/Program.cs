@@ -50,6 +50,7 @@ builder.Services.AddScoped<VenteDirecteService>();
 builder.Services.AddScoped<CompanyService>();
 builder.Services.AddScoped<MaintenanceStaffService>();
 builder.Services.AddScoped<AccountingService>();
+builder.Services.AddScoped<UserService>();
 
 // ─── Authentication / JWT ────────────────────────────────────────────────────
 var jwtSection = builder.Configuration.GetSection("Jwt");
