@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { categories, clients, companies, rooms, reservations, prestations } from '@/lib/api';
@@ -93,7 +93,17 @@ function initials(name: string): string {
 }
 
 /* ────────────────────────── Component ───────────────────────── */
+// Wrapper Suspense requis par Next.js 16 : useSearchParams déclenche un CSR-bailout
+// sur les routes prerenderées, l'inner doit être enveloppé pour ne pas casser le build.
 export default function NewReservationPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 32, fontSize: 13, color: '#6b7570' }}>Chargement du wizard…</div>}>
+      <NewReservationPageInner />
+    </Suspense>
+  );
+}
+
+function NewReservationPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedClientId = Number(searchParams.get('clientId')) || 0;

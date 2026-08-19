@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import { clients, prestations, ventesDirectes } from '@/lib/api';
@@ -23,7 +23,16 @@ function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('fr', { hour: '2-digit', minute: '2-digit' });
 }
 
+// Wrapper Suspense requis par Next.js 16 pour useSearchParams sur routes prerenderées.
 export default function VentesDirectesPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-sm text-gray-500">Chargement…</div>}>
+      <VentesDirectesPageInner />
+    </Suspense>
+  );
+}
+
+function VentesDirectesPageInner() {
   const searchParams = useSearchParams();
   const preselectedClientId = Number(searchParams.get('clientId')) || 0;
 
