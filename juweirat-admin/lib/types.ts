@@ -32,6 +32,43 @@ export interface JournalReportDto {
   totalDecaisse: number;
 }
 
+export interface CashSessionDto {
+  id: number;
+  registerId: number;
+  registerName: string;
+  openedByUserId: number;
+  openedByUserName: string;
+  openedAt: string;
+  openingFloat: number;
+  closedByUserId: number | null;
+  closedByUserName: string | null;
+  closedAt: string | null;
+  closingCountedTotal: number | null;
+  status: 'Open' | 'Closed';
+  notes: string | null;
+}
+
+export interface CashSessionReportDto {
+  session: CashSessionDto;
+  theoreticalTotal: number;
+  countedTotal: number | null;
+  ecart: number | null;
+  totalEncaisse: number;
+  totalDecaisse: number;
+  totalEntreeManuelle: number;
+  movementsCount: number;
+}
+
+export interface CashRegisterDto {
+  id: number;
+  name: string;
+  location: string | null;
+  isActive: boolean;
+  accountId: number | null;
+  accountBalance: number;
+  createdAt: string;
+}
+
 export interface UserDto {
   id: number;
   firstName: string;

@@ -3,8 +3,9 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import Header from '@/components/Header';
 import { comptabilite } from '@/lib/api';
+import { getUser } from '@/lib/auth';
 import type { JournalReportDto } from '@/lib/types';
-import { Calendar, Download, RotateCcw, TrendingUp, TrendingDown, Wallet, Receipt } from 'lucide-react';
+import { Calendar, Download, RotateCcw, TrendingUp, TrendingDown, Wallet, Receipt, DatabaseBackup } from 'lucide-react';
 
 const PAYMENT_METHODS = [
   { value: '',              label: 'Tous les modes'    },
@@ -57,6 +58,13 @@ export default function JournalPage() {
   const [report,  setReport]  = useState<JournalReportDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillMsg, setBackfillMsg] = useState('');
+
+  useEffect(() => {
+    setIsAdmin(getUser()?.role === 'admin');
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -116,6 +124,20 @@ export default function JournalPage() {
         decaisse:  entries.reduce((s, e) => s + e.decaisse, 0),
       }));
   }, [report]);
+
+  async function runBackfill() {
+    if (!confirm('Rejouer tous les paiements, ventes et factures antérieurs dans le journal ? Idempotent — safe à ré-exécuter.')) return;
+    setBackfilling(true); setBackfillMsg('');
+    try {
+      const r = await comptabilite.backfill();
+      setBackfillMsg(`Backfill terminé — ${r.payments} paiement(s), ${r.ventes} vente(s), ${r.factures} facture(s), ${r.noShow} no-show, ${r.cancellations} annulation(s).`);
+      await load();
+    } catch (e: unknown) {
+      setBackfillMsg(`Erreur backfill : ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBackfilling(false);
+    }
+  }
 
   function exportCsv() {
     if (!report) return;
@@ -177,6 +199,14 @@ export default function JournalPage() {
               ))}
             </div>
             <div className="ml-auto flex items-center gap-2">
+              {isAdmin && (
+                <button type="button" onClick={runBackfill} disabled={backfilling}
+                  title="Rejeu comptable des paiements, ventes et factures antérieurs (idempotent)"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-amber-700 border border-amber-200 bg-amber-50 rounded-lg hover:bg-amber-100 disabled:opacity-50">
+                  <DatabaseBackup size={13} className={backfilling ? 'animate-spin' : ''} />
+                  {backfilling ? 'Rejeu…' : 'Backfill historique'}
+                </button>
+              )}
               <button type="button" onClick={load} disabled={loading}
                 className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-charcoal border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50">
                 <RotateCcw size={13} className={loading ? 'animate-spin' : ''} /> Rafraîchir
@@ -198,6 +228,12 @@ export default function JournalPage() {
             <KpiCard label="Encaissé"       value={fmt(report.totalEncaisse)} icon={TrendingUp}   tint="text-green-dark" />
             <KpiCard label="Décaissé"       value={fmt(report.totalDecaisse)} icon={TrendingDown} tint="text-red-600" />
           </div>
+        )}
+
+        {backfillMsg && (
+          <div className={`text-sm px-4 py-3 rounded-lg ${
+            backfillMsg.startsWith('Erreur') ? 'bg-red-50 border border-red-200 text-red-700' : 'bg-blue-50 border border-blue-200 text-blue-700'
+          }`}>{backfillMsg}</div>
         )}
 
         {error && (

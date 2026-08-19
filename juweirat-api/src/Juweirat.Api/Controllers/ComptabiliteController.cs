@@ -11,10 +11,26 @@ namespace Juweirat.Api.Controllers;
 [ApiController]
 [Route("api/comptabilite")]
 [Authorize]
-public class ComptabiliteController(AccountingService accountingService) : ControllerBase
+public class ComptabiliteController(AccountingService accountingService, BackfillService backfillService) : ControllerBase
 {
     // Journal de caisse — agrégation par événement (Payment / VenteDirecte / Facture) avec HT/TVA/TTC.
     [HttpGet("journal")]
     public async Task<IActionResult> GetJournal([FromQuery] JournalFilterParams filter)
         => Ok(await accountingService.GetJournalAsync(filter));
+
+    // Rejeu comptable des événements antérieurs (idempotent). Admin uniquement.
+    [HttpPost("backfill")]
+    [Authorize(Roles = "admin")]
+    public async Task<IActionResult> Backfill()
+    {
+        var result = await backfillService.RunAsync();
+        return Ok(new
+        {
+            payments      = result.Payments,
+            ventes        = result.Ventes,
+            factures      = result.Factures,
+            noShow        = result.NoShow,
+            cancellations = result.Cancellations,
+        });
+    }
 }

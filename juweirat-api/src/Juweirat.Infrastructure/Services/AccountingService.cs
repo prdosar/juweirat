@@ -3,14 +3,15 @@ using Juweirat.Application.DTOs.Accounting;
 using Juweirat.Domain.Enums;
 using Juweirat.Infrastructure.Data;
 using Juweirat.Infrastructure.Extensions;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Infrastructure.Services;
 
-// Service comptable — lecture seule dans le paquet 1.
-// L'émission de mouvements (PostMovement) sera ajoutée dans le paquet 2 avec les hooks
-// dans PaymentService / VenteDirecteService / FactureService / FolioService.
-public class AccountingService(AppDbContext db)
+// Service comptable — écritures automatiques (paquet 2a) + lecture (paquets 1 & 2c).
+// L'httpContext est optionnel : sans lui, les hooks continuent à écrire sans lier
+// à une session (utile pour les backfills et les tests).
+public class AccountingService(AppDbContext db, IHttpContextAccessor? httpContext = null)
 {
     public async Task<PagedResult<AccountDto>> GetAccountsAsync(AccountFilterParams filter)
     {
@@ -328,6 +329,8 @@ public class AccountingService(AppDbContext db)
     // Comptabilise un encaissement : le client règle son compte, l'argent va en caisse.
     // Si clientId=null, on encaisse directement en caisse sans passer par un compte tiers
     // (utilisé pour VenteDirecte walk-in où PostSale a déjà routé vers la caisse).
+    // sessionId / createdByUserId : si non fournis, on tente une auto-détection via
+    // l'user JWT courant + sa session ouverte sur la caisse cible.
     public async Task PostEncaissementAsync(
         long? clientId,
         decimal amount,
@@ -345,11 +348,61 @@ public class AccountingService(AppDbContext db)
         var cashAccount = await GetDefaultCashAccountAsync();
         if (cashAccount is null) return;
 
+        var (autoSessionId, autoUserId) = await TryDetectCurrentSessionAsync(cashAccount.OwnerRefId);
+
         QueueMovement(clientAccount, cashAccount, amount,
             MovementReason.Encaissement, sourceType, sourceId, label,
-            sessionId, createdByUserId);
+            sessionId ?? autoSessionId, createdByUserId ?? autoUserId);
 
         await db.SaveChangesAsync();
+    }
+
+    // Entrée / sortie de caisse hors ventes (fond d'ouverture, retrait, achat matériel).
+    // Contre-partie sur le compte système Expense pour rester équilibré.
+    public async Task PostCashInOutAsync(
+        long registerId,
+        decimal amount,
+        string direction,   // "in" | "out"
+        string label,
+        long? sessionId,
+        long? userId,
+        MovementReason reason)
+    {
+        if (amount <= 0) return;
+        var dir = direction.ToLowerInvariant();
+        if (dir != "in" && dir != "out") return;
+
+        var cashAccount = await GetAuxiliaryAccountAsync(AccountKind.CashRegister, registerId);
+        if (cashAccount is null) return;
+
+        var expenseAccount = await GetSystemAccountAsync(AccountKind.Expense);
+        if (expenseAccount is null) return;
+
+        var (from, to) = dir == "in"
+            ? (expenseAccount, cashAccount)   // entrée en caisse (fond ou apport)
+            : (cashAccount, expenseAccount);  // sortie de caisse (retrait, achat)
+
+        QueueMovement(from, to, amount, reason, "Manual", 0, label, sessionId, userId);
+        await db.SaveChangesAsync();
+    }
+
+    // Auto-détection de la session ouverte de l'utilisateur JWT courant sur une caisse donnée.
+    // Retourne (null, null) si pas d'user contextuel ou pas de session ouverte.
+    private async Task<(long? sessionId, long? userId)> TryDetectCurrentSessionAsync(long? registerOwnerRefId)
+    {
+        var userId = httpContext?.HttpContext?.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                  ?? httpContext?.HttpContext?.User?.FindFirst("sub")?.Value;
+        if (!long.TryParse(userId, out var uid) || registerOwnerRefId is null)
+            return (null, long.TryParse(userId, out var u2) ? u2 : null);
+
+        var session = await db.CashSessions
+            .Where(s => s.OpenedByUserId == uid
+                     && s.RegisterId == registerOwnerRefId.Value
+                     && s.Status == CashSessionStatus.Open)
+            .Select(s => new { s.Id })
+            .FirstOrDefaultAsync();
+
+        return (session?.Id, uid);
     }
 
     // ── Mapping ─────────────────────────────────────────────────────

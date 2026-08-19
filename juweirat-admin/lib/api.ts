@@ -110,6 +110,29 @@ export const comptabilite = {
     if (params?.paymentMethod) qs.set('paymentMethod', params.paymentMethod);
     return request<import('./types').JournalReportDto>(`/api/comptabilite/journal?${qs}`);
   },
+  backfill: () =>
+    request<{ payments: number; ventes: number; factures: number; noShow: number; cancellations: number }>(
+      '/api/comptabilite/backfill', { method: 'POST' }),
+};
+
+// ── Caisse (sessions par caissier) ────────────────────────────────────────────
+export const cash = {
+  getRegisters: () =>
+    request<import('./types').CashRegisterDto[]>('/api/cash-registers'),
+  getCurrentSession: () =>
+    request<import('./types').CashSessionDto | null>('/api/cash/sessions/current'),
+  getHistory: (limit = 50) =>
+    request<import('./types').CashSessionDto[]>(`/api/cash/sessions?limit=${limit}`),
+  getSession: (id: number) =>
+    request<import('./types').CashSessionDto>(`/api/cash/sessions/${id}`),
+  getReport: (id: number) =>
+    request<import('./types').CashSessionReportDto>(`/api/cash/sessions/${id}/report`),
+  openSession: (body: { registerId: number; openingFloat: number }) =>
+    request<import('./types').CashSessionDto>('/api/cash/sessions', { method: 'POST', body: JSON.stringify(body) }),
+  addMovement: (sessionId: number, body: { amount: number; direction: 'in' | 'out'; label: string }) =>
+    request<import('./types').CashSessionDto>(`/api/cash/sessions/${sessionId}/movements`, { method: 'POST', body: JSON.stringify(body) }),
+  closeSession: (sessionId: number, body: { closingCountedTotal: number; notes?: string }) =>
+    request<import('./types').CashSessionDto>(`/api/cash/sessions/${sessionId}/close`, { method: 'POST', body: JSON.stringify(body) }),
 };
 
 // ── Users (admin only côté backend) ───────────────────────────────────────────

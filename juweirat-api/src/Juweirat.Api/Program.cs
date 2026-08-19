@@ -49,7 +49,10 @@ builder.Services.AddScoped<PrestationAnnexeService>();
 builder.Services.AddScoped<VenteDirecteService>();
 builder.Services.AddScoped<CompanyService>();
 builder.Services.AddScoped<MaintenanceStaffService>();
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<AccountingService>();
+builder.Services.AddScoped<CashSessionService>();
+builder.Services.AddScoped<BackfillService>();
 builder.Services.AddScoped<UserService>();
 
 // ─── Authentication / JWT ────────────────────────────────────────────────────

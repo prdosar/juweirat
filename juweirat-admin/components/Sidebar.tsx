@@ -8,7 +8,7 @@ import {
   CreditCard, LogOut, CalendarDays, Building2,
   ClipboardList, Wrench, Receipt, FileText, Settings,
   BarChart2, Printer, Mail, ShoppingCart, Package, Briefcase,
-  ShieldCheck, BookOpen,
+  ShieldCheck, BookOpen, Wallet,
 } from 'lucide-react';
 import { clearAuth, getUser } from '@/lib/auth';
 import { useRouter } from 'next/navigation';
@@ -109,6 +109,25 @@ export default function Sidebar() {
                   : 'text-white/55 hover:bg-white/8 hover:text-white'
               }`}
             >
+              <Icon size={16} />
+              {label}
+            </Link>
+          );
+        })}
+
+        {/* Section Caisse — visible pour tout utilisateur authentifié */}
+        <div className="pt-4 pb-1">
+          <p className="px-3 text-[10px] text-white/25 uppercase tracking-[0.2em] font-medium">Caisse</p>
+        </div>
+        {[
+          { href: '/caisse/session', label: 'Ma caisse', icon: Wallet },
+        ].map(({ href, label, icon: Icon }) => {
+          const active = pathname === href || pathname.startsWith(href + '/');
+          return (
+            <Link key={href} href={href}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                active ? 'bg-green text-charcoal' : 'text-white/55 hover:bg-white/8 hover:text-white'
+              }`}>
               <Icon size={16} />
               {label}
             </Link>
