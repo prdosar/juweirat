@@ -6,11 +6,12 @@ using Juweirat.Domain.Enums;
 using Juweirat.Infrastructure.Data;
 using Juweirat.Infrastructure.Extensions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using FolioStatus = Juweirat.Domain.Enums.FolioResaStatus;
 
 namespace Juweirat.Infrastructure.Services;
 
-public class ReservationService(AppDbContext db)
+public class ReservationService(AppDbContext db, EmailService emailService, ILogger<ReservationService> logger)
 {
     public async Task<PagedResult<ReservationDto>> GetPagedAsync(ReservationFilterParams filter)
     {
@@ -237,7 +238,56 @@ public class ReservationService(AppDbContext db)
             .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
             .FirstAsync(r => r.Id == reservation.Id);
 
+        // Notifications par email pour les résas créées depuis le back-office (PMS/wizard).
+        // Le site public déclenche déjà ses propres emails via PublicController — on skip donc quand Source == "website".
+        if (!isWebBooking && client is not null)
+        {
+            _ = SendAdminBookingEmailsAsync(client, category, req);
+        }
+
         return (ToDto(created), null);
+    }
+
+    private async Task SendAdminBookingEmailsAsync(Client client, RoomCategory category, CreateReservationRequest req)
+    {
+        try
+        {
+            var categoryName = category.NameFr ?? "Appartement Résidence Juweirat";
+            var guestName    = $"{client.FirstName} {client.LastName}".Trim();
+
+            // 1) Rappel à la réception (contact@juweirat.com)
+            var adminSubject = $"[RÉSERVATION RÉCEPTION] {guestName} — {categoryName}";
+            var adminBody = EmailTemplateService.BuildBookingAdminNotification(
+                client.FirstName, client.LastName,
+                client.Email ?? "",
+                client.Phone ?? "",
+                client.Nationality ?? "",
+                categoryName,
+                req.CheckInDate, req.CheckOutDate,
+                req.Adults, req.Children,
+                req.InternalNotes,
+                fromAdmin: true
+            );
+            await emailService.SendEmailAsync("contact@juweirat.com", adminSubject, adminBody, "Réservation Juweirat", client.Email ?? "");
+
+            // 2) Confirmation client si l'email est renseigné sur la fiche
+            if (!string.IsNullOrWhiteSpace(client.Email))
+            {
+                var clientSubject = "Confirmation de votre réservation — Résidence Juweirat";
+                var clientBody = EmailTemplateService.BuildBookingClientConfirmation(
+                    client.FirstName, client.LastName,
+                    categoryName,
+                    req.CheckInDate, req.CheckOutDate,
+                    req.Adults, req.Children,
+                    fromAdmin: true
+                );
+                await emailService.SendEmailAsync(client.Email, clientSubject, clientBody, "Résidence Juweirat", "contact@juweirat.com");
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[ReservationService] Failed to send admin-booking emails for client {ClientId}", client.Id);
+        }
     }
 
     public async Task<(ReservationDto? dto, string? error)> UpdateStatusAsync(long id, UpdateReservationStatusRequest req)
