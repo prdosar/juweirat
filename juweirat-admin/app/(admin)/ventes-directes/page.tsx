@@ -63,6 +63,8 @@ function VentesDirectesPageInner() {
   const [mode, setMode]                   = useState<'Encaissement' | 'SurChambre'>('Encaissement');
   const [paymentMethod, setPaymentMethod] = useState('Espèces');
   const [notes, setNotes]                 = useState('');
+  // Remise en % appliquée au panier (0..100). Saisie en string pour laisser vide.
+  const [remisePct, setRemisePct]         = useState('');
 
   // ── Soumission ─────────────────────────────────────────────────────────────
   const [saving, setSaving]           = useState(false);
@@ -147,7 +149,13 @@ function VentesDirectesPageInner() {
   function lineTotal(line: CartLine): number {
     return linePrixUnitaire(line) * line.quantite;
   }
-  const total = cart.reduce((s, l) => s + lineTotal(l), 0);
+  const totalBrut    = cart.reduce((s, l) => s + lineTotal(l), 0);
+  const remisePctNum = Math.max(0, Math.min(100, Number(remisePct) || 0));
+  const totalRemise  = Math.round(totalBrut * remisePctNum / 100);
+  // Prix stockés HT — la TVA 18% est ajoutée par-dessus pour donner le TTC (net à encaisser).
+  const totalHt      = totalBrut - totalRemise;
+  const totalTva     = Math.round(totalHt * 0.18);
+  const total        = totalHt + totalTva;
 
   function addToCart(p: PrestationAnnexeDto) {
     setError(''); setLastVentes(null);
@@ -178,6 +186,7 @@ function VentesDirectesPageInner() {
     setCart([]);
     setNotes('');
     setError('');
+    setRemisePct('');
     // keep client + mode between sales (quicker for multiple sales to same client)
   }
 
@@ -213,6 +222,7 @@ function VentesDirectesPageInner() {
         mode,
         paymentMethod: mode === 'Encaissement' ? paymentMethod : undefined,
         notes:         notes.trim() || undefined,
+        remisePercent: remisePctNum > 0 ? remisePctNum : undefined,
       });
       setLastVentes(ventes);
       reset();
@@ -368,9 +378,46 @@ function VentesDirectesPageInner() {
                     })}
                   </div>
 
-                  <div className="flex items-baseline justify-between pt-3 border-t-2 border-charcoal">
-                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total du panier</span>
-                    <span className="text-2xl font-black text-charcoal">{total.toLocaleString('fr')} <span className="text-sm font-bold">FCFA</span></span>
+                  {/* Remise en % appliquée au total du panier */}
+                  <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Remise (%)</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number" min="0" max="100" step="0.5"
+                        value={remisePct}
+                        onChange={e => setRemisePct(e.target.value)}
+                        placeholder="0"
+                        className="w-20 border border-gray-200 rounded-md px-2 py-1 text-sm font-bold text-right focus:ring-2 focus:ring-green/20 focus:border-green"
+                      />
+                      <span className="text-sm font-bold text-gray-500">%</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 space-y-1">
+                    {remisePctNum > 0 && (
+                      <>
+                        <div className="flex items-baseline justify-between text-xs text-gray-500">
+                          <span>Sous-total HT</span>
+                          <span className="tabular-nums">{totalBrut.toLocaleString('fr')} FCFA</span>
+                        </div>
+                        <div className="flex items-baseline justify-between text-xs text-red-600 font-semibold">
+                          <span>Remise {remisePctNum}%</span>
+                          <span className="tabular-nums">− {totalRemise.toLocaleString('fr')} FCFA</span>
+                        </div>
+                      </>
+                    )}
+                    <div className="flex items-baseline justify-between text-xs text-gray-500">
+                      <span>Total HT</span>
+                      <span className="tabular-nums">{totalHt.toLocaleString('fr')} FCFA</span>
+                    </div>
+                    <div className="flex items-baseline justify-between text-xs text-gray-500">
+                      <span>TVA 18%</span>
+                      <span className="tabular-nums">{totalTva.toLocaleString('fr')} FCFA</span>
+                    </div>
+                    <div className="flex items-baseline justify-between pt-2 border-t-2 border-charcoal">
+                      <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Net à encaisser (TTC)</span>
+                      <span className="text-2xl font-black text-charcoal">{total.toLocaleString('fr')} <span className="text-sm font-bold">FCFA</span></span>
+                    </div>
                   </div>
                 </div>
               )}

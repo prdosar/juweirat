@@ -324,6 +324,7 @@ export interface VenteDirecteDto {
   notes: string | null;
   createdAt: string;
   tvaExonere?: boolean;
+  remisePercent?: number;
 }
 
 export interface PrestationAnnexeDto {
@@ -408,6 +409,7 @@ export interface ReservationDto {
   totalPrestations: number;
   prestations: ReservationPrestationDto[];
   tvaExonere?: boolean;
+  discount?: number;
 }
 
 export interface PaymentDto {

@@ -15,6 +15,9 @@ public class VenteDirecte
 
     public int Quantite { get; set; } = 1;
     public decimal PrixUnitaireSnapshot { get; set; }  // prixSeule au moment de la vente
+    // Remise en % appliquée à cette ligne (0..100). 0 = pas de remise.
+    // Le Total ci-dessous est APRÈS remise (net à payer).
+    public decimal RemisePercent { get; set; }
     public decimal Total { get; set; }
 
     public string Mode { get; set; } = "Encaissement"; // "Encaissement" | "SurChambre"

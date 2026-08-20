@@ -121,7 +121,7 @@ public class VenteDirecteService(AppDbContext db, AccountingService accountingSe
                 clientId:          clientForAccounting,
                 revenueKind:       AccountKind.Prestation,
                 revenueOwnerRefId: vente.PrestationId,
-                amountTtc:         vente.Total,
+                amountHt:         vente.Total,
                 tvaExonere:        vente.TvaExonere,
                 sourceType:        "VenteDirecte",
                 sourceId:          vente.Id,
@@ -202,11 +202,20 @@ public class VenteDirecteService(AppDbContext db, AccountingService accountingSe
             dateHotel  = config?.DateHotel ?? DateOnly.FromDateTime(DateTime.Today);
         }
 
+        // Remise en % appliquée à chaque ligne (0..100). Le total de chaque
+        // ligne est réduit proportionnellement → conserve le ratio prestation/prestation
+        // en compta et évite de créer une écriture "remise" séparée.
+        var remisePct = Math.Clamp(req.RemisePercent, 0m, 100m);
+
         // Écritures en une seule transaction : ventes + postings folio.
         await using var tx = await db.Database.BeginTransactionAsync();
         var createdIds = new List<long>(lignes.Count);
-        foreach (var (item, prestation, prixUnitaire, total) in lignes)
+        foreach (var (item, prestation, prixUnitaire, brut) in lignes)
         {
+            var totalNet = remisePct > 0
+                ? Math.Round(brut * (1m - remisePct / 100m), 0)
+                : brut;
+
             if (folio is not null)
             {
                 db.Postings.Add(new Posting
@@ -215,8 +224,10 @@ public class VenteDirecteService(AppDbContext db, AccountingService accountingSe
                     FolioId   = folio.Id,
                     UnitId    = folio.UnitId,
                     Famille   = "Prestation",
-                    Libelle   = $"{prestation.NameFr} × {item.Quantite}",
-                    Montant   = (int)Math.Round(total),
+                    Libelle   = remisePct > 0
+                        ? $"{prestation.NameFr} × {item.Quantite} (remise {remisePct:0.##}%)"
+                        : $"{prestation.NameFr} × {item.Quantite}",
+                    Montant   = (int)Math.Round(totalNet),
                 });
             }
 
@@ -228,7 +239,8 @@ public class VenteDirecteService(AppDbContext db, AccountingService accountingSe
                 FolioId              = folio?.Id,
                 Quantite             = item.Quantite,
                 PrixUnitaireSnapshot = prixUnitaire,
-                Total                = total,
+                RemisePercent        = remisePct,
+                Total                = totalNet,
                 Mode                 = req.Mode,
                 PaymentMethod        = req.PaymentMethod,
                 Notes                = req.Notes?.Trim(),
@@ -257,7 +269,7 @@ public class VenteDirecteService(AppDbContext db, AccountingService accountingSe
                     clientId:          clientForAccounting,
                     revenueKind:       AccountKind.Prestation,
                     revenueOwnerRefId: vente.PrestationId,
-                    amountTtc:         vente.Total,
+                    amountHt:         vente.Total,
                     tvaExonere:        vente.TvaExonere,
                     sourceType:        "VenteDirecte",
                     sourceId:          vente.Id,
@@ -311,7 +323,8 @@ public class VenteDirecteService(AppDbContext db, AccountingService accountingSe
             v.PaymentMethod,
             v.Notes,
             v.CreatedAt,
-            v.TvaExonere
+            v.TvaExonere,
+            v.RemisePercent
         );
     }
 }

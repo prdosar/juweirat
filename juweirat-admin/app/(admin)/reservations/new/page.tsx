@@ -464,6 +464,7 @@ function NewReservationPageInner() {
         carteExpiration:     garantieType === 'Carte' ? carteExpiration : null,
         prestations:         prestationsPayload.length > 0 ? prestationsPayload : null,
         tvaExonere,
+        discount:            discountNum > 0 ? discountNum : 0,
       };
       const created = await reservations.create(body);
       router.push(`/reservations/${created.id}`);

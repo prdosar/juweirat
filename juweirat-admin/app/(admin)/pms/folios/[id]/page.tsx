@@ -166,7 +166,8 @@ export default function FolioDetailPage() {
   );
 
   const f = folio;
-  const avoir = Math.max(0, f.paid + f.arrhes - f.totalGeneral);
+  // Avoir en TTC : client paie TTC, la dette est en TTC.
+  const avoir = Math.max(0, f.paid + f.arrhes - f.totalTtc);
 
   return (
     <div className="flex flex-col min-h-full">
@@ -392,15 +393,21 @@ export default function FolioDetailPage() {
 
         {/* Financier */}
         <Section title="Financier">
-          <Row label={`Hébergement (${TIER_LABELS[f.tarifTier] ?? f.tarifTier})`} value={`${f.totalHeb.toLocaleString('fr')} FCFA`} />
-          {f.totalPdj > 0    && <Row label="Petit-déjeuner"  value={`${f.totalPdj.toLocaleString('fr')} FCFA`} />}
-          {f.totalDependances > 0 && <Row label="Dépendances" value={`${f.totalDependances.toLocaleString('fr')} FCFA`} />}
-          {f.totalDebiteur > 0   && <Row label="Débiteur divers" value={`${f.totalDebiteur.toLocaleString('fr')} FCFA`} />}
+          <Row label={`Hébergement (${TIER_LABELS[f.tarifTier] ?? f.tarifTier})`} value={`${f.totalHeb.toLocaleString('fr')} FCFA HT`} />
+          {f.totalPdj > 0    && <Row label="Petit-déjeuner"  value={`${f.totalPdj.toLocaleString('fr')} FCFA HT`} />}
+          {f.totalDependances > 0 && <Row label="Dépendances" value={`${f.totalDependances.toLocaleString('fr')} FCFA HT`} />}
+          {f.totalDebiteur > 0   && <Row label="Débiteur divers" value={`${f.totalDebiteur.toLocaleString('fr')} FCFA HT`} />}
           <div className="border-t border-gray-100 pt-2 space-y-1.5">
-            <Row label="Total général"  value={`${f.totalGeneral.toLocaleString('fr')} FCFA`} />
+            <Row label="Total HT"       value={`${f.totalGeneral.toLocaleString('fr')} FCFA`} />
+            {!f.tvaExonere && f.tva > 0 && (
+              <Row label="TVA (18%)"    value={`${f.tva.toLocaleString('fr')} FCFA`} />
+            )}
+            <Row label={f.tvaExonere ? 'Total (exonéré TVA)' : 'Total TTC'}
+              value={`${f.totalTtc.toLocaleString('fr')} FCFA`}
+              cls="font-bold" />
             <Row label="Arrhes"         value={`${f.arrhes.toLocaleString('fr')} FCFA`} />
             <Row label="Encaissé"       value={`${f.paid.toLocaleString('fr')} FCFA`} />
-            <Row label={f.solde > 0 ? 'Solde restant' : avoir > 0 ? 'Avoir' : 'Soldé'}
+            <Row label={f.solde > 0 ? 'Solde restant (TTC)' : avoir > 0 ? 'Avoir' : 'Soldé'}
               value={f.solde > 0 ? `${f.solde.toLocaleString('fr')} FCFA` : avoir > 0 ? `+${avoir.toLocaleString('fr')} FCFA` : '✓'}
               cls={f.solde > 0 ? 'text-red-600 font-bold' : avoir > 0 ? 'text-green-dark font-bold' : 'text-green-dark font-bold'} />
           </div>

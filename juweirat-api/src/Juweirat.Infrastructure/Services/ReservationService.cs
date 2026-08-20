@@ -205,7 +205,10 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             }
         }
 
-        var total = totalHeb + totalPrestations;
+        // Remise plafonnée au total (pas de total négatif). Stockée telle quelle,
+        // déduite au calcul du TotalPrice.
+        var discount = Math.Max(0, Math.Min(req.Discount, (int)Math.Round(totalHeb + totalPrestations)));
+        var total    = totalHeb + totalPrestations - discount;
 
         var reservation = new Reservation
         {
@@ -220,6 +223,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             Children              = req.Children,
             PricePerNightSnapshot = tarifResult.PerNight,
             TotalPrice            = total,
+            Discount              = discount,
             Currency              = req.Currency,
             Source                = req.Source,
             SpecialRequests       = req.SpecialRequests,
@@ -401,7 +405,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
                 clientId:          r.ClientId,
                 revenueKind:       AccountKind.RevenueNoShow,
                 revenueOwnerRefId: null,
-                amountTtc:         penaltyAmount,
+                amountHt:         penaltyAmount,
                 tvaExonere:        r.TvaExonere,
                 sourceType:        "Payment",
                 sourceId:          penaltyPayment.Id,
@@ -489,7 +493,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
                     clientId:          r.ClientId,
                     revenueKind:       AccountKind.RevenueCancellation,
                     revenueOwnerRefId: null,
-                    amountTtc:         penaltyAmount,
+                    amountHt:         penaltyAmount,
                     tvaExonere:        r.TvaExonere,
                     sourceType:        "Payment",
                     sourceId:          cancellationPayment.Id,
@@ -722,12 +726,18 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             }
         }
 
+        // Remise éditable — null = pas de changement, sinon plafonnée au brut.
+        var discountChanged = req.Discount.HasValue && req.Discount.Value != r.Discount;
+
         // ── Recalcul total et garde-fou paiement ──────────────────────────────
-        if (stayChanged || prestationsChanged)
+        if (stayChanged || prestationsChanged || discountChanged)
         {
             var totalHeb          = r.PricePerNightSnapshot * r.Nights;
             var totalPrestations  = r.Prestations.Sum(p => p.TotalLigne);
-            var newTotal          = totalHeb + totalPrestations;
+            var brut              = totalHeb + totalPrestations;
+            var discount          = req.Discount ?? r.Discount;
+            discount              = Math.Max(0, Math.Min(discount, (int)Math.Round(brut)));
+            var newTotal          = brut - discount;
 
             var amountPaid = r.Payments
                 .Where(p => p.Status == PaymentStatus.Completed)
@@ -740,6 +750,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
                     "Confirmez la modification pour créer un avoir client de la différence.");
             }
 
+            r.Discount   = discount;
             r.TotalPrice = newTotal;
         }
 
@@ -827,7 +838,8 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
     private static ReservationDto ToDto(Reservation r)
     {
         var totalPrestations = r.Prestations.Sum(p => p.TotalLigne);
-        var totalHeb         = r.TotalPrice - totalPrestations;
+        // TotalPrice inclut déjà la remise déduite → TotalHebergement = TotalPrice + Discount - Prestations
+        var totalHeb         = r.TotalPrice + r.Discount - totalPrestations;
 
         var prestationsDto = r.Prestations.Select(p => new ReservationPrestationDto(
             p.Id, p.PrestationId,
@@ -847,7 +859,8 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             r.ConfirmedAt, r.CancelledAt, r.CreatedAt,
             r.GarantieType, r.GarantieMontantCash, r.CarteNom, r.CarteSuffix, r.CarteExpiration,
             totalHeb, totalPrestations, prestationsDto,
-            r.TvaExonere
+            r.TvaExonere,
+            r.Discount
         );
     }
 }

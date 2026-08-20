@@ -494,17 +494,21 @@ public class AccountingService(AppDbContext db, IHttpContextAccessor? httpContex
     // Comptabilise une vente : produit HT sur le compte revenu + TVA sur le compte TVA.
     // Les deux contreparties vont sur le compte client (ou la caisse pour les walk-in).
     // Ne comptabilise pas l'encaissement — utiliser PostEncaissementAsync séparément.
+    //
+    // Convention : le paramètre `amountHt` est TOUJOURS le montant HT (les prix stockés
+    // dans le système — Rate, PrixSeule, PrixInclus, Total vente, TotalPrice résa —
+    // sont HT). La TVA est calculée en AJOUTANT le taux, jamais en le déduisant.
     public async Task PostSaleAsync(
         long? clientId,
         AccountKind revenueKind,
         long? revenueOwnerRefId,      // pour Prestation : PrestationAnnexe.Id ; sinon null (compte système)
-        decimal amountTtc,
+        decimal amountHt,
         bool tvaExonere,
         string sourceType,
         long sourceId,
         string label)
     {
-        if (amountTtc <= 0) return;
+        if (amountHt <= 0) return;
 
         // Compte contrepartie : client si connu, sinon caisse par défaut (walk-in).
         Juweirat.Domain.Entities.Account? counterAccount;
@@ -524,18 +528,8 @@ public class AccountingService(AppDbContext db, IHttpContextAccessor? httpContex
             : await GetSystemAccountAsync(revenueKind);
         if (revenueAccount is null) return;
 
-        int ttc  = (int)Math.Round(amountTtc);
-        int ht, tva;
-        if (tvaExonere)
-        {
-            ht  = ttc;
-            tva = 0;
-        }
-        else
-        {
-            ht  = (int)Math.Round(ttc / (1m + TVA_RATE));
-            tva = ttc - ht;
-        }
+        int ht  = (int)Math.Round(amountHt);
+        int tva = tvaExonere ? 0 : (int)Math.Round(ht * TVA_RATE);
 
         QueueMovement(revenueAccount, counterAccount, ht,
             MovementReason.Vente, sourceType, sourceId,

@@ -344,6 +344,8 @@ export const ventesDirectes = {
     clientId?: number; clientNom?: string;
     folioId?: number; mode?: string;
     paymentMethod?: string; notes?: string;
+    // Remise en % appliquée à toutes les lignes du panier (0..100).
+    remisePercent?: number;
   }) => request<import('./types').VenteDirecteDto[]>('/api/ventes-directes/batch', { method: 'POST', body: JSON.stringify(body) }),
 };
 
