@@ -67,6 +67,7 @@ export interface FolioDto {
   checkoutDate: string | null;
   note: string | null;
   reservationId: number | null;
+  reservationReference: string | null;
   factureId: number | null;
   createdAt: string;
   updatedAt: string;

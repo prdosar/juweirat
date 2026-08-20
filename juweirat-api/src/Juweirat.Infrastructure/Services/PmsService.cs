@@ -167,7 +167,7 @@ public class PmsService(AppDbContext db)
 
     public async Task<Juweirat.Application.Common.Pagination.PagedResult<FolioDto>> GetPagedFoliosAsync(FolioFilterParams filter)
     {
-        var query = db.Folios.Include(f => f.Unit).AsQueryable();
+        var query = db.Folios.Include(f => f.Unit).Include(f => f.Reservation).AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {
@@ -238,7 +238,7 @@ public class PmsService(AppDbContext db)
 
     public async Task<List<FolioDto>> GetFoliosAsync(bool? closed = null, long? unitId = null, string? resaStatus = null)
     {
-        var query = db.Folios.Include(f => f.Unit).AsQueryable();
+        var query = db.Folios.Include(f => f.Unit).Include(f => f.Reservation).AsQueryable();
 
         if (closed.HasValue)    query = query.Where(f => f.Closed == closed.Value);
         if (unitId.HasValue)    query = query.Where(f => f.UnitId == unitId.Value);
@@ -251,7 +251,10 @@ public class PmsService(AppDbContext db)
 
     public async Task<FolioDto?> GetFolioByIdAsync(long id)
     {
-        var folio = await db.Folios.Include(f => f.Unit).FirstOrDefaultAsync(f => f.Id == id);
+        var folio = await db.Folios
+            .Include(f => f.Unit)
+            .Include(f => f.Reservation)
+            .FirstOrDefaultAsync(f => f.Id == id);
         return folio is null ? null : ToFolioDto(folio);
     }
 
@@ -367,7 +370,10 @@ public class PmsService(AppDbContext db)
         db.Folios.Add(folio);
         await db.SaveChangesAsync();
 
-        var created = await db.Folios.Include(f => f.Unit).FirstAsync(f => f.Id == folio.Id);
+        var created = await db.Folios
+            .Include(f => f.Unit)
+            .Include(f => f.Reservation)
+            .FirstAsync(f => f.Id == folio.Id);
         return (ToFolioDto(created), null);
     }
 
@@ -375,6 +381,7 @@ public class PmsService(AppDbContext db)
     {
         var folio = await db.Folios
             .Include(f => f.Unit).ThenInclude(u => u!.Category)
+            .Include(f => f.Reservation)
             .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (folio.Closed) return (null, "Folio is closed");
@@ -432,7 +439,10 @@ public class PmsService(AppDbContext db)
 
     public async Task<(FolioDto? dto, string? error)> CheckInAsync(long id)
     {
-        var folio = await db.Folios.Include(f => f.Unit).FirstOrDefaultAsync(f => f.Id == id);
+        var folio = await db.Folios
+            .Include(f => f.Unit)
+            .Include(f => f.Reservation)
+            .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (folio.CheckedIn) return (null, "Already checked in");
         if (folio.Closed)    return (null, "Folio is closed");
@@ -451,7 +461,10 @@ public class PmsService(AppDbContext db)
 
     public async Task<(FolioDto? dto, string? error)> CheckOutAsync(long id)
     {
-        var folio = await db.Folios.Include(f => f.Unit).FirstOrDefaultAsync(f => f.Id == id);
+        var folio = await db.Folios
+            .Include(f => f.Unit)
+            .Include(f => f.Reservation)
+            .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (!folio.CheckedIn) return (null, "Not checked in");
         if (folio.Closed)     return (null, "Folio already closed");
@@ -464,7 +477,10 @@ public class PmsService(AppDbContext db)
 
         folio.Closed       = true;
         folio.CheckoutDate = DateOnly.FromDateTime(DateTime.UtcNow);
-        folio.Unit.StatutMenage = MenageStatus.Sale; // rule 4: checkout → sale
+        // Départ = chambre libérée (disponible pour ré-attribution) ET marquée sale
+        // (à nettoyer) en une même transaction — les deux états sont indissociables.
+        folio.Unit.Status       = RoomStatus.Available;
+        folio.Unit.StatutMenage = MenageStatus.Sale;
 
         await db.SaveChangesAsync();
         return (ToFolioDto(folio), null);
@@ -474,7 +490,10 @@ public class PmsService(AppDbContext db)
 
     public async Task<(FolioDto? dto, string? error)> EncaisserAsync(long id, EncaisserRequest req)
     {
-        var folio = await db.Folios.Include(f => f.Unit).FirstOrDefaultAsync(f => f.Id == id);
+        var folio = await db.Folios
+            .Include(f => f.Unit)
+            .Include(f => f.Reservation)
+            .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (folio.Closed) return (null, "Folio is closed");
 
@@ -496,7 +515,10 @@ public class PmsService(AppDbContext db)
 
     public async Task<(FolioDto? dto, string? error)> TransferDebiteurAsync(long id, TransfertDebiteurRequest req)
     {
-        var folio = await db.Folios.Include(f => f.Unit).FirstOrDefaultAsync(f => f.Id == id);
+        var folio = await db.Folios
+            .Include(f => f.Unit)
+            .Include(f => f.Reservation)
+            .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (folio.Closed) return (null, "Folio is closed");
 
@@ -591,7 +613,7 @@ public class PmsService(AppDbContext db)
             f.PdjParJour, f.PdjPrix, f.Debiteur, f.Dependances,
             f.Arrhes, f.Paid, f.PayMode, f.FactRecipient,
             f.ResaStatus.ToString(), f.CheckedIn, f.Closed, f.CheckoutDate, f.Note,
-            f.ReservationId, f.FactureId,
+            f.ReservationId, f.Reservation?.Reference, f.FactureId,
             f.CreatedAt, f.UpdatedAt,
             totalHeb, totalPdj, totalDebiteur, totalDependances, totalGeneral, solde
         );

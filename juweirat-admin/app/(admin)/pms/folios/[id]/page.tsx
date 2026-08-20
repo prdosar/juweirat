@@ -186,6 +186,11 @@ export default function FolioDetailPage() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="font-mono font-bold text-lg text-green-dark">{f.number}</p>
+              {f.reservationReference && (
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Réservation liée : <span className="font-mono font-semibold text-charcoal">{f.reservationReference}</span>
+                </p>
+              )}
               <p className="text-base font-semibold text-charcoal mt-0.5">
                 {f.guest ?? (`${f.prenom ?? ''} ${f.nom ?? ''}`.trim() || '—')}
               </p>
@@ -407,7 +412,7 @@ export default function FolioDetailPage() {
             {f.note && <p className="text-sm text-gray-700">{f.note}</p>}
             {f.reservationId && (
               <Link href={`/reservations/${f.reservationId}`} className="text-sm text-green-dark hover:underline">
-                → Réservation web liée #{f.reservationId}
+                → Réservation liée <span className="font-mono">{f.reservationReference ?? `#${f.reservationId}`}</span>
               </Link>
             )}
           </Section>

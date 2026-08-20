@@ -350,6 +350,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             .Include(r => r.Client)
             .Include(r => r.Payments)
             .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
+            .Include(r => r.Folio)
             .FirstOrDefaultAsync(r => r.Id == id);
 
         if (r is null) return (null, "Réservation introuvable");
@@ -359,8 +360,14 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         // manquées directement depuis la page Clôture avant de clôturer la journée.
         var systemDate = (await db.HotelConfig.FirstOrDefaultAsync())?.DateHotel
                          ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        if (r.Status is ReservationStatus.Cancelled or ReservationStatus.CheckedIn or ReservationStatus.CheckedOut)
+        if (r.Status is ReservationStatus.Cancelled or ReservationStatus.CheckedOut)
             return (null, "Cette réservation ne peut plus être marquée No Show");
+        // Le folio est la source de vérité de la présence physique du client :
+        // si le check-in a réellement été effectué (folio.CheckedIn), refuser.
+        // Autrement, un statut résa CheckedIn (posé par erreur depuis la fiche résa
+        // sans que le client soit venu) ne doit pas bloquer le traitement No Show.
+        if (r.Folio is { CheckedIn: true, Closed: false })
+            return (null, "Le client est physiquement enregistré (folio en cours) — No Show impossible");
         if (r.CheckInDate > systemDate)
             return (null, "Le No Show ne peut être traité qu'à partir du jour d'arrivée");
 

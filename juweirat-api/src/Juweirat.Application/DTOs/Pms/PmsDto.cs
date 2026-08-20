@@ -100,6 +100,7 @@ public record FolioDto(
     DateOnly? CheckoutDate,
     string? Note,
     long? ReservationId,
+    string? ReservationReference,
     long? FactureId,
     DateTime CreatedAt,
     DateTime UpdatedAt,
