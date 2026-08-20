@@ -575,18 +575,24 @@ public class PmsService(AppDbContext db, AccountingService accountingService)
         var (_, _, solde) = ComputeFinancials(folio);
         if (solde <= 0) return (null, "No outstanding balance to transfer");
 
+        // Montant à transférer : plafonné au solde ; défaut = tout le solde.
+        var montant = req.Montant.HasValue && req.Montant.Value > 0
+            ? Math.Min(req.Montant.Value, solde)
+            : solde;
+
         db.Debtors.Add(new Debtor
         {
             FolioId = folio.Id,
             Client  = folio.Guest ?? BuildGuest(folio.Prenom, folio.Nom),
             Label   = req.Label ?? $"Solde folio {folio.Number} — {folio.Unit.RoomNumber}",
             DueDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(30)),
-            Amount  = solde,
+            Amount  = montant,
             Paid    = 0,
         });
 
-        // Settle folio by counting transferred amount as paid
-        folio.Paid += solde;
+        // Compte le montant transféré comme payé pour ne pas laisser le folio en dette
+        // (la créance vit désormais côté Debtor).
+        folio.Paid += montant;
 
         await db.SaveChangesAsync();
         return (ToFolioDto(folio), null);

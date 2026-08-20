@@ -102,9 +102,9 @@ export const pmsFolios = {
     pmsReq<FolioDto>(`/api/pms/folios/${id}/encaisser`, {
       method: 'POST', body: JSON.stringify({ montant, payMode }),
     }),
-  transferDebiteur: (id: number, label?: string) =>
+  transferDebiteur: (id: number, label?: string, montant?: number) =>
     pmsReq<FolioDto>(`/api/pms/folios/${id}/transfer-debiteur`, {
-      method: 'POST', body: JSON.stringify({ label }),
+      method: 'POST', body: JSON.stringify({ label, montant }),
     }),
   facturer: (id: number) =>
     pmsReq<FactureDto>(`/api/pms/folios/${id}/facturer`, { method: 'POST' }),

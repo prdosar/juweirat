@@ -43,7 +43,14 @@ const PAYMENT_MODES = [
   'Carte bancaire',
   'Virement bancaire',
   'Chèque',
+  // Mode spécial : la ligne est portée en débiteurs divers au lieu d'être
+  // encaissée en caisse. Le folio est soldé du montant, la créance vit côté
+  // Débiteur (relance/recouvrement séparé).
+  'Transfert en débiteurs divers',
 ];
+
+// Détection du mode "transfert débiteur" (peut évoluer si on renomme le label).
+const DEBTOR_MODE = 'Transfert en débiteurs divers';
 
 export default function FolioDetailPage() {
   const { id }                    = useParams<{ id: string }>();
@@ -111,11 +118,18 @@ export default function FolioDetailPage() {
     setBusy(true);
     setError('');
     try {
-      // Execute each payment line
+      // Chaque ligne : soit encaissement (caisse), soit transfert débiteur.
       for (const line of validLines) {
         const m = parseInt(line.amount);
         const modeLabel = line.ref.trim() ? `${line.mode} [${line.ref.trim()}]` : line.mode;
-        await pmsFolios.encaisser(Number(id), m, modeLabel);
+        if (line.mode === DEBTOR_MODE) {
+          const label = line.ref.trim()
+            ? `Débiteur — ${line.ref.trim()}`
+            : undefined;
+          await pmsFolios.transferDebiteur(Number(id), label, m);
+        } else {
+          await pmsFolios.encaisser(Number(id), m, modeLabel);
+        }
       }
       setShowEncaisser(false);
       load();

@@ -170,7 +170,9 @@ public record UpdateFolioRequest(
 );
 
 public record EncaisserRequest([Required, Range(1, int.MaxValue)] int Montant, string? PayMode = null);
-public record TransfertDebiteurRequest(string? Label = null);
+// Montant : null ou 0 = transférer tout le solde restant (comportement historique).
+// Sinon, transfert partiel (le reliquat du solde reste dû sur le folio).
+public record TransfertDebiteurRequest(string? Label = null, int? Montant = null);
 
 public record ContractDataDto(
     // Preneur
