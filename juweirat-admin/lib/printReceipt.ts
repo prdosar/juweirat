@@ -114,6 +114,7 @@ export function printVenteDirecte(vente: VenteDirecteDto): void {
       width: 72mm;
       font-family: 'Courier New', Courier, monospace;
       font-size: 11px;
+      font-weight: bold;
       line-height: 1.45;
       color: #000;
       background: #fff;
