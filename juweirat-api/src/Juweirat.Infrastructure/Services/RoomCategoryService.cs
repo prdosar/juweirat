@@ -71,11 +71,18 @@ public class RoomCategoryService(AppDbContext db)
 
         var unavailable = await ComputeUnavailableRoomIdsAsync(checkIn, checkOut);
 
+        // Une chambre est "réellement dispo sur la période" si :
+        //   - elle n'est pas retirée du parc (Status = Inactive) ni hors service (HS)
+        //   - sa capacité couvre le nombre d'adultes
+        //   - aucune résa/folio/block ne la bloque sur la fenêtre demandée
+        // On NE filtre PAS sur Status = Available : Occupied/Maintenance sont des
+        // états instantanés qui n'empêchent pas une résa future — la disponibilité
+        // à une date donnée est déjà encapsulée dans ComputeUnavailableRoomIdsAsync.
         var categories = await db.RoomCategories
             .Include(c => c.Rooms)
             .Include(c => c.Images)
             .Where(c => c.Rooms.Any(r =>
-                r.Status == RoomStatus.Available &&
+                r.Status != RoomStatus.Inactive &&
                 !r.HorsService &&
                 r.CapacityAdults >= adults &&
                 !unavailable.Contains(r.Id)))
@@ -96,8 +103,11 @@ public class RoomCategoryService(AppDbContext db)
         var cat = await db.RoomCategories.Include(c => c.Rooms).FirstOrDefaultAsync(c => c.Id == categoryId);
         if (cat is null) return null;
 
+        // Voir GetAvailableAsync : on ne filtre pas sur Status=Available, seulement
+        // les états permanents (Inactive, HS). La dispo à une date donnée est déjà
+        // gérée par ComputeUnavailableRoomIdsAsync.
         var eligible = cat.Rooms.Where(r =>
-            r.Status == RoomStatus.Available &&
+            r.Status != RoomStatus.Inactive &&
             !r.HorsService &&
             r.CapacityAdults >= adults);
 

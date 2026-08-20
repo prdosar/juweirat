@@ -271,12 +271,15 @@ public class RoomService(AppDbContext db)
             .Union(folioOccupiedIds)
             .ToHashSet();
 
+        // Voir RoomCategoryService.GetAvailableAsync : Status=Available est un état
+        // instantané, on ne l'utilise pas pour filtrer. Seuls Inactive et HS excluent.
         var rooms = await db.Rooms
             .Include(r => r.Images.OrderBy(i => i.SortOrder))
             .Include(r => r.Amenities)
             .Include(r => r.Category)
             .Where(r =>
-                r.Status == RoomStatus.Available &&
+                r.Status != RoomStatus.Inactive &&
+                !r.HorsService &&
                 r.CapacityAdults >= adults &&
                 !unavailable.Contains(r.Id))
             .OrderBy(r => r.Floor)
