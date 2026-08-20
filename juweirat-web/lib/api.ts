@@ -142,16 +142,47 @@ export async function submitContact(data: { name: string, email: string, phone?:
 export async function submitBooking(data: {
   firstName: string, lastName: string, email: string, phone: string, nationality: string,
   categoryId: number, checkInDate: string, checkOutDate: string, adults: number, children: number, notes: string,
-  roomId?: number
-}): Promise<boolean> {
+  roomId?: number,
+  // Empreinte carte bancaire — obligatoire depuis le site (voir CategoryBookingForm).
+  carteNom?: string,
+  carteNumero?: string,
+  carteExpiration?: string,
+}): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await fetch(`${API}/api/public/booking`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     })
-    return res.ok
+    if (res.ok) return { ok: true }
+    const body = await res.json().catch(() => ({}))
+    return { ok: false, error: body?.error ?? `HTTP ${res.status}` }
   } catch {
-    return false
+    return { ok: false, error: 'Réseau indisponible' }
+  }
+}
+
+// Vérifie combien de chambres restent disponibles pour une catégorie sur les dates données.
+export interface CategoryAvailability {
+  categoryId: number
+  available: number
+  total: number
+}
+
+export async function getCategoryAvailability(
+  categoryId: number,
+  checkIn: string,
+  checkOut: string,
+  adults: number
+): Promise<CategoryAvailability | null> {
+  try {
+    const res = await fetch(
+      `${API}/api/room-categories/${categoryId}/availability?checkIn=${checkIn}&checkOut=${checkOut}&adults=${adults}`,
+      { cache: 'no-store' },
+    )
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
   }
 }

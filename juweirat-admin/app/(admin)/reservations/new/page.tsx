@@ -166,8 +166,9 @@ function NewReservationPageInner() {
   const [internalNotes, setInternalNotes] = useState('');
 
   // Step 5 — garantie & tarif
-  const [garantieType, setGarantieType] = useState<'' | 'Cash' | 'Carte'>('');
-  const [garantieMontantCash, setGarantieMontantCash] = useState('');
+  // 'Carte' : le client fournit une empreinte carte (obligatoire pour bloquer la résa).
+  // 'Aucune' : le client n'a pas de carte → alerte "contactez la direction" bloque la création.
+  const [garantieType, setGarantieType] = useState<'' | 'Carte' | 'Aucune'>('');
   const [carteNumero,     setCarteNumero]     = useState('');
   const [carteNom,        setCarteNom]        = useState('');
   const [carteExpiration, setCarteExpiration] = useState('');
@@ -324,8 +325,10 @@ function NewReservationPageInner() {
       }
     }
     if (current === 4) {
-      if (!garantieType) return 'Choisissez un mode de garantie (dépôt ou carte).';
-      if (garantieType === 'Cash' && !garantieMontantCash) return 'Indiquez le montant du dépôt.';
+      if (!garantieType) return 'Choisissez un mode de garantie (carte bancaire ou aucune).';
+      if (garantieType === 'Aucune') {
+        return 'Sans empreinte carte, la réservation ne peut pas être créée depuis cet écran — contactez la direction pour la compléter manuellement.';
+      }
       if (garantieType === 'Carte') {
         if (carteNumero.replace(/\s/g, '').length < 4) return 'Numéro de carte invalide.';
         if (!carteNom.trim())                          return 'Nom sur la carte requis.';
@@ -428,7 +431,6 @@ function NewReservationPageInner() {
         specialRequests:     null,
         internalNotes:       internalNotes || null,
         garantieType:        garantieType || null,
-        garantieMontantCash: garantieType === 'Cash' ? Number(garantieMontantCash) : null,
         carteNom:            garantieType === 'Carte' ? carteNom.trim() : null,
         carteSuffix,
         carteExpiration:     garantieType === 'Carte' ? carteExpiration : null,
@@ -1019,8 +1021,8 @@ function NewReservationPageInner() {
               <span style={{ ...fieldLabel, display: 'block', marginBottom: 10 }}>Garantie de la réservation</span>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 {[
-                  { id: 'Cash'  as const, name: 'Dépôt en espèces', detail: "Montant versé à l'accueil" },
-                  { id: 'Carte' as const, name: 'Carte bancaire',   detail: 'Empreinte de garantie' },
+                  { id: 'Carte'  as const, name: 'Carte bancaire',   detail: 'Empreinte de garantie obligatoire' },
+                  { id: 'Aucune' as const, name: 'Pas de carte',     detail: 'Contact direction requis' },
                 ].map(g => {
                   const on = garantieType === g.id;
                   return (
@@ -1043,13 +1045,17 @@ function NewReservationPageInner() {
                 })}
               </div>
 
-              {garantieType === 'Cash' && (
-                <label style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 18 }}>
-                  <span style={fieldLabel}>Montant du dépôt *</span>
-                  <input type="number" min="0" step="500" value={garantieMontantCash}
-                    onChange={e => setGarantieMontantCash(e.target.value)}
-                    placeholder="Ex : 50 000" style={{ ...fieldInput, maxWidth: 260 }} />
-                </label>
+              {garantieType === 'Aucune' && (
+                <div style={{
+                  marginTop: 18, padding: '14px 16px',
+                  background: '#fff8e1', border: '1px solid #f5c882',
+                  borderRadius: 10, color: '#7a4f00', fontSize: 13, lineHeight: 1.55,
+                }}>
+                  <b>Réservation impossible depuis cet écran.</b><br />
+                  Le client doit fournir une empreinte carte pour bloquer la réservation.
+                  Sans carte, contactez la direction Juweirat pour compléter la saisie
+                  manuellement (téléphone + arrhes en caisse).
+                </div>
               )}
 
               {garantieType === 'Carte' && (

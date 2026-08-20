@@ -612,7 +612,6 @@ function EditReservationModal({ reservation, onClose, onSaved }: { reservation: 
     specialRequests:     reservation.specialRequests ?? '',
     internalNotes:       reservation.internalNotes ?? '',
     garantieType:        reservation.garantieType ?? '',
-    garantieMontantCash: reservation.garantieMontantCash?.toString() ?? '',
     carteNom:            reservation.carteNom ?? '',
     carteExpiration:     reservation.carteExpiration ?? '',
     tvaExonere:          reservation.tvaExonere ?? false,
@@ -702,7 +701,6 @@ function EditReservationModal({ reservation, onClose, onSaved }: { reservation: 
         adults:              Number(form.adults),
         children:            Number(form.children),
         garantieType:        form.garantieType || undefined,
-        garantieMontantCash: form.garantieMontantCash ? Number(form.garantieMontantCash) : undefined,
         carteNom:            form.carteNom || undefined,
         carteExpiration:     form.carteExpiration || undefined,
         // Édition étendue
@@ -861,15 +859,14 @@ function EditReservationModal({ reservation, onClose, onSaved }: { reservation: 
                   <label className={labelCls}>Garantie</label>
                   <select value={form.garantieType} onChange={e => setForm(f => ({ ...f, garantieType: e.target.value }))} className={inputCls}>
                     <option value="">— Aucune —</option>
-                    <option value="Cash">Dépôt en espèces</option>
                     <option value="Carte">Carte bancaire</option>
+                    <option value="Aucune">Pas de carte (contact direction)</option>
                   </select>
                 </div>
-                {form.garantieType === 'Cash' && (
-                  <div>
-                    <label className={labelCls}>Montant du dépôt (FCFA)</label>
-                    <input type="number" min={0} step={500} value={form.garantieMontantCash}
-                      onChange={e => setForm(f => ({ ...f, garantieMontantCash: e.target.value }))} className={inputCls} />
+                {form.garantieType === 'Aucune' && (
+                  <div className="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    <b>Réservation à compléter manuellement.</b> Le client n'a pas fourni d'empreinte carte —
+                    contactez la direction Juweirat pour finaliser (téléphone + arrhes en caisse).
                   </div>
                 )}
                 {form.garantieType === 'Carte' && (
