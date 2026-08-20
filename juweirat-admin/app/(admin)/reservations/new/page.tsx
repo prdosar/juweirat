@@ -170,12 +170,17 @@ function NewReservationPageInner() {
   const [internalNotes, setInternalNotes] = useState('');
 
   // Step 5 — garantie & tarif
-  // 'Carte' : le client fournit une empreinte carte (obligatoire pour bloquer la résa).
-  // 'Aucune' : le client n'a pas de carte → alerte "contactez la direction" bloque la création.
-  const [garantieType, setGarantieType] = useState<'' | 'Carte' | 'Aucune'>('');
+  // Admin :
+  //   'Carte'   : empreinte carte bancaire (4 derniers chiffres conservés).
+  //   'Cash'    : dépôt en espèces — montant garanti saisi.
+  //   'Societe' : facturation garantie sur le compte société du client.
+  //               Uniquement disponible si le client est rattaché à une société.
+  // L'option "Pas de carte / contact direction" existe uniquement sur le site public.
+  const [garantieType, setGarantieType] = useState<'' | 'Carte' | 'Cash' | 'Societe'>('');
   const [carteNumero,     setCarteNumero]     = useState('');
   const [carteNom,        setCarteNom]        = useState('');
   const [carteExpiration, setCarteExpiration] = useState('');
+  const [cashMontant,     setCashMontant]     = useState('');
   const [source,   setSource]   = useState<string>(SOURCES[0]);
   const [currency, setCurrency] = useState<string>(CURRENCIES[0]);
   const [tvaExonere, setTvaExonere] = useState(false);
@@ -353,14 +358,18 @@ function NewReservationPageInner() {
       }
     }
     if (current === 4) {
-      if (!garantieType) return 'Choisissez un mode de garantie (carte bancaire ou aucune).';
-      if (garantieType === 'Aucune') {
-        return 'Sans empreinte carte, la réservation ne peut pas être créée depuis cet écran — contactez la direction pour la compléter manuellement.';
-      }
+      if (!garantieType) return 'Choisissez un mode de garantie (carte, cash ou société).';
       if (garantieType === 'Carte') {
         if (carteNumero.replace(/\s/g, '').length < 4) return 'Numéro de carte invalide.';
         if (!carteNom.trim())                          return 'Nom sur la carte requis.';
         if (!/^\d{2}\/\d{4}$/.test(carteExpiration))   return 'Date d\'expiration invalide (MM/AAAA).';
+      }
+      if (garantieType === 'Cash') {
+        const m = Number(String(cashMontant).replace(/[^\d]/g, '')) || 0;
+        if (m <= 0) return 'Saisissez le montant du dépôt en espèces.';
+      }
+      if (garantieType === 'Societe' && !selectedClient?.companyId) {
+        return 'La garantie société n\'est disponible que si le client est rattaché à une entreprise.';
       }
     }
     return '';
@@ -436,6 +445,9 @@ function NewReservationPageInner() {
       }
 
       const carteSuffix = garantieType === 'Carte' ? carteNumero.replace(/\s/g, '').slice(-4) : null;
+      const cashMontantNum = garantieType === 'Cash'
+        ? (Number(String(cashMontant).replace(/[^\d]/g, '')) || 0)
+        : null;
       const prestationsPayload = [...selectedPrestations.keys()].map(pid => {
         const p = prestationList.find(x => x.id === pid)!;
         return {
@@ -459,6 +471,7 @@ function NewReservationPageInner() {
         specialRequests:     null,
         internalNotes:       internalNotes || null,
         garantieType:        garantieType || null,
+        garantieMontantCash: cashMontantNum,
         carteNom:            garantieType === 'Carte' ? carteNom.trim() : null,
         carteSuffix,
         carteExpiration:     garantieType === 'Carte' ? carteExpiration : null,
@@ -1061,11 +1074,14 @@ function NewReservationPageInner() {
               </div>
 
               <span style={{ ...fieldLabel, display: 'block', marginBottom: 10 }}>Garantie de la réservation</span>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: selectedClient?.companyId ? '1fr 1fr 1fr' : '1fr 1fr', gap: 12 }}>
                 {[
-                  { id: 'Carte'  as const, name: 'Carte bancaire',   detail: 'Empreinte de garantie obligatoire' },
-                  { id: 'Aucune' as const, name: 'Pas de carte',     detail: 'Contact direction requis' },
-                ].map(g => {
+                  { id: 'Carte'   as const, name: 'Carte bancaire',   detail: 'Empreinte de garantie',                       show: true },
+                  { id: 'Cash'    as const, name: 'Dépôt cash',       detail: 'Espèces conservées en caisse',                show: true },
+                  { id: 'Societe' as const, name: 'Garantie société', detail: selectedClient?.companyName
+                                                                        ? `Facturée à ${selectedClient.companyName}`
+                                                                        : 'Client rattaché à une société',                    show: !!selectedClient?.companyId },
+                ].filter(g => g.show).map(g => {
                   const on = garantieType === g.id;
                   return (
                     <button
@@ -1086,19 +1102,6 @@ function NewReservationPageInner() {
                   );
                 })}
               </div>
-
-              {garantieType === 'Aucune' && (
-                <div style={{
-                  marginTop: 18, padding: '14px 16px',
-                  background: '#fff8e1', border: '1px solid #f5c882',
-                  borderRadius: 10, color: '#7a4f00', fontSize: 13, lineHeight: 1.55,
-                }}>
-                  <b>Réservation impossible depuis cet écran.</b><br />
-                  Le client doit fournir une empreinte carte pour bloquer la réservation.
-                  Sans carte, contactez la direction Juweirat pour compléter la saisie
-                  manuellement (téléphone + arrhes en caisse).
-                </div>
-              )}
 
               {garantieType === 'Carte' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 18 }}>
@@ -1124,6 +1127,35 @@ function NewReservationPageInner() {
                       }} placeholder="MM/AAAA" style={{ ...fieldInput, fontFamily: 'monospace' }} />
                     </label>
                   </div>
+                </div>
+              )}
+
+              {garantieType === 'Cash' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 18 }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    <span style={fieldLabel}>Montant garanti (FCFA) *</span>
+                    <input
+                      inputMode="numeric"
+                      value={cashMontant}
+                      onChange={e => setCashMontant(e.target.value.replace(/[^\d]/g, ''))}
+                      placeholder="ex. 50 000"
+                      style={{ ...fieldInput, fontFamily: 'monospace' }}
+                    />
+                    <span style={{ fontSize: 11, color: C.ink4 }}>
+                      Espèces conservées en caisse jusqu'au check-out. Restitué au départ après vérification de l'appartement.
+                    </span>
+                  </label>
+                </div>
+              )}
+
+              {garantieType === 'Societe' && selectedClient?.companyId && (
+                <div style={{
+                  marginTop: 18, padding: '14px 16px',
+                  background: '#eef6ff', border: '1px solid #bfdcff',
+                  borderRadius: 10, color: '#1e4d8f', fontSize: 13, lineHeight: 1.55,
+                }}>
+                  🏢 <b>{selectedClient.companyName}</b> se porte garante.<br />
+                  Le solde du séjour sera facturé au compte société. Aucun encaissement direct auprès du client n'est nécessaire.
                 </div>
               )}
 

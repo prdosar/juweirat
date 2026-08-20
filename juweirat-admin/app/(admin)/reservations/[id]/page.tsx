@@ -7,7 +7,7 @@ import Header from '@/components/Header';
 import { reservations } from '@/lib/api';
 import type { ReservationDto } from '@/lib/types';
 import type { NoShowBillingResultDto } from '@/lib/types';
-import { ArrowLeft, AlertTriangle, Banknote, CreditCard, Shield, Receipt } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, Banknote, CreditCard, Shield, Receipt, Building2 } from 'lucide-react';
 
 const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
   Pending:    { label: 'En attente', cls: 'bg-amber-100 text-amber-800'      },
@@ -351,6 +351,14 @@ export default function ReservationDetailPage() {
                 <div>
                   <p className="text-sm font-bold text-charcoal">Dépôt en espèces</p>
                   <p className="text-sm text-gray-600">{r.garantieMontantCash?.toLocaleString('fr')} {r.currency}</p>
+                </div>
+              </div>
+            ) : r.garantieType === 'Societe' ? (
+              <div className="flex items-center gap-3">
+                <Building2 size={20} className="text-blue-700" />
+                <div>
+                  <p className="text-sm font-bold text-charcoal">Garantie société</p>
+                  <p className="text-sm text-gray-600">Facturation au compte société du client</p>
                 </div>
               </div>
             ) : (
