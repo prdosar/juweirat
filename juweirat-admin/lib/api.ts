@@ -184,6 +184,20 @@ export const users = {
   }>) => request<import('./types').UserDto>(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 };
 
+// ── Notifications (cloche du header) ──────────────────────────────────────────
+export interface NotificationSummary {
+  systemDate: string;                     // "2026-08-19"
+  todayDate: string;                      // "2026-08-20"
+  pendingReservationsCount: number;
+  websiteReservationsTodayCount: number;
+  unreadMessagesCount: number;
+  daysNotClosedCount: number;
+}
+
+export const notifications = {
+  getSummary: () => request<NotificationSummary>('/api/notifications/summary'),
+};
+
 // ── Clients ───────────────────────────────────────────────────────────────────
 export const clients = {
   getAll:  (search?: string) => {
