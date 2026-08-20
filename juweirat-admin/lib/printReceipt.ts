@@ -109,12 +109,12 @@ export function printVenteDirecte(vente: VenteDirecteDto): void {
       size: 80mm auto;
       margin: 3mm 4mm 6mm;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
+    * { box-sizing: border-box; margin: 0; padding: 0; font-weight: 700; }
+    html, body {
       width: 72mm;
       font-family: 'Courier New', Courier, monospace;
       font-size: 11px;
-      font-weight: bold;
+      font-weight: 700;
       line-height: 1.45;
       color: #000;
       background: #fff;
