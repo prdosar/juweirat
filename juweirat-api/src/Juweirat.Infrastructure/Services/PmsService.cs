@@ -309,8 +309,9 @@ public class PmsService(AppDbContext db)
 
     public async Task<(FolioDto? dto, string? error)> CreateFolioAsync(CreateFolioRequest req)
     {
-        var unit = await db.Rooms.FindAsync(req.UnitId);
-        if (unit is null) return (null, "Unit not found");
+        var unit = await db.Rooms.Include(r => r.Category).FirstOrDefaultAsync(r => r.Id == req.UnitId);
+        if (unit is null)          return (null, "Unit not found");
+        if (unit.Category is null) return (null, "Unit has no category — pricing unavailable");
 
         var arrival   = req.Arrival   ?? DateOnly.FromDateTime(DateTime.UtcNow);
         var departure = req.Departure ?? arrival.AddDays(1);
@@ -318,7 +319,8 @@ public class PmsService(AppDbContext db)
 
         var nights = departure.DayNumber - arrival.DayNumber;
 
-        var tarif    = TarifEngine.ForStay(unit.TarifNuit, unit.TarifN15, unit.TarifN30, nights);
+        // Tarifs journaliers lus depuis la Category (source unique de vérité).
+        var tarif    = TarifEngine.ForStay(unit.Category.TarifNuit, unit.Category.TarifN15, unit.Category.TarifN30, nights);
         var rate     = req.Rate > 0 ? req.Rate : tarif.PerNight;
         var tier     = tarif.Tier;
         var elec     = tarif.ElecIncluded;
@@ -371,7 +373,9 @@ public class PmsService(AppDbContext db)
 
     public async Task<(FolioDto? dto, string? error)> UpdateFolioAsync(long id, UpdateFolioRequest req)
     {
-        var folio = await db.Folios.Include(f => f.Unit).FirstOrDefaultAsync(f => f.Id == id);
+        var folio = await db.Folios
+            .Include(f => f.Unit).ThenInclude(u => u!.Category)
+            .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (folio.Closed) return (null, "Folio is closed");
 
@@ -406,11 +410,13 @@ public class PmsService(AppDbContext db)
 
         if (folio.Departure <= folio.Arrival) return (null, "departure must be after arrival");
 
-        // Recompute tariff when dates change and rate not manually overridden
+        // Recompute tariff when dates change and rate not manually overridden.
+        // Tarifs journaliers lus depuis la Category (source unique de vérité).
         if (datesChanged && !req.Rate.HasValue)
         {
+            if (folio.Unit?.Category is null) return (null, "Unit has no category — pricing unavailable");
             var nights = folio.Departure.DayNumber - folio.Arrival.DayNumber;
-            var tarif  = TarifEngine.ForStay(folio.Unit.TarifNuit, folio.Unit.TarifN15, folio.Unit.TarifN30, nights);
+            var tarif  = TarifEngine.ForStay(folio.Unit.Category.TarifNuit, folio.Unit.Category.TarifN15, folio.Unit.Category.TarifN30, nights);
             folio.Rate         = tarif.PerNight;
             folio.TarifTier    = tarif.Tier;
             folio.ElecIncluded = tarif.ElecIncluded;
@@ -549,9 +555,10 @@ public class PmsService(AppDbContext db)
         r.PmsRoomNo ?? r.RoomNumber,
         r.PmsType ?? r.Category?.PmsType ?? "T2",
         r.PmsGamme ?? r.Category?.PmsGamme ?? "standard",
-        r.TarifNuit > 0 ? r.TarifNuit : (int)r.PricePerNight,
-        r.TarifN15 > 0 ? r.TarifN15 : (int)(r.PricePerWeek.HasValue ? r.PricePerWeek.Value * 2 : r.PricePerNight * 15 * 0.8m),
-        r.TarifN30 > 0 ? r.TarifN30 : (int)(r.PricePerMonth.HasValue ? r.PricePerMonth.Value : r.PricePerNight * 30 * 0.65m),
+        // Tarifs journaliers lus depuis la Category (source unique de vérité).
+        r.Category?.TarifNuit ?? 0,
+        r.Category?.TarifN15  ?? 0,
+        r.Category?.TarifN30  ?? 0,
         r.StatutMenage.ToString(),
         r.LastCleaned,
         r.HorsService,

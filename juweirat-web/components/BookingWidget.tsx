@@ -34,7 +34,7 @@ export default function BookingWidget({ room, lang }: Props) {
   const [children, setChildren] = useState(0)
 
   const nights = nightsBetween(checkIn, checkOut)
-  const sim    = nights > 0 ? calcStayPrice(room.pricePerNight, room.pricePerWeek, room.pricePerMonth, nights) : null
+  const sim    = nights > 0 ? calcStayPrice(room.tarifNuit, room.tarifN15, room.tarifN30, nights) : null
 
   const minCheckOut = checkIn
     ? toDateStr(new Date(new Date(checkIn).getTime() + 86400000))
@@ -154,7 +154,7 @@ export default function BookingWidget({ room, lang }: Props) {
             </p>
             <div className="flex justify-between text-sm">
               <span className="text-charcoal/50 font-light">
-                {formatFCFA(room.pricePerNight)} × {nights} {fr ? (nights > 1 ? 'nuits' : 'nuit') : (nights > 1 ? 'nights' : 'night')}
+                {formatFCFA(room.tarifNuit)} × {nights} {fr ? (nights > 1 ? 'nuits' : 'nuit') : (nights > 1 ? 'nights' : 'night')}
               </span>
               <span className="text-charcoal/70">{formatFCFA(sim.originalTotal)}</span>
             </div>

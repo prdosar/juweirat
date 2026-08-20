@@ -151,18 +151,18 @@ export default async function RoomPage({ params }: Props) {
                 <div className="flex flex-wrap gap-x-6 gap-y-3">
                   <div>
                     <p className="text-charcoal/30 text-[10px] tracking-widest uppercase font-light mb-0.5">{t(lang, 'ap_per_night')}</p>
-                    <p className="text-green font-semibold text-base">{formatPrice(room.pricePerNight, lang)}</p>
+                    <p className="text-green font-semibold text-base">{formatPrice(room.tarifNuit, lang)}</p>
                   </div>
-                  {room.pricePerWeek && (
+                  {room.tarifN15 > 0 && (
                     <div>
                       <p className="text-charcoal/30 text-[10px] tracking-widest uppercase font-light mb-0.5">{t(lang, 'ap_per_week')}</p>
-                      <p className="text-charcoal/60 text-sm">{formatPrice(room.pricePerWeek, lang)}</p>
+                      <p className="text-charcoal/60 text-sm">{formatPrice(room.tarifN15, lang)}</p>
                     </div>
                   )}
-                  {room.pricePerMonth && (
+                  {room.tarifN30 > 0 && (
                     <div>
                       <p className="text-charcoal/30 text-[10px] tracking-widest uppercase font-light mb-0.5">{t(lang, 'ap_per_month')}</p>
-                      <p className="text-charcoal/60 text-sm">{formatPrice(room.pricePerMonth, lang)}</p>
+                      <p className="text-charcoal/60 text-sm">{formatPrice(room.tarifN30, lang)}</p>
                     </div>
                   )}
                 </div>

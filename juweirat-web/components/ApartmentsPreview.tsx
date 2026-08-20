@@ -79,7 +79,7 @@ export default async function ApartmentsPreview() {
                     </div>
                     <p className="text-charcoal/40 text-xs font-light mb-3">{room.roomNumber}</p>
                     <p className="text-green text-sm font-medium">
-                      {t(lang, 'apts_from')} {formatPrice(room.pricePerNight, lang)}{' '}
+                      {t(lang, 'apts_from')} {formatPrice(room.tarifNuit, lang)}{' '}
                       <span className="text-charcoal/40 text-xs font-light">{t(lang, 'apts_per_night')}</span>
                     </p>
                   </div>

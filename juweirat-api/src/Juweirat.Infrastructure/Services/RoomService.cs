@@ -76,6 +76,7 @@ public class RoomService(AppDbContext db)
 
     public async Task<RoomDto> CreateAsync(CreateRoomRequest req)
     {
+        // Les prix ont été centralisés sur RoomCategory — Room ne stocke plus de tarif.
         var room = new Room
         {
             RoomNumber       = req.RoomNumber,
@@ -87,13 +88,7 @@ public class RoomService(AppDbContext db)
             CapacityAdults   = req.CapacityAdults,
             CapacityChildren = req.CapacityChildren,
             SizeSqm          = req.SizeSqm,
-            PricePerNight    = req.PricePerNight,
-            PricePerWeek     = req.PricePerWeek,
-            PricePerMonth    = req.PricePerMonth,
             PmsRoomNo        = req.RoomNumber,
-            TarifNuit        = (int)req.PricePerNight,
-            TarifN30         = (int)(req.PricePerMonth ?? req.PricePerNight * 30 * 0.65m),
-            TarifN15         = (int)(req.PricePerWeek.HasValue ? req.PricePerWeek.Value * 2 : req.PricePerNight * 15 * 0.8m),
             StatutMenage     = MenageStatus.Propre,
             HorsService      = false,
         };
@@ -134,21 +129,7 @@ public class RoomService(AppDbContext db)
         if (req.CapacityAdults is not null)   room.CapacityAdults   = req.CapacityAdults.Value;
         if (req.CapacityChildren is not null) room.CapacityChildren = req.CapacityChildren.Value;
         if (req.SizeSqm is not null)       room.SizeSqm          = req.SizeSqm;
-        if (req.PricePerNight is not null)
-        {
-            room.PricePerNight = req.PricePerNight.Value;
-            if (room.TarifNuit == 0) room.TarifNuit = (int)req.PricePerNight.Value;
-        }
-        if (req.PricePerWeek is not null)
-        {
-            room.PricePerWeek = req.PricePerWeek;
-            if (room.TarifN15 == 0 && req.PricePerWeek.HasValue) room.TarifN15 = (int)(req.PricePerWeek.Value * 2);
-        }
-        if (req.PricePerMonth is not null)
-        {
-            room.PricePerMonth = req.PricePerMonth;
-            if (room.TarifN30 == 0 && req.PricePerMonth.HasValue) room.TarifN30 = (int)req.PricePerMonth.Value;
-        }
+        // Les prix ne sont plus modifiables au niveau chambre — passer par la catégorie.
         if (req.IsFeatured is not null)    room.IsFeatured       = req.IsFeatured.Value;
 
         if (req.Status is not null && Enum.TryParse<RoomStatus>(req.Status, true, out var s))
@@ -308,7 +289,10 @@ public class RoomService(AppDbContext db)
         r.Id, r.RoomNumber, r.Floor,
         r.NameFr, r.NameEn, r.DescriptionFr, r.DescriptionEn,
         r.CapacityAdults, r.CapacityChildren, r.SizeSqm,
-        r.PricePerNight, r.PricePerWeek, r.PricePerMonth,
+        // Tarifs journaliers proxyés depuis la Category rattachée.
+        r.Category?.TarifNuit ?? 0,
+        r.Category?.TarifN15  ?? 0,
+        r.Category?.TarifN30  ?? 0,
         r.Status.ToString(),
         r.IsFeatured,
         r.CategoryId, r.Category?.Slug, r.PmsType, r.PmsGamme,

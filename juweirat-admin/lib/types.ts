@@ -202,9 +202,10 @@ export interface RoomDto {
   capacityAdults: number;
   capacityChildren: number;
   sizeSqm: number | null;
-  pricePerNight: number;
-  pricePerWeek: number | null;
-  pricePerMonth: number | null;
+  // Tarifs journaliers proxyés depuis la RoomCategory rattachée.
+  tarifNuit: number;
+  tarifN15: number;
+  tarifN30: number;
   status: string;
   isFeatured: boolean;
   categoryId: number | null;

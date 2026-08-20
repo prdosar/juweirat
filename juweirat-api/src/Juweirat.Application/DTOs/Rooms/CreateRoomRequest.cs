@@ -12,12 +12,10 @@ public record CreateRoomRequest(
     [Range(1, 20)] int CapacityAdults = 2,
     [Range(0, 10)] int CapacityChildren = 1,
     decimal? SizeSqm = null,
-    [Required, Range(0, 9999999)] decimal PricePerNight = 0,
-    decimal? PricePerWeek = null,
-    decimal? PricePerMonth = null,
     List<long>? AmenityIds = null
 );
 
+// Les tarifs sont gérés au niveau RoomCategory — pas de prix dans le create/update Room.
 public record UpdateRoomRequest(
     string? RoomNumber,
     int? Floor,
@@ -28,9 +26,6 @@ public record UpdateRoomRequest(
     int? CapacityAdults,
     int? CapacityChildren,
     decimal? SizeSqm,
-    decimal? PricePerNight,
-    decimal? PricePerWeek,
-    decimal? PricePerMonth,
     string? Status,
     bool? IsFeatured,
     List<long>? AmenityIds,

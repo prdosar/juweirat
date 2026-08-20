@@ -14,9 +14,8 @@ public class Room
     public int CapacityAdults { get; set; } = 2;
     public int CapacityChildren { get; set; } = 1;
     public decimal? SizeSqm { get; set; }
-    public decimal PricePerNight { get; set; }
-    public decimal? PricePerWeek { get; set; }
-    public decimal? PricePerMonth { get; set; }
+    // Les prix (nuitée / 15 nuits / 30 nuits) ont été centralisés sur RoomCategory —
+    // ne PAS les remettre sur Room : le waterfall tarifaire est Company > Category.
     public RoomStatus Status { get; set; } = RoomStatus.Available;
     public bool IsFeatured { get; set; } = false;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -28,9 +27,6 @@ public class Room
     public string? PmsRoomNo { get; set; }
     public string? PmsType { get; set; }   // T1 | T2 | T3 | T4
     public string? PmsGamme { get; set; }  // standard | supérieure | privilège | suite
-    public int TarifNuit { get; set; }     // FCFA — tarif/nuit, élec incluse (valable < 15 nuits)
-    public int TarifN15 { get; set; }      // FCFA — tarif/nuit pour séjours 15–29 nuits (hors élec, 230 FCFA/kWh)
-    public int TarifN30 { get; set; }      // FCFA — tarif/nuit pour séjours ≥ 30 nuits  (hors élec, 230 FCFA/kWh)
     public MenageStatus StatutMenage { get; set; } = MenageStatus.Propre;
     public DateOnly? LastCleaned { get; set; }
     public bool HorsService { get; set; } = false;

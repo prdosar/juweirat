@@ -104,7 +104,7 @@ public record TarifPreviewDto(
     int TarifN15,
     int TarifN30,
     string Tier,           // "Nuitee" | "N15Nuits" | "N30Nuits"
-    string Source,         // "company" | "category" | "room" | "default"
+    string Source,         // "company" | "category"
     string? CompanyName,   // libellé si tarif compagnie appliqué
     int TotalHebergement
 );

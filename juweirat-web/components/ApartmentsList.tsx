@@ -87,16 +87,16 @@ export default function ApartmentsList({ rooms, lang }: Props) {
       )
     }
 
-    if (priceMin) list = list.filter(r => r.pricePerNight >= parseInt(priceMin))
-    if (priceMax) list = list.filter(r => r.pricePerNight <= parseInt(priceMax))
+    if (priceMin) list = list.filter(r => r.tarifNuit >= parseInt(priceMin))
+    if (priceMax) list = list.filter(r => r.tarifNuit <= parseInt(priceMax))
     list = list.filter(r => r.capacityAdults >= minAdults)
     if (availOnly) list = list.filter(r => r.status === 'Available')
     if (prestige)  list = list.filter(r => r.floor === 6)
 
     switch (sortBy) {
       case 'featured':   list.sort((a, b) => Number(b.isFeatured) - Number(a.isFeatured)); break
-      case 'price_asc':  list.sort((a, b) => a.pricePerNight - b.pricePerNight); break
-      case 'price_desc': list.sort((a, b) => b.pricePerNight - a.pricePerNight); break
+      case 'price_asc':  list.sort((a, b) => a.tarifNuit - b.tarifNuit); break
+      case 'price_desc': list.sort((a, b) => b.tarifNuit - a.tarifNuit); break
       case 'size_desc':  list.sort((a, b) => (b.sizeSqm ?? 0) - (a.sizeSqm ?? 0)); break
     }
 
@@ -397,7 +397,7 @@ export default function ApartmentsList({ rooms, lang }: Props) {
                         <div className="flex items-center justify-between">
                           <div className="flex items-baseline gap-1">
                             <span className="text-charcoal/40 text-xs">{fr ? 'à partir de' : 'from'}</span>
-                            <span className="text-green font-medium text-sm">{fmt(room.pricePerNight)} FCFA</span>
+                            <span className="text-green font-medium text-sm">{fmt(room.tarifNuit)} FCFA</span>
                             <span className="text-charcoal/30 text-xs">{fr ? '/ nuit' : '/ night'}</span>
                           </div>
                           <span className="text-charcoal/30 text-xs font-light">

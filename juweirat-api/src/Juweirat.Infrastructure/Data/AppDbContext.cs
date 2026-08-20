@@ -76,9 +76,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(r => r.StatutMenage)
              .HasConversion<string>()
              .HasDefaultValue(MenageStatus.Propre);
-            e.Property(r => r.PricePerNight).HasPrecision(10, 2);
-            e.Property(r => r.PricePerWeek).HasPrecision(10, 2);
-            e.Property(r => r.PricePerMonth).HasPrecision(10, 2);
             e.Property(r => r.SizeSqm).HasPrecision(5, 2);
         });
 

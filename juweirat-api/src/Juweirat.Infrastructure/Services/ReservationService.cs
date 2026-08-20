@@ -527,7 +527,8 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
 
     /// <summary>
     /// Retourne le tarif effectivement applicable pour un client + catégorie donnés
-    /// selon le waterfall : tarif compagnie > tarif catégorie > tarif chambre > défaut.
+    /// selon le waterfall : tarif compagnie > tarif catégorie.
+    /// (Les prix sur Room ont été supprimés — tout passe par la Category.)
     /// </summary>
     public async Task<TarifPreviewDto?> GetTarifPreviewAsync(long clientId, long categoryId, int nights)
     {
@@ -555,6 +556,10 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
 
     private async Task<(int TarifNuit, int TarifN15, int TarifN30, string Source)> ResolveTarifAsync(Client? client, RoomCategory category, Room? room, bool applyCompanyTarif = true)
     {
+        // Waterfall tarifaire (tous les prix sont journaliers) :
+        //   1) tarif compagnie spécifique à la catégorie (si client rattaché à une compagnie)
+        //   2) tarif catégorie (source de vérité par défaut)
+        // Les prix sur Room ont été supprimés : tout passe par la Category.
         CompanyTarif? companyTarif = null;
         if (applyCompanyTarif && client?.CompanyId is not null)
         {
@@ -565,18 +570,12 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         var usingCompany = companyTarif != null &&
                            (companyTarif.TarifNuit > 0 || companyTarif.TarifN15 > 0 || companyTarif.TarifN30 > 0);
 
-        var tarifNuit = companyTarif?.TarifNuit > 0 ? companyTarif.TarifNuit
-                      : (category.TarifNuit > 0 ? category.TarifNuit : (room != null ? room.TarifNuit : 30000));
-        var tarifN15  = companyTarif?.TarifN15 > 0 ? companyTarif.TarifN15
-                      : (category.TarifN15 > 0 ? category.TarifN15 : (room != null ? room.TarifN15 : 200000));
-        var tarifN30  = companyTarif?.TarifN30 > 0 ? companyTarif.TarifN30
-                      : (category.TarifN30 > 0 ? category.TarifN30 : (room != null ? room.TarifN30 : 300000));
+        var tarifNuit = companyTarif?.TarifNuit > 0 ? companyTarif.TarifNuit : category.TarifNuit;
+        var tarifN15  = companyTarif?.TarifN15  > 0 ? companyTarif.TarifN15  : category.TarifN15;
+        var tarifN30  = companyTarif?.TarifN30  > 0 ? companyTarif.TarifN30  : category.TarifN30;
 
-        var source = usingCompany ? "company"
-                   : (category.TarifNuit > 0 || category.TarifN15 > 0 || category.TarifN30 > 0) ? "category"
-                   : (room != null) ? "room"
-                   : "default";
-
+        var source = usingCompany ? "company" : "category";
+        _ = room; // Room encore reçue pour signature stable — plus utilisée pour le pricing.
         return (tarifNuit, tarifN15, tarifN30, source);
     }
 
@@ -757,7 +756,8 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
 
         if (unit is null) return;
 
-        var tarif = TarifEngine.ForStay(unit.TarifNuit, unit.TarifN15, unit.TarifN30, nights);
+        // Tarifs journaliers lus depuis la Category (source unique de vérité).
+        var tarif = TarifEngine.ForStay(r.Category.TarifNuit, r.Category.TarifN15, r.Category.TarifN30, nights);
 
         config.ResaSeq++;
         var number = $"FL-{config.DateHotel.Year}-{config.ResaSeq:D4}";

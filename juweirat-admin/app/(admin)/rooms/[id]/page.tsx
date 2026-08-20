@@ -91,11 +91,12 @@ export default function RoomFormPage() {
     }
   }, []);
 
+  // Les prix sont gérés au niveau RoomCategory — cette page ne les édite plus.
   const [form, setForm] = useState({
     roomNumber: '', floor: 2, nameFr: '', nameEn: '',
     descriptionFr: '', descriptionEn: '',
     capacityAdults: 2, capacityChildren: 1,
-    sizeSqm: '', pricePerNight: '', pricePerWeek: '', pricePerMonth: '',
+    sizeSqm: '',
     status: 'Available', isFeatured: false,
     amenityIds: [] as number[],
     categoryId: '' as number | '',
@@ -112,9 +113,6 @@ export default function RoomFormPage() {
           descriptionFr: r.descriptionFr ?? '', descriptionEn: r.descriptionEn ?? '',
           capacityAdults: r.capacityAdults, capacityChildren: r.capacityChildren,
           sizeSqm: r.sizeSqm ? String(r.sizeSqm) : '',
-          pricePerNight: String(r.pricePerNight),
-          pricePerWeek: r.pricePerWeek ? String(r.pricePerWeek) : '',
-          pricePerMonth: r.pricePerMonth ? String(r.pricePerMonth) : '',
           status: r.status, isFeatured: r.isFeatured,
           amenityIds: r.amenities.map(a => a.id),
           categoryId: r.categoryId ?? '',
@@ -149,9 +147,6 @@ export default function RoomFormPage() {
         descriptionFr: form.descriptionFr || null, descriptionEn: form.descriptionEn || null,
         capacityAdults: Number(form.capacityAdults), capacityChildren: Number(form.capacityChildren),
         sizeSqm: form.sizeSqm ? Number(form.sizeSqm) : null,
-        pricePerNight: Number(form.pricePerNight),
-        pricePerWeek: form.pricePerWeek ? Number(form.pricePerWeek) : null,
-        pricePerMonth: form.pricePerMonth ? Number(form.pricePerMonth) : null,
         status: form.status, isFeatured: form.isFeatured,
         amenityIds: form.amenityIds,
         categoryId: form.categoryId === '' ? null : Number(form.categoryId),
@@ -317,22 +312,10 @@ export default function RoomFormPage() {
                   onChange={e => set('sizeSqm', e.target.value)} placeholder="65" className="input" />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-500">Prix / nuit (XOF) *</label>
-                <input type="number" required min="0" value={form.pricePerNight}
-                  onChange={e => set('pricePerNight', e.target.value)} className="input" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-500">Prix / semaine</label>
-                <input type="number" min="0" value={form.pricePerWeek}
-                  onChange={e => set('pricePerWeek', e.target.value)} className="input" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-500">Prix / mois</label>
-                <input type="number" min="0" value={form.pricePerMonth}
-                  onChange={e => set('pricePerMonth', e.target.value)} className="input" />
-              </div>
+            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50/60 px-4 py-3 text-xs text-gray-500">
+              Les tarifs (nuit / 15 nuits / 30 nuits) sont désormais gérés au niveau
+              de la <b>catégorie</b> rattachée. Ouvrez la page Catégories pour les
+              modifier — la chambre héritera automatiquement de ces prix.
             </div>
           </div>
 
