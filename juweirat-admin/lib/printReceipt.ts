@@ -1,5 +1,8 @@
 import type { VenteDirecteDto } from './types';
 
+const W = 32; // largeur en caractères pour 80mm ~32 cols à 11px Courier
+const TVA_RATE = 0.18;
+
 function pad(str: string, width: number, right = false): string {
   const s = String(str);
   if (s.length >= width) return s.slice(0, width);
@@ -7,107 +10,37 @@ function pad(str: string, width: number, right = false): string {
   return right ? spaces + s : s + spaces;
 }
 
-function line(left: string, right: string, width = 32): string {
+function line(left: string, right: string, width = W): string {
   const available = width - right.length;
   const l = left.length > available ? left.slice(0, available - 1) + '…' : left;
   return l + ' '.repeat(width - l.length - right.length) + right;
 }
 
-function sep(char = '-', width = 32): string {
-  return char.repeat(width);
-}
+function sep(char = '-', width = W): string { return char.repeat(width); }
 
 function fmtDate(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString('fr', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
-
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('fr', { hour: '2-digit', minute: '2-digit' });
 }
-
 function receiptId(id: number): string {
   return 'VD-' + String(id).padStart(5, '0');
 }
 
-export function printVenteDirecte(vente: VenteDirecteDto): void {
-  const W = 32; // largeur en caractères pour 80mm ~32 cols à 11px Courier
-
-  // URL absolue vers le logo : le reçu est écrit dans une nouvelle fenêtre,
-  // les chemins relatifs y échouent.
+// Ouvre une nouvelle fenêtre, y écrit le HTML du reçu et déclenche l'impression.
+// Le HTML est le même quel que soit le nombre de lignes — seul `lines` change.
+function openReceiptWindow(title: string, lines: string[]): void {
   const logoUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/img/logo.png`
     : '/img/logo.png';
 
-  // Décomposition TVA — 18% Togo. Prix stockés = TTC.
-  // Les lignes affichent le HT ; le TTC apparaît uniquement sur le total final.
-  const TVA_RATE = 0.18;
-  const exonere  = vente.tvaExonere === true;
-  const ttc      = vente.total;
-  const htTotal  = exonere ? ttc : Math.round(ttc / (1 + TVA_RATE));
-  const tva      = exonere ? 0   : ttc - htTotal;
-  const qty      = Math.max(1, vente.quantite);
-  // Prix unitaire HT dérivé du total HT — cohérent avec l'arrondi comptable.
-  const htUnit   = Math.round(htTotal / qty);
-
-  const lines: string[] = [
-    pad('Résidence Meublée', W, true).trimEnd(),
-    pad('Lomé, Togo', W, true).trimEnd(),
-    sep('=', W),
-    '',
-    line('Reçu ' + receiptId(vente.id), '', W).trimEnd(),
-    line('Date : ' + fmtDate(vente.createdAt), fmtTime(vente.createdAt), W),
-    sep('-', W),
-    '',
-    'PRESTATION',
-    '',
-    vente.prestationNameFr,
-    line(
-      `  ${htUnit.toLocaleString('fr')} F HT × ${vente.quantite}`,
-      `${htTotal.toLocaleString('fr')} F`,
-      W,
-    ),
-    '',
-    sep('-', W),
-  ];
-
-  if (!exonere) {
-    lines.push(line('Total HT',   `${htTotal.toLocaleString('fr')} FCFA`, W));
-    lines.push(line('TVA (18%)',  `${tva.toLocaleString('fr')} FCFA`, W));
-    lines.push(line('TOTAL TTC',  `${ttc.toLocaleString('fr')} FCFA`, W));
-  } else {
-    lines.push(line('TOTAL (exonéré TVA)', `${ttc.toLocaleString('fr')} FCFA`, W));
-  }
-  lines.push(sep('=', W));
-
-  if (vente.mode === 'Encaissement' && vente.paymentMethod) {
-    lines.push(line('Règlement :', vente.paymentMethod, W));
-    lines.push(sep('-', W));
-  }
-
-  if (vente.mode === 'SurChambre' && vente.roomNumber) {
-    lines.push(line('Facturé chambre :', vente.roomNumber, W));
-    lines.push(line('Folio :', vente.folioNumber ?? '', W));
-    lines.push(sep('-', W));
-  }
-
-  if (vente.clientNom) {
-    lines.push(line('Client :', vente.clientNom, W));
-    lines.push(sep('-', W));
-  }
-
-  lines.push('');
-  lines.push(pad('Merci de votre confiance', W, true).trimEnd());
-  lines.push(sep('=', W));
-  lines.push('');
-  lines.push('');
-  lines.push('');
-
-  const receiptHtml = /* html */ `<!DOCTYPE html>
+  const html = /* html */ `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <title>Reçu ${receiptId(vente.id)}</title>
+  <title>${title}</title>
   <style>
     @page {
       size: 80mm auto;
@@ -173,6 +106,118 @@ export function printVenteDirecte(vente: VenteDirecteDto): void {
     return;
   }
   win.document.open();
-  win.document.write(receiptHtml);
+  win.document.write(html);
   win.document.close();
+}
+
+// Bloc de bas de reçu commun (règlement, chambre, client, footer).
+function buildFooterLines(v: VenteDirecteDto): string[] {
+  const out: string[] = [];
+  if (v.mode === 'Encaissement' && v.paymentMethod) {
+    out.push(line('Règlement :', v.paymentMethod));
+    out.push(sep('-'));
+  }
+  if (v.mode === 'SurChambre' && v.roomNumber) {
+    out.push(line('Facturé chambre :', v.roomNumber));
+    out.push(line('Folio :', v.folioNumber ?? ''));
+    out.push(sep('-'));
+  }
+  if (v.clientNom) {
+    out.push(line('Client :', v.clientNom));
+    out.push(sep('-'));
+  }
+  out.push('');
+  out.push(pad('Merci de votre confiance', W, true).trimEnd());
+  out.push(sep('='));
+  out.push(''); out.push(''); out.push('');
+  return out;
+}
+
+export function printVenteDirecte(vente: VenteDirecteDto): void {
+  const exonere  = vente.tvaExonere === true;
+  const ttc      = vente.total;
+  const htTotal  = exonere ? ttc : Math.round(ttc / (1 + TVA_RATE));
+  const tva      = exonere ? 0   : ttc - htTotal;
+  const qty      = Math.max(1, vente.quantite);
+  // Prix unitaire HT dérivé du total HT — cohérent avec l'arrondi comptable.
+  const htUnit   = Math.round(htTotal / qty);
+
+  const lines: string[] = [
+    pad('Résidence Meublée', W, true).trimEnd(),
+    pad('Lomé, Togo', W, true).trimEnd(),
+    sep('='),
+    '',
+    line('Reçu ' + receiptId(vente.id), '').trimEnd(),
+    line('Date : ' + fmtDate(vente.createdAt), fmtTime(vente.createdAt)),
+    sep('-'),
+    '',
+    'PRESTATION',
+    '',
+    vente.prestationNameFr,
+    line(`  ${htUnit.toLocaleString('fr')} F HT × ${vente.quantite}`, `${htTotal.toLocaleString('fr')} F`),
+    '',
+    sep('-'),
+  ];
+
+  if (!exonere) {
+    lines.push(line('Total HT',   `${htTotal.toLocaleString('fr')} FCFA`));
+    lines.push(line('TVA (18%)',  `${tva.toLocaleString('fr')} FCFA`));
+    lines.push(line('TOTAL TTC',  `${ttc.toLocaleString('fr')} FCFA`));
+  } else {
+    lines.push(line('TOTAL (exonéré TVA)', `${ttc.toLocaleString('fr')} FCFA`));
+  }
+  lines.push(sep('='));
+  lines.push(...buildFooterLines(vente));
+
+  openReceiptWindow(`Reçu ${receiptId(vente.id)}`, lines);
+}
+
+// Reçu combiné pour un panier de plusieurs prestations vendues ensemble.
+// Une seule en-tête, la liste des lignes en HT, puis un bloc totaux agrégé.
+export function printVenteDirecteBatch(ventes: VenteDirecteDto[]): void {
+  if (!ventes || ventes.length === 0) return;
+  if (ventes.length === 1) { printVenteDirecte(ventes[0]); return; }
+
+  // Toutes les ventes du batch partagent le mode et le folio (créées ensemble).
+  const first    = ventes[0];
+  const exonere  = first.tvaExonere === true;
+  const ttcTotal = ventes.reduce((s, v) => s + v.total, 0);
+  const htTotal  = exonere ? ttcTotal : Math.round(ttcTotal / (1 + TVA_RATE));
+  const tva      = exonere ? 0        : ttcTotal - htTotal;
+
+  const lines: string[] = [
+    pad('Résidence Meublée', W, true).trimEnd(),
+    pad('Lomé, Togo', W, true).trimEnd(),
+    sep('='),
+    '',
+    line(`Reçu ${receiptId(first.id)}${ventes.length > 1 ? `..${String(ventes[ventes.length - 1].id).padStart(5, '0')}` : ''}`, '').trimEnd(),
+    line('Date : ' + fmtDate(first.createdAt), fmtTime(first.createdAt)),
+    sep('-'),
+    '',
+    `PRESTATIONS (${ventes.length})`,
+    '',
+  ];
+
+  for (const v of ventes) {
+    // Chaque ligne : nom, puis (HT unitaire × qté = HT total ligne).
+    const qty        = Math.max(1, v.quantite);
+    const htLigne    = exonere ? v.total : Math.round(v.total / (1 + TVA_RATE));
+    const htUnitaire = Math.round(htLigne / qty);
+    lines.push(v.prestationNameFr);
+    lines.push(line(`  ${htUnitaire.toLocaleString('fr')} F HT × ${v.quantite}`, `${htLigne.toLocaleString('fr')} F`));
+  }
+  lines.push('');
+  lines.push(sep('-'));
+
+  if (!exonere) {
+    lines.push(line('Total HT',   `${htTotal.toLocaleString('fr')} FCFA`));
+    lines.push(line('TVA (18%)',  `${tva.toLocaleString('fr')} FCFA`));
+    lines.push(line('TOTAL TTC',  `${ttcTotal.toLocaleString('fr')} FCFA`));
+  } else {
+    lines.push(line('TOTAL (exonéré TVA)', `${ttcTotal.toLocaleString('fr')} FCFA`));
+  }
+  lines.push(sep('='));
+  lines.push(...buildFooterLines(first));
+
+  openReceiptWindow(`Reçu panier (${ventes.length} prestations)`, lines);
 }

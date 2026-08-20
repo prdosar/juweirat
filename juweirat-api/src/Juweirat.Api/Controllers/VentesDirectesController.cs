@@ -32,4 +32,14 @@ public class VentesDirectesController(VenteDirecteService svc) : ControllerBase
         if (error is not null) return BadRequest(new { error });
         return StatusCode(201, dto);
     }
+
+    // Vente de plusieurs prestations en une seule opération (panier POS).
+    // Une seule transaction, une seule écriture d'encaissement agrégée.
+    [HttpPost("batch")]
+    public async Task<IActionResult> CreateBatch([FromBody] BatchVenteRequest req)
+    {
+        var (dtos, error) = await svc.CreateBatchAsync(req);
+        if (error is not null) return BadRequest(new { error });
+        return StatusCode(201, dtos);
+    }
 }
