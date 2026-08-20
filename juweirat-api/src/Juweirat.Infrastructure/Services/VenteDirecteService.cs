@@ -49,7 +49,19 @@ public class VenteDirecteService(AppDbContext db, AccountingService accountingSe
         if (prestation is null || !prestation.IsActive)
             return (null, "Prestation introuvable ou inactive");
 
-        var total = prestation.PrixSeule * req.Quantite;
+        // Prestation flexible → prix obligatoirement saisi ; sinon on utilise le catalogue.
+        decimal prixUnitaire;
+        if (prestation.PrixFlexible)
+        {
+            if (req.PrixUnitaire is null || req.PrixUnitaire.Value <= 0)
+                return (null, "Cette prestation est à prix flexible : le prix unitaire doit être saisi (> 0).");
+            prixUnitaire = req.PrixUnitaire.Value;
+        }
+        else
+        {
+            prixUnitaire = prestation.PrixSeule;
+        }
+        var total = prixUnitaire * req.Quantite;
 
         Folio? folio = null;
         if (req.Mode == "SurChambre")
@@ -86,7 +98,7 @@ public class VenteDirecteService(AppDbContext db, AccountingService accountingSe
             ClientNom            = req.ClientNom?.Trim(),
             FolioId              = folio?.Id,
             Quantite             = req.Quantite,
-            PrixUnitaireSnapshot = prestation.PrixSeule,
+            PrixUnitaireSnapshot = prixUnitaire,
             Total                = total,
             Mode                 = req.Mode,
             PaymentMethod        = req.PaymentMethod,

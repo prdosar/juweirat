@@ -99,14 +99,23 @@ export default function PrestationDetailPage() {
             </p>
           </div>
           <div className="flex items-center gap-6 shrink-0">
-            <div className="text-right">
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Prix inclus</p>
-              <p className="text-sm font-bold text-charcoal">{prestation.prixInclus.toLocaleString('fr')} <span className="text-xs text-gray-400 font-normal">FCFA</span></p>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Prix seule</p>
-              <p className="text-sm font-bold text-charcoal">{prestation.prixSeule.toLocaleString('fr')} <span className="text-xs text-gray-400 font-normal">FCFA</span></p>
-            </div>
+            {prestation.prixFlexible ? (
+              <div className="text-right">
+                <p className="text-[10px] text-amber-700 font-bold uppercase tracking-wider">Prix flexible</p>
+                <p className="text-sm font-bold text-amber-700">Saisi à la vente</p>
+              </div>
+            ) : (
+              <>
+                <div className="text-right">
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Prix inclus</p>
+                  <p className="text-sm font-bold text-charcoal">{prestation.prixInclus.toLocaleString('fr')} <span className="text-xs text-gray-400 font-normal">FCFA</span></p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Prix seule</p>
+                  <p className="text-sm font-bold text-charcoal">{prestation.prixSeule.toLocaleString('fr')} <span className="text-xs text-gray-400 font-normal">FCFA</span></p>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

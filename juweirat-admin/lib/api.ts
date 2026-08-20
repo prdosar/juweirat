@@ -255,7 +255,7 @@ export const reservations = {
     // Édition étendue : séjour + prestations
     categoryId: number; roomId: number | null;
     checkInDate: string; checkOutDate: string;
-    prestations: Array<{ prestationId: number; quantite: number }> | null;
+    prestations: Array<{ prestationId: number; quantite: number; prixUnitaire?: number }> | null;
     acceptRefundImbalance: boolean;
     tvaExonere: boolean;
   }>) => request<import('./types').ReservationDto>(`/api/reservations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
@@ -321,6 +321,8 @@ export const ventesDirectes = {
     clientId?: number; clientNom?: string;
     folioId?: number; mode?: string;
     paymentMethod?: string; notes?: string;
+    // Obligatoire seulement pour les prestations à prix flexible.
+    prixUnitaire?: number;
   }) => request<import('./types').VenteDirecteDto>('/api/ventes-directes', { method: 'POST', body: JSON.stringify(body) }),
 };
 
@@ -335,10 +337,12 @@ export const prestations = {
   create: (body: {
     nameFr: string; nameEn: string; icon?: string;
     mode?: string; prixInclus: number; prixSeule: number; sortOrder?: number;
+    prixFlexible?: boolean;
   }) => request<import('./types').PrestationAnnexeDto>('/api/prestations', { method: 'POST', body: JSON.stringify(body) }),
   update: (id: number, body: Partial<{
     nameFr: string; nameEn: string; icon: string; mode: string;
     prixInclus: number; prixSeule: number; isActive: boolean; sortOrder: number;
+    prixFlexible: boolean;
   }>) => request<import('./types').PrestationAnnexeDto>(`/api/prestations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: (id: number) => request<void>(`/api/prestations/${id}`, { method: 'DELETE' }),
 };

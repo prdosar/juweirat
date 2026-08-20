@@ -30,7 +30,9 @@ public record CreateVenteDirecteRequest(
     long? FolioId = null,
     string Mode = "Encaissement",
     string? PaymentMethod = null,
-    string? Notes = null
+    string? Notes = null,
+    // Obligatoire uniquement quand la prestation est flexible (prix saisi à la vente).
+    decimal? PrixUnitaire = null
 );
 
 public record FolioActifDto(

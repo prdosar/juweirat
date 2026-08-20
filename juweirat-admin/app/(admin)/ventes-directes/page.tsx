@@ -44,6 +44,8 @@ function VentesDirectesPageInner() {
   // ── Sélection prestation ───────────────────────────────────────────────────
   const [selectedPrestation, setSelectedPrestation] = useState<PrestationAnnexeDto | null>(null);
   const [quantite, setQuantite]                     = useState(1);
+  // Prix saisi manuellement pour les prestations à prix flexible.
+  const [prixManuel, setPrixManuel]                 = useState('');
 
   // ── Client ────────────────────────────────────────────────────────────────
   const [clientSearch, setClientSearch]   = useState('');
@@ -136,11 +138,16 @@ function VentesDirectesPageInner() {
     setMode('Encaissement');
   }
 
-  const total = selectedPrestation ? selectedPrestation.prixSeule * quantite : 0;
+  const prixManuelNum = Number(prixManuel) || 0;
+  const prixUnitaire  = selectedPrestation
+    ? (selectedPrestation.prixFlexible ? prixManuelNum : selectedPrestation.prixSeule)
+    : 0;
+  const total = prixUnitaire * quantite;
 
   function reset() {
     setSelectedPrestation(null);
     setQuantite(1);
+    setPrixManuel('');
     setNotes('');
     setError('');
     // keep client + mode between sales (quicker for multiple sales to same client)
@@ -149,6 +156,10 @@ function VentesDirectesPageInner() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedPrestation) { setError('Veuillez sélectionner une prestation.'); return; }
+    if (selectedPrestation.prixFlexible && prixManuelNum <= 0) {
+      setError('Prestation à prix flexible : saisissez un prix unitaire (> 0).');
+      return;
+    }
     if (mode === 'SurChambre' && !folioActif) { setError('Aucun folio actif trouvé pour ce client.'); return; }
 
     setSaving(true);
@@ -164,6 +175,7 @@ function VentesDirectesPageInner() {
         mode,
         paymentMethod: mode === 'Encaissement' ? paymentMethod : undefined,
         notes:         notes.trim() || undefined,
+        prixUnitaire:  selectedPrestation.prixFlexible ? prixManuelNum : undefined,
       });
       setLastVente(vente);
       reset();
@@ -225,15 +237,19 @@ function VentesDirectesPageInner() {
                     <button
                       key={p.id}
                       type="button"
-                      onClick={() => { setSelectedPrestation(p); setQuantite(1); setError(''); setLastVente(null); }}
+                      onClick={() => { setSelectedPrestation(p); setQuantite(1); setPrixManuel(''); setError(''); setLastVente(null); }}
                       className={`flex flex-col items-start p-3 rounded-xl border-2 text-left transition-all ${
                         selectedPrestation?.id === p.id
-                          ? 'border-gold bg-gold/5'
+                          ? 'border-green-dark bg-green/5'
                           : 'border-gray-100 hover:border-gray-200'
                       }`}
                     >
                       <span className="text-sm font-bold text-charcoal leading-tight">{p.nameFr}</span>
-                      <span className="text-xs text-gold font-semibold mt-1">{p.prixSeule.toLocaleString('fr')} FCFA</span>
+                      {p.prixFlexible ? (
+                        <span className="text-xs text-amber-700 font-semibold mt-1">Prix libre</span>
+                      ) : (
+                        <span className="text-xs text-green-dark font-semibold mt-1">{p.prixSeule.toLocaleString('fr')} FCFA</span>
+                      )}
                       <span className="text-[10px] text-gray-400 mt-0.5">
                         {p.mode === 'ParPersonneParNuit' ? '/pers./nuit'
                          : p.mode === 'ParPersonne' ? '/personne'
@@ -249,19 +265,31 @@ function VentesDirectesPageInner() {
                 </div>
 
                 {selectedPrestation && (
-                  <div className="flex items-center gap-4 pt-2 border-t border-gray-100">
+                  <div className="flex items-end gap-4 pt-2 border-t border-gray-100">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Quantité</label>
                       <input
                         type="number" min="1" max="999"
                         value={quantite}
                         onChange={e => setQuantite(Math.max(1, Number(e.target.value)))}
-                        className="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-center focus:ring-2 focus:ring-gold/20 focus:border-gold"
+                        className="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-center focus:ring-2 focus:ring-green/20 focus:border-green"
                       />
                     </div>
+                    {selectedPrestation.prixFlexible && (
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-amber-700 uppercase tracking-wider">Prix unitaire *</label>
+                        <input
+                          type="number" min="0" step="100" autoFocus
+                          value={prixManuel}
+                          onChange={e => setPrixManuel(e.target.value)}
+                          placeholder="Ex : 2 500"
+                          className="w-32 border border-amber-300 rounded-lg px-3 py-2 text-sm font-bold text-right focus:ring-2 focus:ring-amber-200 focus:border-amber-500"
+                        />
+                      </div>
+                    )}
                     <div className="flex-1 text-right">
                       <p className="text-xs text-gray-400">Sous-total</p>
-                      <p className="text-2xl font-black text-gold">{total.toLocaleString('fr')} <span className="text-sm font-bold">FCFA</span></p>
+                      <p className="text-2xl font-black text-charcoal">{total.toLocaleString('fr')} <span className="text-sm font-bold">FCFA</span></p>
                     </div>
                   </div>
                 )}

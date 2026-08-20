@@ -160,7 +160,9 @@ function NewReservationPageInner() {
   // Step 4 — logement + prestations
   const [categoryId, setCategoryId] = useState(0);
   const [roomId, setRoomId]         = useState(0);
-  const [selectedPrestations, setSelectedPrestations] = useState<Map<number, number | null>>(new Map());
+  // Pour chaque prestation cochée : quantity override (null = auto selon mode) + prix unitaire manuel (utilisé uniquement si prestation.prixFlexible).
+  type PrestationSelection = { quantity: number | null; prixUnitaire: number | null };
+  const [selectedPrestations, setSelectedPrestations] = useState<Map<number, PrestationSelection>>(new Map());
   const [internalNotes, setInternalNotes] = useState('');
 
   // Step 5 — garantie & tarif
@@ -253,15 +255,20 @@ function NewReservationPageInner() {
     .slice(0, 12);
 
   function quantityFor(p: PrestationAnnexeDto): number {
-    const override = selectedPrestations.get(p.id);
+    const override = selectedPrestations.get(p.id)?.quantity ?? null;
     if (override != null) return override;
     if (p.mode === 'ParPersonneParNuit') return totalPax * Math.max(1, nights);
     if (p.mode === 'ParPersonne')        return totalPax;
     return 1;
   }
+  // Prix unitaire effectif : prix flexible saisi manuellement, sinon prix catalogue.
+  function priceFor(p: PrestationAnnexeDto): number {
+    if (!p.prixFlexible) return p.prixInclus;
+    return selectedPrestations.get(p.id)?.prixUnitaire ?? 0;
+  }
   const extrasTotal = [...selectedPrestations.keys()].reduce((acc, pid) => {
     const p = prestationList.find(x => x.id === pid);
-    return p ? acc + p.prixInclus * quantityFor(p) : acc;
+    return p ? acc + priceFor(p) * quantityFor(p) : acc;
   }, 0);
 
   const discountNum = Math.max(0, Number(String(discount).replace(/[^\d]/g, '')) || 0);
@@ -307,6 +314,14 @@ function NewReservationPageInner() {
     }
     if (current === 3) {
       if (!categoryId) return 'Sélectionnez une catégorie de logement.';
+      // Prestations flexibles cochées mais sans prix → bloquer.
+      for (const pid of selectedPrestations.keys()) {
+        const p = prestationList.find(x => x.id === pid);
+        if (p?.prixFlexible) {
+          const prix = selectedPrestations.get(pid)?.prixUnitaire ?? 0;
+          if (prix <= 0) return `Saisissez le prix unitaire pour la prestation « ${p.nameFr} ».`;
+        }
+      }
     }
     if (current === 4) {
       if (!garantieType) return 'Choisissez un mode de garantie (dépôt ou carte).';
@@ -392,7 +407,12 @@ function NewReservationPageInner() {
       const carteSuffix = garantieType === 'Carte' ? carteNumero.replace(/\s/g, '').slice(-4) : null;
       const prestationsPayload = [...selectedPrestations.keys()].map(pid => {
         const p = prestationList.find(x => x.id === pid)!;
-        return { prestationId: pid, quantite: quantityFor(p) };
+        return {
+          prestationId: pid,
+          quantite: quantityFor(p),
+          // Prix saisi manuellement uniquement pour les prestations flexibles.
+          prixUnitaire: p.prixFlexible ? priceFor(p) : undefined,
+        };
       });
 
       const body = {
@@ -907,18 +927,67 @@ function NewReservationPageInner() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {prestationList.map(p => {
                     const on = selectedPrestations.has(p.id);
-                    const label = `${p.nameFr} · ${p.prixInclus.toLocaleString('fr-FR')} F${p.mode === 'ParPersonneParNuit' ? ' /pers./nuit' : p.mode === 'ParPersonne' ? ' /pers.' : ''}`;
+                    const label = p.prixFlexible
+                      ? `${p.nameFr} · prix libre`
+                      : `${p.nameFr} · ${p.prixInclus.toLocaleString('fr-FR')} F${p.mode === 'ParPersonneParNuit' ? ' /pers./nuit' : p.mode === 'ParPersonne' ? ' /pers.' : ''}`;
                     return (
                       <button
                         key={p.id}
                         type="button"
                         onClick={() => {
                           const next = new Map(selectedPrestations);
-                          if (on) next.delete(p.id); else next.set(p.id, null);
+                          if (on) next.delete(p.id);
+                          else    next.set(p.id, { quantity: null, prixUnitaire: null });
                           setSelectedPrestations(next);
                         }}
                         style={chip(on)}
                       >{label}</button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Champs prix pour chaque prestation flexible cochée */}
+              {[...selectedPrestations.keys()]
+                .map(pid => prestationList.find(p => p.id === pid))
+                .filter((p): p is PrestationAnnexeDto => !!p && p.prixFlexible)
+                .length > 0 && (
+                <div style={{
+                  marginTop: 14, padding: '12px 14px',
+                  background: '#fff8ec', border: '1px solid #f5c882',
+                  borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 10,
+                }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#7a4f00', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                    Prestations à prix flexible — saisir le prix unitaire
+                  </span>
+                  {[...selectedPrestations.keys()].map(pid => {
+                    const p = prestationList.find(x => x.id === pid);
+                    if (!p || !p.prixFlexible) return null;
+                    const val = selectedPrestations.get(pid)?.prixUnitaire ?? null;
+                    return (
+                      <div key={pid} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ flex: 1, fontSize: 13, color: C.ink }}>{p.nameFr}</span>
+                        <input
+                          type="number" min={0} step={100}
+                          value={val ?? ''}
+                          onChange={e => {
+                            const next = new Map(selectedPrestations);
+                            const raw  = e.target.value;
+                            next.set(pid, {
+                              quantity:     selectedPrestations.get(pid)?.quantity ?? null,
+                              prixUnitaire: raw === '' ? null : Number(raw),
+                            });
+                            setSelectedPrestations(next);
+                          }}
+                          placeholder="Ex : 2 500"
+                          style={{
+                            width: 140, padding: '8px 12px', border: '1px solid #d4a04c',
+                            borderRadius: 8, background: '#fff', fontSize: 13,
+                            textAlign: 'right', color: C.ink, outline: 'none',
+                          }}
+                        />
+                        <span style={{ fontSize: 11, color: C.ink4 }}>F / unité</span>
+                      </div>
                     );
                   })}
                 </div>

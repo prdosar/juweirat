@@ -181,12 +181,24 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             foreach (var ligne in req.Prestations)
             {
                 if (!catalogue.TryGetValue(ligne.PrestationId, out var prestation)) continue;
-                var ligneTotal = prestation.PrixInclus * ligne.Quantite;
+                // Prestation flexible → prix saisi obligatoire ; sinon on prend le catalogue.
+                decimal prixUnitaire;
+                if (prestation.PrixFlexible)
+                {
+                    if (ligne.PrixUnitaire is null || ligne.PrixUnitaire.Value <= 0)
+                        return (null, $"« {prestation.NameFr} » est à prix flexible : le prix unitaire doit être saisi (> 0).");
+                    prixUnitaire = ligne.PrixUnitaire.Value;
+                }
+                else
+                {
+                    prixUnitaire = prestation.PrixInclus;
+                }
+                var ligneTotal = prixUnitaire * ligne.Quantite;
                 lignesPrestations.Add(new ReservationPrestation
                 {
                     PrestationId           = prestation.Id,
                     Quantite               = ligne.Quantite,
-                    PrixUnitaireSnapshot   = prestation.PrixInclus,
+                    PrixUnitaireSnapshot   = prixUnitaire,
                     TotalLigne             = ligneTotal,
                 });
                 totalPrestations += ligneTotal;
@@ -676,13 +688,24 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
                 foreach (var ligne in req.Prestations)
                 {
                     if (!catalogue.TryGetValue(ligne.PrestationId, out var prestation)) continue;
-                    var totalLigne = prestation.PrixInclus * ligne.Quantite;
+                    decimal prixUnitaire;
+                    if (prestation.PrixFlexible)
+                    {
+                        if (ligne.PrixUnitaire is null || ligne.PrixUnitaire.Value <= 0)
+                            return (null, $"« {prestation.NameFr} » est à prix flexible : le prix unitaire doit être saisi (> 0).");
+                        prixUnitaire = ligne.PrixUnitaire.Value;
+                    }
+                    else
+                    {
+                        prixUnitaire = prestation.PrixInclus;
+                    }
+                    var totalLigne = prixUnitaire * ligne.Quantite;
                     r.Prestations.Add(new ReservationPrestation
                     {
                         ReservationId        = r.Id,
                         PrestationId         = prestation.Id,
                         Quantite             = ligne.Quantite,
-                        PrixUnitaireSnapshot = prestation.PrixInclus,
+                        PrixUnitaireSnapshot = prixUnitaire,
                         TotalLigne           = totalLigne,
                         Prestation           = prestation,
                     });

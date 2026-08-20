@@ -336,6 +336,8 @@ export interface PrestationAnnexeDto {
   prixSeule: number;
   isActive: boolean;
   sortOrder: number;
+  // Quand true, le prix est saisi à chaque vente (les prix ci-dessus sont ignorés).
+  prixFlexible: boolean;
 }
 
 export interface PrestationConsumptionDto {

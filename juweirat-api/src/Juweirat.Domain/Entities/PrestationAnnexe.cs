@@ -9,6 +9,9 @@ public class PrestationAnnexe
     public string Mode { get; set; } = "ParPersonneParNuit"; // ParPersonneParNuit | ParPersonne | Forfait
     public decimal PrixInclus { get; set; }  // tarif quand inclus dans une réservation
     public decimal PrixSeule { get; set; }   // tarif en prestation indépendante
+    // Prix flexible : quand true, PrixInclus/PrixSeule ne servent pas, le prix est
+    // saisi à chaque vente (ex : lingerie, achats à quantité/valeur variables).
+    public bool PrixFlexible { get; set; } = false;
     public bool IsActive { get; set; } = true;
     public int SortOrder { get; set; } = 0;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
