@@ -1,0 +1,9 @@
+
+flutter build apk --release --dart-define=API_BASE_URL=https://juweirat.com
+
+
+flutter build apk --release --dart-define=API_BASE_URL=https://api.juweirat.com
+
+
+
+flutter run --dart-define=API_BASE_URL=https://api.juweirat.com
