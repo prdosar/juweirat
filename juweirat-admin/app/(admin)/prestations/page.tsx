@@ -144,10 +144,18 @@ export default function PrestationsPage() {
                       </td>
                       <td className="px-5 py-3.5 text-gray-500 text-xs">{MODES[p.mode]?.label ?? p.mode}</td>
                       <td className="px-5 py-3.5 text-right font-semibold text-charcoal">
-                        {p.prixInclus.toLocaleString('fr')} <span className="text-gray-400 font-normal">FCFA</span>
+                        {p.prixFlexible ? (
+                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Flexible</span>
+                        ) : (
+                          <>{p.prixInclus.toLocaleString('fr')} <span className="text-gray-400 font-normal">FCFA</span></>
+                        )}
                       </td>
                       <td className="px-5 py-3.5 text-right text-gray-600">
-                        {p.prixSeule.toLocaleString('fr')} <span className="text-gray-400">FCFA</span>
+                        {p.prixFlexible ? (
+                          <span className="text-xs text-amber-700 font-medium">Saisi à la vente</span>
+                        ) : (
+                          <>{p.prixSeule.toLocaleString('fr')} <span className="text-gray-400">FCFA</span></>
+                        )}
                       </td>
                       <td className="px-5 py-3.5 text-center">
                         <button
@@ -226,13 +234,14 @@ function PrestationModal({
   const isEdit = initial !== null;
 
   const [form, setForm] = useState({
-    nameFr:     initial?.nameFr     ?? '',
-    nameEn:     initial?.nameEn     ?? '',
-    icon:       initial?.icon       ?? 'coffee',
-    mode:       initial?.mode       ?? 'ParPersonneParNuit',
-    prixInclus: initial ? String(initial.prixInclus) : '',
-    prixSeule:  initial ? String(initial.prixSeule)  : '',
-    sortOrder:  initial ? String(initial.sortOrder)  : '0',
+    nameFr:       initial?.nameFr     ?? '',
+    nameEn:       initial?.nameEn     ?? '',
+    icon:         initial?.icon       ?? 'coffee',
+    mode:         initial?.mode       ?? 'ParPersonneParNuit',
+    prixInclus:   initial ? String(initial.prixInclus) : '',
+    prixSeule:    initial ? String(initial.prixSeule)  : '',
+    sortOrder:    initial ? String(initial.sortOrder)  : '0',
+    prixFlexible: initial?.prixFlexible ?? false,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
@@ -259,7 +268,7 @@ function PrestationModal({
     };
   }, [onClose]);
 
-  function set(field: string, value: string) {
+  function set(field: string, value: string | boolean) {
     setForm(prev => ({ ...prev, [field]: value }));
   }
 
@@ -271,13 +280,14 @@ function PrestationModal({
     setError('');
     try {
       const body = {
-        nameFr:     form.nameFr.trim(),
-        nameEn:     form.nameEn.trim() || form.nameFr.trim(),
-        icon:       form.icon || undefined,
-        mode:       form.mode,
-        prixInclus: Number(form.prixInclus) || 0,
-        prixSeule:  Number(form.prixSeule) || 0,
-        sortOrder:  Number(form.sortOrder) || 0,
+        nameFr:       form.nameFr.trim(),
+        nameEn:       form.nameEn.trim() || form.nameFr.trim(),
+        icon:         form.icon || undefined,
+        mode:         form.mode,
+        prixInclus:   form.prixFlexible ? 0 : (Number(form.prixInclus) || 0),
+        prixSeule:    form.prixFlexible ? 0 : (Number(form.prixSeule)  || 0),
+        sortOrder:    Number(form.sortOrder) || 0,
+        prixFlexible: form.prixFlexible,
       };
       const saved = isEdit && initial
         ? await prestations.update(initial.id, body)
@@ -370,7 +380,23 @@ function PrestationModal({
               <p className="text-xs text-gray-400 mt-1">{MODES[form.mode]?.desc}</p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <label className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg bg-amber-50/40 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.prixFlexible}
+                onChange={e => set('prixFlexible', e.target.checked)}
+                className="mt-0.5 accent-amber-600"
+              />
+              <span className="flex-1">
+                <span className="text-sm font-semibold text-charcoal">Prix flexible — saisi à chaque vente</span>
+                <span className="block text-xs text-gray-500 mt-0.5">
+                  À cocher pour des articles à prix variable (ex : lingerie, achats divers, boissons hors carte).
+                  Les tarifs catalogue ci-dessous seront ignorés.
+                </span>
+              </span>
+            </label>
+
+            <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${form.prixFlexible ? 'opacity-40 pointer-events-none select-none' : ''}`}>
               <div>
                 <label className={labelCls}>Prix inclus (FCFA)</label>
                 <input
@@ -379,6 +405,7 @@ function PrestationModal({
                   onChange={e => set('prixInclus', e.target.value)}
                   placeholder="3 500"
                   className={inputCls}
+                  disabled={form.prixFlexible}
                 />
                 <p className="text-xs text-gray-400 mt-1">Tarif à la réservation</p>
               </div>
@@ -390,6 +417,7 @@ function PrestationModal({
                   onChange={e => set('prixSeule', e.target.value)}
                   placeholder="4 000"
                   className={inputCls}
+                  disabled={form.prixFlexible}
                 />
                 <p className="text-xs text-gray-400 mt-1">Tarif en prestation seule</p>
               </div>

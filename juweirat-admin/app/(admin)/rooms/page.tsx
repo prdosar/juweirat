@@ -143,7 +143,7 @@ export default function RoomsPage() {
                               </div>
                             </td>
                             <td className="px-5 py-3.5 text-right font-semibold text-charcoal">
-                              {room.pricePerNight.toLocaleString('fr')}
+                              {group.category.tarifNuit.toLocaleString('fr')}
                               <span className="text-xs font-normal text-gray-400 ml-1">XOF</span>
                             </td>
                             <td className="px-5 py-3.5">

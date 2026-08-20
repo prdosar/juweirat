@@ -6,11 +6,12 @@ using Juweirat.Domain.Enums;
 using Juweirat.Infrastructure.Data;
 using Juweirat.Infrastructure.Extensions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using FolioStatus = Juweirat.Domain.Enums.FolioResaStatus;
 
 namespace Juweirat.Infrastructure.Services;
 
-public class ReservationService(AppDbContext db)
+public class ReservationService(AppDbContext db, EmailService emailService, ILogger<ReservationService> logger, AccountingService accountingService)
 {
     public async Task<PagedResult<ReservationDto>> GetPagedAsync(ReservationFilterParams filter)
     {
@@ -180,12 +181,24 @@ public class ReservationService(AppDbContext db)
             foreach (var ligne in req.Prestations)
             {
                 if (!catalogue.TryGetValue(ligne.PrestationId, out var prestation)) continue;
-                var ligneTotal = prestation.PrixInclus * ligne.Quantite;
+                // Prestation flexible → prix saisi obligatoire ; sinon on prend le catalogue.
+                decimal prixUnitaire;
+                if (prestation.PrixFlexible)
+                {
+                    if (ligne.PrixUnitaire is null || ligne.PrixUnitaire.Value <= 0)
+                        return (null, $"« {prestation.NameFr} » est à prix flexible : le prix unitaire doit être saisi (> 0).");
+                    prixUnitaire = ligne.PrixUnitaire.Value;
+                }
+                else
+                {
+                    prixUnitaire = prestation.PrixInclus;
+                }
+                var ligneTotal = prixUnitaire * ligne.Quantite;
                 lignesPrestations.Add(new ReservationPrestation
                 {
                     PrestationId           = prestation.Id,
                     Quantite               = ligne.Quantite,
-                    PrixUnitaireSnapshot   = prestation.PrixInclus,
+                    PrixUnitaireSnapshot   = prixUnitaire,
                     TotalLigne             = ligneTotal,
                 });
                 totalPrestations += ligneTotal;
@@ -216,6 +229,7 @@ public class ReservationService(AppDbContext db)
             CarteNom              = req.CarteNom,
             CarteSuffix           = req.CarteSuffix,
             CarteExpiration       = req.CarteExpiration,
+            TvaExonere            = req.TvaExonere,
         };
 
         db.Reservations.Add(reservation);
@@ -237,7 +251,56 @@ public class ReservationService(AppDbContext db)
             .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
             .FirstAsync(r => r.Id == reservation.Id);
 
+        // Notifications par email pour les résas créées depuis le back-office (PMS/wizard).
+        // Le site public déclenche déjà ses propres emails via PublicController — on skip donc quand Source == "website".
+        if (!isWebBooking && client is not null)
+        {
+            _ = SendAdminBookingEmailsAsync(client, category, req);
+        }
+
         return (ToDto(created), null);
+    }
+
+    private async Task SendAdminBookingEmailsAsync(Client client, RoomCategory category, CreateReservationRequest req)
+    {
+        try
+        {
+            var categoryName = category.NameFr ?? "Appartement Résidence Juweirat";
+            var guestName    = $"{client.FirstName} {client.LastName}".Trim();
+
+            // 1) Rappel à la réception (contact@juweirat.com)
+            var adminSubject = $"[RÉSERVATION RÉCEPTION] {guestName} — {categoryName}";
+            var adminBody = EmailTemplateService.BuildBookingAdminNotification(
+                client.FirstName, client.LastName,
+                client.Email ?? "",
+                client.Phone ?? "",
+                client.Nationality ?? "",
+                categoryName,
+                req.CheckInDate, req.CheckOutDate,
+                req.Adults, req.Children,
+                req.InternalNotes,
+                fromAdmin: true
+            );
+            await emailService.SendEmailAsync("contact@juweirat.com", adminSubject, adminBody, "Réservation Juweirat", client.Email ?? "");
+
+            // 2) Confirmation client si l'email est renseigné sur la fiche
+            if (!string.IsNullOrWhiteSpace(client.Email))
+            {
+                var clientSubject = "Confirmation de votre réservation — Résidence Juweirat";
+                var clientBody = EmailTemplateService.BuildBookingClientConfirmation(
+                    client.FirstName, client.LastName,
+                    categoryName,
+                    req.CheckInDate, req.CheckOutDate,
+                    req.Adults, req.Children,
+                    fromAdmin: true
+                );
+                await emailService.SendEmailAsync(client.Email, clientSubject, clientBody, "Résidence Juweirat", "contact@juweirat.com");
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[ReservationService] Failed to send admin-booking emails for client {ClientId}", client.Id);
+        }
     }
 
     public async Task<(ReservationDto? dto, string? error)> UpdateStatusAsync(long id, UpdateReservationStatusRequest req)
@@ -309,7 +372,7 @@ public class ReservationService(AppDbContext db)
         var penaltyNights = r.Nights < 15 ? 1 : r.Nights < 30 ? 2 : 4;
         var penaltyAmount = penaltyNights * r.PricePerNightSnapshot;
 
-        db.Payments.Add(new Payment
+        var penaltyPayment = new Payment
         {
             ReservationId = r.Id,
             Amount        = penaltyAmount,
@@ -318,8 +381,33 @@ public class ReservationService(AppDbContext db)
             Status        = PaymentStatus.Completed,
             PaidAt        = DateTime.UtcNow,
             Notes         = $"Retenue No Show — {penaltyNights} nuit{(penaltyNights > 1 ? "s" : "")}",
-        });
+        };
+        db.Payments.Add(penaltyPayment);
         await db.SaveChangesAsync();
+
+        // Journal comptable — retenue No Show : vente HT+TVA sur compte RevenueNoShow puis encaissement caisse.
+        try
+        {
+            await accountingService.PostSaleAsync(
+                clientId:          r.ClientId,
+                revenueKind:       AccountKind.RevenueNoShow,
+                revenueOwnerRefId: null,
+                amountTtc:         penaltyAmount,
+                tvaExonere:        r.TvaExonere,
+                sourceType:        "Payment",
+                sourceId:          penaltyPayment.Id,
+                label:             $"Retenue No Show · résa {r.Reference} · {penaltyNights} nuit(s)");
+            // L'encaissement est déjà écrit par le hook PaymentService — SAUF ici où le
+            // Payment a été créé directement en base sans passer par PaymentService.CreateAsync.
+            // On complète donc manuellement l'écriture d'encaissement.
+            await accountingService.PostEncaissementAsync(
+                clientId:   r.ClientId,
+                amount:     penaltyAmount,
+                sourceType: "Payment",
+                sourceId:   penaltyPayment.Id,
+                label:      $"Encaissement retenue No Show · résa {r.Reference}");
+        }
+        catch (Exception ex) { logger.LogError(ex, "Accounting NoShow hook failed for resa {ResaId}", r.Id); }
 
         var updated = await db.Reservations
             .Include(r => r.Room)
@@ -356,6 +444,7 @@ public class ReservationService(AppDbContext db)
         var penaltyAmount = penaltyNights * r.PricePerNightSnapshot;
 
         var alreadyBilled = r.Payments.Any(p => p.Notes != null && p.Notes.StartsWith("Retenue annulation"));
+        Payment? cancellationPayment = null;
         if (deadlinePassed && penaltyNights > 0 && !alreadyBilled)
         {
             if (string.IsNullOrWhiteSpace(paymentMethod))
@@ -363,7 +452,7 @@ public class ReservationService(AppDbContext db)
             if (!Enum.TryParse<PaymentMethod>(paymentMethod, ignoreCase: true, out var method))
                 return (null, $"Mode de paiement invalide : « {paymentMethod} ».");
 
-            db.Payments.Add(new Payment
+            cancellationPayment = new Payment
             {
                 ReservationId = r.Id,
                 Amount        = penaltyAmount,
@@ -372,7 +461,8 @@ public class ReservationService(AppDbContext db)
                 Status        = PaymentStatus.Completed,
                 PaidAt        = DateTime.UtcNow,
                 Notes         = $"Retenue annulation — {penaltyNights} nuit{(penaltyNights > 1 ? "s" : "")} ({deadlineLabel})",
-            });
+            };
+            db.Payments.Add(cancellationPayment);
         }
 
         r.Status             = ReservationStatus.Cancelled;
@@ -380,6 +470,30 @@ public class ReservationService(AppDbContext db)
         r.CancellationReason = reason;
 
         await db.SaveChangesAsync();
+
+        // Journal comptable — retenue annulation : vente HT+TVA sur compte RevenueCancellation + encaissement.
+        if (cancellationPayment is not null)
+        {
+            try
+            {
+                await accountingService.PostSaleAsync(
+                    clientId:          r.ClientId,
+                    revenueKind:       AccountKind.RevenueCancellation,
+                    revenueOwnerRefId: null,
+                    amountTtc:         penaltyAmount,
+                    tvaExonere:        r.TvaExonere,
+                    sourceType:        "Payment",
+                    sourceId:          cancellationPayment.Id,
+                    label:             $"Retenue annulation · résa {r.Reference} · {penaltyNights} nuit(s)");
+                await accountingService.PostEncaissementAsync(
+                    clientId:   r.ClientId,
+                    amount:     penaltyAmount,
+                    sourceType: "Payment",
+                    sourceId:   cancellationPayment.Id,
+                    label:      $"Encaissement retenue annulation · résa {r.Reference}");
+            }
+            catch (Exception ex) { logger.LogError(ex, "Accounting Cancellation hook failed for resa {ResaId}", r.Id); }
+        }
 
         var updated = await db.Reservations
             .Include(r => r.Room)
@@ -425,7 +539,8 @@ public class ReservationService(AppDbContext db)
 
     /// <summary>
     /// Retourne le tarif effectivement applicable pour un client + catégorie donnés
-    /// selon le waterfall : tarif compagnie > tarif catégorie > tarif chambre > défaut.
+    /// selon le waterfall : tarif compagnie > tarif catégorie.
+    /// (Les prix sur Room ont été supprimés — tout passe par la Category.)
     /// </summary>
     public async Task<TarifPreviewDto?> GetTarifPreviewAsync(long clientId, long categoryId, int nights)
     {
@@ -453,6 +568,10 @@ public class ReservationService(AppDbContext db)
 
     private async Task<(int TarifNuit, int TarifN15, int TarifN30, string Source)> ResolveTarifAsync(Client? client, RoomCategory category, Room? room, bool applyCompanyTarif = true)
     {
+        // Waterfall tarifaire (tous les prix sont journaliers) :
+        //   1) tarif compagnie spécifique à la catégorie (si client rattaché à une compagnie)
+        //   2) tarif catégorie (source de vérité par défaut)
+        // Les prix sur Room ont été supprimés : tout passe par la Category.
         CompanyTarif? companyTarif = null;
         if (applyCompanyTarif && client?.CompanyId is not null)
         {
@@ -463,18 +582,12 @@ public class ReservationService(AppDbContext db)
         var usingCompany = companyTarif != null &&
                            (companyTarif.TarifNuit > 0 || companyTarif.TarifN15 > 0 || companyTarif.TarifN30 > 0);
 
-        var tarifNuit = companyTarif?.TarifNuit > 0 ? companyTarif.TarifNuit
-                      : (category.TarifNuit > 0 ? category.TarifNuit : (room != null ? room.TarifNuit : 30000));
-        var tarifN15  = companyTarif?.TarifN15 > 0 ? companyTarif.TarifN15
-                      : (category.TarifN15 > 0 ? category.TarifN15 : (room != null ? room.TarifN15 : 200000));
-        var tarifN30  = companyTarif?.TarifN30 > 0 ? companyTarif.TarifN30
-                      : (category.TarifN30 > 0 ? category.TarifN30 : (room != null ? room.TarifN30 : 300000));
+        var tarifNuit = companyTarif?.TarifNuit > 0 ? companyTarif.TarifNuit : category.TarifNuit;
+        var tarifN15  = companyTarif?.TarifN15  > 0 ? companyTarif.TarifN15  : category.TarifN15;
+        var tarifN30  = companyTarif?.TarifN30  > 0 ? companyTarif.TarifN30  : category.TarifN30;
 
-        var source = usingCompany ? "company"
-                   : (category.TarifNuit > 0 || category.TarifN15 > 0 || category.TarifN30 > 0) ? "category"
-                   : (room != null) ? "room"
-                   : "default";
-
+        var source = usingCompany ? "company" : "category";
+        _ = room; // Room encore reçue pour signature stable — plus utilisée pour le pricing.
         return (tarifNuit, tarifN15, tarifN30, source);
     }
 
@@ -483,15 +596,17 @@ public class ReservationService(AppDbContext db)
         var r = await db.Reservations
             .Include(r => r.Room)
             .Include(r => r.Category)
-            .Include(r => r.Client)
+            .Include(r => r.Client).ThenInclude(c => c!.Company)
             .Include(r => r.Payments)
             .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
             .FirstOrDefaultAsync(r => r.Id == id);
 
         if (r is null) return (null, "Réservation introuvable");
-        if (r.Status is ReservationStatus.Cancelled or ReservationStatus.CheckedOut or ReservationStatus.NoShow)
-            return (null, "Une réservation terminée/annulée ne peut plus être modifiée");
+        if (r.Status is ReservationStatus.Cancelled or ReservationStatus.CheckedIn
+                       or ReservationStatus.CheckedOut or ReservationStatus.NoShow)
+            return (null, "Cette réservation ne peut plus être modifiée (annulée, en cours ou terminée). Utilisez le PMS pour intervenir sur un séjour en cours.");
 
+        // Champs simples (aucun impact tarifaire)
         if (req.Source is not null)               r.Source              = req.Source;
         if (req.SpecialRequests is not null)      r.SpecialRequests     = req.SpecialRequests;
         if (req.InternalNotes is not null)        r.InternalNotes       = req.InternalNotes;
@@ -502,9 +617,135 @@ public class ReservationService(AppDbContext db)
         if (req.CarteNom is not null)             r.CarteNom            = req.CarteNom;
         if (req.CarteSuffix is not null)          r.CarteSuffix         = req.CarteSuffix;
         if (req.CarteExpiration is not null)      r.CarteExpiration     = req.CarteExpiration;
+        if (req.TvaExonere.HasValue)              r.TvaExonere          = req.TvaExonere.Value;
+
+        // ── Champs impactant le tarif : dates, catégorie, chambre ──────────────
+        var newCheckIn   = req.CheckInDate  ?? r.CheckInDate;
+        var newCheckOut  = req.CheckOutDate ?? r.CheckOutDate;
+        var newCategoryId = req.CategoryId  ?? r.CategoryId;
+        var newRoomId     = req.RoomId      ?? r.RoomId;
+
+        var stayChanged = newCheckIn   != r.CheckInDate
+                       || newCheckOut  != r.CheckOutDate
+                       || newCategoryId != r.CategoryId
+                       || newRoomId     != r.RoomId;
+
+        var prestationsChanged = req.Prestations is not null;
+
+        if (stayChanged)
+        {
+            if (newCheckOut <= newCheckIn)
+                return (null, "La date de départ doit être postérieure à la date d'arrivée.");
+
+            var category = await db.RoomCategories.FindAsync(newCategoryId);
+            if (category is null) return (null, "Catégorie introuvable.");
+
+            Room? room = null;
+            if (newRoomId is not null)
+            {
+                room = await db.Rooms.Include(rm => rm.Category)
+                                     .FirstOrDefaultAsync(rm => rm.Id == newRoomId.Value);
+                if (room is null) return (null, "Chambre introuvable.");
+
+                var overlap = await db.Reservations.AnyAsync(x =>
+                    x.Id != r.Id &&
+                    x.RoomId == room.Id &&
+                    x.Status != ReservationStatus.Cancelled &&
+                    x.Status != ReservationStatus.NoShow &&
+                    x.CheckInDate  < newCheckOut &&
+                    x.CheckOutDate > newCheckIn);
+                if (overlap) return (null, "Cette chambre est déjà réservée pour la nouvelle période.");
+            }
+
+            var isWebBooking = string.Equals(r.Source, "website", StringComparison.OrdinalIgnoreCase);
+            var resolved = await ResolveTarifAsync(r.Client, category, room, applyCompanyTarif: !isWebBooking);
+            var nights   = newCheckOut.DayNumber - newCheckIn.DayNumber;
+            var tarif    = TarifEngine.ForStay(resolved.TarifNuit, resolved.TarifN15, resolved.TarifN30, nights);
+
+            r.CheckInDate           = newCheckIn;
+            r.CheckOutDate          = newCheckOut;
+            r.Nights                = nights;
+            r.CategoryId            = category.Id;
+            r.RoomId                = room?.Id;
+            r.PricePerNightSnapshot = tarif.PerNight;
+            r.Category              = category;
+            r.Room                  = room;
+        }
+
+        // ── Prestations : delete-then-add si liste envoyée ────────────────────
+        if (prestationsChanged)
+        {
+            db.ReservationPrestations.RemoveRange(r.Prestations);
+            r.Prestations = [];
+
+            if (req.Prestations!.Count > 0)
+            {
+                var ids = req.Prestations.Select(p => p.PrestationId).Distinct().ToList();
+                var catalogue = await db.PrestationsAnnexes
+                    .Where(p => ids.Contains(p.Id) && p.IsActive)
+                    .ToDictionaryAsync(p => p.Id);
+
+                foreach (var ligne in req.Prestations)
+                {
+                    if (!catalogue.TryGetValue(ligne.PrestationId, out var prestation)) continue;
+                    decimal prixUnitaire;
+                    if (prestation.PrixFlexible)
+                    {
+                        if (ligne.PrixUnitaire is null || ligne.PrixUnitaire.Value <= 0)
+                            return (null, $"« {prestation.NameFr} » est à prix flexible : le prix unitaire doit être saisi (> 0).");
+                        prixUnitaire = ligne.PrixUnitaire.Value;
+                    }
+                    else
+                    {
+                        prixUnitaire = prestation.PrixInclus;
+                    }
+                    var totalLigne = prixUnitaire * ligne.Quantite;
+                    r.Prestations.Add(new ReservationPrestation
+                    {
+                        ReservationId        = r.Id,
+                        PrestationId         = prestation.Id,
+                        Quantite             = ligne.Quantite,
+                        PrixUnitaireSnapshot = prixUnitaire,
+                        TotalLigne           = totalLigne,
+                        Prestation           = prestation,
+                    });
+                }
+            }
+        }
+
+        // ── Recalcul total et garde-fou paiement ──────────────────────────────
+        if (stayChanged || prestationsChanged)
+        {
+            var totalHeb          = r.PricePerNightSnapshot * r.Nights;
+            var totalPrestations  = r.Prestations.Sum(p => p.TotalLigne);
+            var newTotal          = totalHeb + totalPrestations;
+
+            var amountPaid = r.Payments
+                .Where(p => p.Status == PaymentStatus.Completed)
+                .Sum(p => p.Amount);
+
+            if (newTotal < amountPaid && !req.AcceptRefundImbalance)
+            {
+                return (null,
+                    $"Le nouveau total ({newTotal:0}) est inférieur au montant déjà encaissé ({amountPaid:0}). " +
+                    "Confirmez la modification pour créer un avoir client de la différence.");
+            }
+
+            r.TotalPrice = newTotal;
+        }
 
         await db.SaveChangesAsync();
-        return (ToDto(r), null);
+
+        // Re-fetch pour récupérer les nouvelles prestations avec leurs Ids et le mapping DTO complet.
+        var updated = await db.Reservations
+            .Include(x => x.Room)
+            .Include(x => x.Category)
+            .Include(x => x.Client)
+            .Include(x => x.Payments)
+            .Include(x => x.Prestations).ThenInclude(p => p.Prestation)
+            .FirstAsync(x => x.Id == r.Id);
+
+        return (ToDto(updated), null);
     }
 
     private async Task<bool> CheckOverlapAsync(long roomId, DateOnly checkIn, DateOnly checkOut)
@@ -538,7 +779,8 @@ public class ReservationService(AppDbContext db)
 
         if (unit is null) return;
 
-        var tarif = TarifEngine.ForStay(unit.TarifNuit, unit.TarifN15, unit.TarifN30, nights);
+        // Tarifs journaliers lus depuis la Category (source unique de vérité).
+        var tarif = TarifEngine.ForStay(r.Category.TarifNuit, r.Category.TarifN15, r.Category.TarifN30, nights);
 
         config.ResaSeq++;
         var number = $"FL-{config.DateHotel.Year}-{config.ResaSeq:D4}";
@@ -560,6 +802,7 @@ public class ReservationService(AppDbContext db)
             ResaStatus    = FolioStatus.Confirmee,
             ReservationId = r.Id,
             Note          = r.SpecialRequests,
+            TvaExonere    = r.TvaExonere,
         };
 
         db.Folios.Add(folio);
@@ -594,7 +837,8 @@ public class ReservationService(AppDbContext db)
             r.AmountPaid, r.AmountDue,
             r.ConfirmedAt, r.CancelledAt, r.CreatedAt,
             r.GarantieType, r.GarantieMontantCash, r.CarteNom, r.CarteSuffix, r.CarteExpiration,
-            totalHeb, totalPrestations, prestationsDto
+            totalHeb, totalPrestations, prestationsDto,
+            r.TvaExonere
         );
     }
 }

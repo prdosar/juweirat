@@ -11,7 +11,8 @@ public record PrestationAnnexeDto(
     decimal PrixInclus,
     decimal PrixSeule,
     bool IsActive,
-    int SortOrder
+    int SortOrder,
+    bool PrixFlexible = false
 );
 
 public record CreatePrestationRequest(
@@ -21,7 +22,8 @@ public record CreatePrestationRequest(
     string Mode = "ParPersonneParNuit",
     [Range(0, 9999999)] decimal PrixInclus = 0,
     [Range(0, 9999999)] decimal PrixSeule = 0,
-    int SortOrder = 0
+    int SortOrder = 0,
+    bool PrixFlexible = false
 );
 
 public record UpdatePrestationRequest(
@@ -32,13 +34,17 @@ public record UpdatePrestationRequest(
     decimal? PrixInclus = null,
     decimal? PrixSeule = null,
     bool? IsActive = null,
-    int? SortOrder = null
+    int? SortOrder = null,
+    bool? PrixFlexible = null
 );
 
-// Ce qu'on envoie depuis le formulaire de réservation
+// Ce qu'on envoie depuis le formulaire de réservation.
+// PrixUnitaire est optionnel : requis uniquement quand la prestation est flexible,
+// ignoré sinon (le catalogue prime).
 public record PrestationLigneRequest(
     [Required] long PrestationId,
-    [Range(1, 9999)] int Quantite
+    [Range(1, 9999)] int Quantite,
+    decimal? PrixUnitaire = null
 );
 
 // Ce qu'on renvoie dans le DTO de réservation

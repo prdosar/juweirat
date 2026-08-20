@@ -1,11 +1,12 @@
 using Juweirat.Application.DTOs.Prestations;
 using Juweirat.Domain.Entities;
+using Juweirat.Domain.Enums;
 using Juweirat.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Infrastructure.Services;
 
-public class PrestationAnnexeService(AppDbContext db)
+public class PrestationAnnexeService(AppDbContext db, AccountingService accountingService)
 {
     public async Task<List<PrestationAnnexeDto>> GetAllAsync(bool activeOnly = false)
     {
@@ -30,16 +31,26 @@ public class PrestationAnnexeService(AppDbContext db)
 
         var p = new PrestationAnnexe
         {
-            NameFr    = name,
-            NameEn    = req.NameEn,
-            Icon      = req.Icon,
-            Mode      = req.Mode,
-            PrixInclus = req.PrixInclus,
-            PrixSeule  = req.PrixSeule,
-            SortOrder  = req.SortOrder,
+            NameFr       = name,
+            NameEn       = req.NameEn,
+            Icon         = req.Icon,
+            Mode         = req.Mode,
+            // Une prestation flexible n'a pas de prix catalogue : on force à 0.
+            PrixInclus   = req.PrixFlexible ? 0 : req.PrixInclus,
+            PrixSeule    = req.PrixFlexible ? 0 : req.PrixSeule,
+            PrixFlexible = req.PrixFlexible,
+            SortOrder    = req.SortOrder,
         };
         db.PrestationsAnnexes.Add(p);
         await db.SaveChangesAsync();
+
+        try
+        {
+            await accountingService.EnsureAuxiliaryAccountAsync(
+                AccountKind.Prestation, p.Id, $"Prestation — {p.NameFr}");
+        }
+        catch { /* silent */ }
+
         return (ToDto(p), null);
     }
 
@@ -59,8 +70,18 @@ public class PrestationAnnexeService(AppDbContext db)
         if (req.NameEn is not null) p.NameEn = req.NameEn;
         if (req.Icon is not null)   p.Icon   = req.Icon;
         if (req.Mode is not null)   p.Mode   = req.Mode;
-        if (req.PrixInclus is not null) p.PrixInclus = req.PrixInclus.Value;
-        if (req.PrixSeule  is not null) p.PrixSeule  = req.PrixSeule.Value;
+        if (req.PrixFlexible is not null) p.PrixFlexible = req.PrixFlexible.Value;
+        // Si la prestation passe (ou reste) en flexible, on écrase les prix catalogue à 0.
+        if (p.PrixFlexible)
+        {
+            p.PrixInclus = 0;
+            p.PrixSeule  = 0;
+        }
+        else
+        {
+            if (req.PrixInclus is not null) p.PrixInclus = req.PrixInclus.Value;
+            if (req.PrixSeule  is not null) p.PrixSeule  = req.PrixSeule.Value;
+        }
         if (req.IsActive   is not null) p.IsActive   = req.IsActive.Value;
         if (req.SortOrder  is not null) p.SortOrder  = req.SortOrder.Value;
         p.UpdatedAt = DateTime.UtcNow;
@@ -136,6 +157,6 @@ public class PrestationAnnexeService(AppDbContext db)
 
     private static PrestationAnnexeDto ToDto(PrestationAnnexe p) => new(
         p.Id, p.NameFr, p.NameEn, p.Icon, p.Mode,
-        p.PrixInclus, p.PrixSeule, p.IsActive, p.SortOrder
+        p.PrixInclus, p.PrixSeule, p.IsActive, p.SortOrder, p.PrixFlexible
     );
 }

@@ -51,6 +51,12 @@ function buildFactureHTML(
   const avoir = Math.max(0, paid + arrhes - total);
   const isSettled = solde <= 0.5;
 
+  const hasTvaBreakdown = s.tvaExonere !== undefined && s.tvaExonere !== null;
+  const tvaExonere      = s.tvaExonere === true;
+  const totalHt         = num(s.totalHt);
+  const tvaMontant      = num(s.tva);
+  const tvaRatePct      = s.tvaRate ? Math.round(num(s.tvaRate) * 100) : 18;
+
   const rowsHTML = (s.lines || [])
     .map(
       (r: any, i: number) =>
@@ -250,12 +256,25 @@ function buildFactureHTML(
       </div>
       <div style="width:270px;background:#FAF8F5;border:1px solid #E5DFD5;border-radius:6px;padding:6px 10px;">
         <table style="width:100%;border-collapse:collapse;font-size:11px;">
-          <tr>
-            <td style="padding:3px 0;color:#554F47;">Total Prestations</td>
-            <td style="padding:3px 0;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#1B4332;">${fm(
-              total
-            )}</td>
-          </tr>
+          ${
+            hasTvaBreakdown && !tvaExonere
+              ? `<tr>
+                  <td style="padding:3px 0;color:#554F47;">Sous-total HT</td>
+                  <td style="padding:3px 0;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:#1B4332;">${fm(totalHt)}</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 0;color:#554F47;">TVA (${tvaRatePct}%)</td>
+                  <td style="padding:3px 0;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:#1B4332;">${fm(tvaMontant)}</td>
+                </tr>
+                <tr>
+                  <td style="padding:3px 0;color:#554F47;font-weight:700;">Total TTC</td>
+                  <td style="padding:3px 0;text-align:right;font-variant-numeric:tabular-nums;font-weight:800;color:#1B4332;">${fm(total)}</td>
+                </tr>`
+              : `<tr>
+                  <td style="padding:3px 0;color:#554F47;">${hasTvaBreakdown && tvaExonere ? 'Total (exonéré de TVA)' : 'Total Prestations'}</td>
+                  <td style="padding:3px 0;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#1B4332;">${fm(total)}</td>
+                </tr>`
+          }
           ${
             arrhes > 0
               ? `<tr><td style="padding:3px 0;color:#554F47;">Arrhes / Acompte</td><td style="padding:3px 0;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:#2D6A4F;">- ${fm(
@@ -380,6 +399,12 @@ export default function FacturePrintPage() {
   const avoir = Math.max(0, paid + arrhes - total);
   const isSettled = solde <= 0.5;
   const lines = s.lines || [];
+
+  const hasTvaBreakdown = s.tvaExonere !== undefined && s.tvaExonere !== null;
+  const tvaExonere      = s.tvaExonere === true;
+  const totalHt         = num(s.totalHt);
+  const tvaMontant      = num(s.tva);
+  const tvaRatePct      = s.tvaRate ? Math.round(num(s.tvaRate) * 100) : 18;
 
   const handlePrint = () => {
     pmsFactures.print(facture.id).catch(() => {});
@@ -957,22 +982,39 @@ export default function FacturePrintPage() {
                 }}
               >
                 <tbody>
-                  <tr>
-                    <td style={{ padding: '3px 0', color: '#554F47' }}>
-                      Total Prestations
-                    </td>
-                    <td
-                      style={{
-                        padding: '3px 0',
-                        textAlign: 'right',
-                        fontVariantNumeric: 'tabular-nums',
-                        fontWeight: 700,
-                        color: '#1B4332',
-                      }}
-                    >
-                      {fm(total)}
-                    </td>
-                  </tr>
+                  {hasTvaBreakdown && !tvaExonere ? (
+                    <>
+                      <tr>
+                        <td style={{ padding: '3px 0', color: '#554F47' }}>Sous-total HT</td>
+                        <td style={{ padding: '3px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: '#1B4332' }}>{fm(totalHt)}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ padding: '3px 0', color: '#554F47' }}>TVA ({tvaRatePct}%)</td>
+                        <td style={{ padding: '3px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: '#1B4332' }}>{fm(tvaMontant)}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ padding: '3px 0', color: '#554F47', fontWeight: 700 }}>Total TTC</td>
+                        <td style={{ padding: '3px 0', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: '#1B4332' }}>{fm(total)}</td>
+                      </tr>
+                    </>
+                  ) : (
+                    <tr>
+                      <td style={{ padding: '3px 0', color: '#554F47' }}>
+                        {hasTvaBreakdown && tvaExonere ? 'Total (exonéré de TVA)' : 'Total Prestations'}
+                      </td>
+                      <td
+                        style={{
+                          padding: '3px 0',
+                          textAlign: 'right',
+                          fontVariantNumeric: 'tabular-nums',
+                          fontWeight: 700,
+                          color: '#1B4332',
+                        }}
+                      >
+                        {fm(total)}
+                      </td>
+                    </tr>
+                  )}
                   {arrhes > 0 && (
                     <tr>
                       <td style={{ padding: '3px 0', color: '#554F47' }}>

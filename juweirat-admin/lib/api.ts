@@ -101,6 +101,103 @@ export const amenities = {
   delete:  (id: number) => request<void>(`/api/amenities/${id}`, { method: 'DELETE' }),
 };
 
+// ── Comptabilité ──────────────────────────────────────────────────────────────
+export const comptabilite = {
+  getJournal: (params?: { from?: string; to?: string; paymentMethod?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.from)          qs.set('from', params.from);
+    if (params?.to)            qs.set('to', params.to);
+    if (params?.paymentMethod) qs.set('paymentMethod', params.paymentMethod);
+    return request<import('./types').JournalReportDto>(`/api/comptabilite/journal?${qs}`);
+  },
+  backfill: () =>
+    request<{ payments: number; ventes: number; factures: number; noShow: number; cancellations: number }>(
+      '/api/comptabilite/backfill', { method: 'POST' }),
+  getLedger: (accountId: number, params?: { from?: string; to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set('from', params.from);
+    if (params?.to)   qs.set('to',   params.to);
+    return request<import('./types').LedgerReportDto>(`/api/comptabilite/grand-livre/${accountId}?${qs}`);
+  },
+  getBalance: (params?: { from?: string; to?: string; kind?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set('from', params.from);
+    if (params?.to)   qs.set('to',   params.to);
+    if (params?.kind) qs.set('kind', params.kind);
+    return request<import('./types').BalanceReportDto>(`/api/comptabilite/balance?${qs}`);
+  },
+  getTvaReport: (params?: { from?: string; to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set('from', params.from);
+    if (params?.to)   qs.set('to',   params.to);
+    return request<import('./types').TvaReportDto>(`/api/comptabilite/tva?${qs}`);
+  },
+  postOd: (body: {
+    date?: string;
+    label: string;
+    lines: Array<{ accountId: number; direction: 'debit' | 'credit'; amount: number; label?: string }>;
+  }) => request<{ lignes: number }>('/api/comptabilite/od', { method: 'POST', body: JSON.stringify(body) }),
+};
+
+// ── Comptes (utilisé par grand-livre, balance et OD) ──────────────────────────
+export const accounts = {
+  getAll: (params?: { kind?: string; search?: string; pageSize?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.kind)     qs.set('kind', params.kind);
+    if (params?.search)   qs.set('search', params.search);
+    qs.set('pageSize', String(params?.pageSize ?? 100));
+    return request<{ items: import('./types').AccountDto[]; totalCount: number }>(`/api/accounts?${qs}`);
+  },
+};
+
+// ── Caisse (sessions par caissier) ────────────────────────────────────────────
+export const cash = {
+  getRegisters: () =>
+    request<import('./types').CashRegisterDto[]>('/api/cash-registers'),
+  getCurrentSession: () =>
+    request<import('./types').CashSessionDto | null>('/api/cash/sessions/current'),
+  getHistory: (limit = 50) =>
+    request<import('./types').CashSessionDto[]>(`/api/cash/sessions?limit=${limit}`),
+  getSession: (id: number) =>
+    request<import('./types').CashSessionDto>(`/api/cash/sessions/${id}`),
+  getReport: (id: number) =>
+    request<import('./types').CashSessionReportDto>(`/api/cash/sessions/${id}/report`),
+  openSession: (body: { registerId: number; openingFloat: number }) =>
+    request<import('./types').CashSessionDto>('/api/cash/sessions', { method: 'POST', body: JSON.stringify(body) }),
+  addMovement: (sessionId: number, body: { amount: number; direction: 'in' | 'out'; label: string }) =>
+    request<import('./types').CashSessionDto>(`/api/cash/sessions/${sessionId}/movements`, { method: 'POST', body: JSON.stringify(body) }),
+  closeSession: (sessionId: number, body: { closingCountedTotal: number; notes?: string }) =>
+    request<import('./types').CashSessionDto>(`/api/cash/sessions/${sessionId}/close`, { method: 'POST', body: JSON.stringify(body) }),
+};
+
+// ── Users (admin only côté backend) ───────────────────────────────────────────
+export const users = {
+  getAll: (includeInactive = true) =>
+    request<import('./types').UserDto[]>(`/api/users?includeInactive=${includeInactive}`),
+  getById: (id: number) =>
+    request<import('./types').UserDto>(`/api/users/${id}`),
+  create: (body: { firstName: string; lastName: string; email: string; password: string; role: string }) =>
+    request<import('./types').UserDto>('/api/users', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: number, body: Partial<{
+    firstName: string; lastName: string; email: string;
+    password: string; role: string; isActive: boolean;
+  }>) => request<import('./types').UserDto>(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+};
+
+// ── Notifications (cloche du header) ──────────────────────────────────────────
+export interface NotificationSummary {
+  systemDate: string;                     // "2026-08-19"
+  todayDate: string;                      // "2026-08-20"
+  pendingReservationsCount: number;
+  websiteReservationsTodayCount: number;
+  unreadMessagesCount: number;
+  daysNotClosedCount: number;
+}
+
+export const notifications = {
+  getSummary: () => request<NotificationSummary>('/api/notifications/summary'),
+};
+
 // ── Clients ───────────────────────────────────────────────────────────────────
 export const clients = {
   getAll:  (search?: string) => {
@@ -169,6 +266,12 @@ export const reservations = {
     adults: number; children: number;
     garantieType: string; garantieMontantCash: number;
     carteNom: string; carteSuffix: string; carteExpiration: string;
+    // Édition étendue : séjour + prestations
+    categoryId: number; roomId: number | null;
+    checkInDate: string; checkOutDate: string;
+    prestations: Array<{ prestationId: number; quantite: number; prixUnitaire?: number }> | null;
+    acceptRefundImbalance: boolean;
+    tvaExonere: boolean;
   }>) => request<import('./types').ReservationDto>(`/api/reservations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 };
 
@@ -232,6 +335,8 @@ export const ventesDirectes = {
     clientId?: number; clientNom?: string;
     folioId?: number; mode?: string;
     paymentMethod?: string; notes?: string;
+    // Obligatoire seulement pour les prestations à prix flexible.
+    prixUnitaire?: number;
   }) => request<import('./types').VenteDirecteDto>('/api/ventes-directes', { method: 'POST', body: JSON.stringify(body) }),
 };
 
@@ -246,10 +351,12 @@ export const prestations = {
   create: (body: {
     nameFr: string; nameEn: string; icon?: string;
     mode?: string; prixInclus: number; prixSeule: number; sortOrder?: number;
+    prixFlexible?: boolean;
   }) => request<import('./types').PrestationAnnexeDto>('/api/prestations', { method: 'POST', body: JSON.stringify(body) }),
   update: (id: number, body: Partial<{
     nameFr: string; nameEn: string; icon: string; mode: string;
     prixInclus: number; prixSeule: number; isActive: boolean; sortOrder: number;
+    prixFlexible: boolean;
   }>) => request<import('./types').PrestationAnnexeDto>(`/api/prestations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   delete: (id: number) => request<void>(`/api/prestations/${id}`, { method: 'DELETE' }),
 };

@@ -13,9 +13,10 @@ public record RoomDto(
     int CapacityAdults,
     int CapacityChildren,
     decimal? SizeSqm,
-    decimal PricePerNight,
-    decimal? PricePerWeek,
-    decimal? PricePerMonth,
+    // Tarifs journaliers proxyés depuis la RoomCategory liée (0 si non rattachée).
+    int TarifNuit,
+    int TarifN15,
+    int TarifN30,
     string Status,
     bool IsFeatured,
     long? CategoryId,

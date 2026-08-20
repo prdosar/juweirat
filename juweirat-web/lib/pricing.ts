@@ -35,19 +35,16 @@ export function calcStayPrice(
     }
   }
 
+  // Tous les tarifs sont journaliers (source unique : RoomCategory).
+  // Palier choisi par durée : < 15 nuits → tarifNuit, 15–29 → tarifN15, ≥ 30 → tarifN30.
   let perNight = tarifNuit
   let rateLabel = `${nights} nuit${nights > 1 ? 's' : ''}`
 
-  // For stays >= 30 nights (Monthly package rate)
   if (nights >= 30 && tarifN30 && tarifN30 > 0) {
-    // If tarifN30 is total monthly package (e.g. 300,000) vs per-night rate (e.g. 10,000)
-    perNight = tarifN30 > tarifNuit ? Math.round(tarifN30 / 30) : tarifN30
+    perNight = tarifN30
     rateLabel = 'forfait mensuel'
-  }
-  // For stays >= 15 nights (15-day package rate)
-  else if (nights >= 15 && tarifN15 && tarifN15 > 0) {
-    // If tarifN15 is total 15-day package (e.g. 200,000) vs per-night rate (e.g. 13,333)
-    perNight = tarifN15 > tarifNuit ? Math.round(tarifN15 / 15) : tarifN15
+  } else if (nights >= 15 && tarifN15 && tarifN15 > 0) {
+    perNight = tarifN15
     rateLabel = 'forfait 15 jours'
   }
 

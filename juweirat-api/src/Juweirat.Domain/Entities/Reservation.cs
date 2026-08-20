@@ -29,6 +29,9 @@ public class Reservation
     public string? CarteSuffix { get; set; }            // 4 derniers chiffres
     public string? CarteExpiration { get; set; }        // MM/YYYY
 
+    // Exonération TVA — appliquée à toutes les factures dérivées (folio, prestations SurChambre).
+    public bool TvaExonere { get; set; }
+
     public DateTime? ConfirmedAt { get; set; }
     public DateTime? CancelledAt { get; set; }
     public string? CancellationReason { get; set; }

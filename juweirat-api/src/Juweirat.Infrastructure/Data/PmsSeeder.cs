@@ -125,17 +125,12 @@ public static class PmsSeeder
         room.PmsRoomNo    = p.No;
         room.PmsType      = p.Type;
         room.PmsGamme     = p.Gamme;
-        room.TarifNuit    = p.TarifNuit;
-        room.TarifN15     = p.TarifN15;
-        room.TarifN30     = p.TarifN30;
         room.Floor        = p.Floor;
         room.PlanCol      = p.Col;
         room.PlanRow      = p.Row;
         room.StatutMenage = MenageStatus.Propre;
         room.HorsService  = false;
-        // Aligner les tarifs site public avec la grille PMS
-        room.PricePerNight  = p.TarifNuit;
-        room.PricePerMonth  = p.TarifN30;
+        // Prix — lus depuis la RoomCategory rattachée, plus stockés sur Room.
     }
 
     private static Room NewRoom(PmsRoomDef p) => new()
@@ -144,21 +139,18 @@ public static class PmsSeeder
         Floor         = p.Floor,
         NameFr        = $"Appartement {p.No}",
         NameEn        = $"Apartment {p.No}",
-        PricePerNight = p.TarifNuit,
-        PricePerMonth = p.TarifN30,
         Status        = RoomStatus.Available,
         PmsRoomNo     = p.No,
         PmsType       = p.Type,
         PmsGamme      = p.Gamme,
-        TarifNuit     = p.TarifNuit,
-        TarifN15      = p.TarifN15,
-        TarifN30      = p.TarifN30,
         StatutMenage  = MenageStatus.Propre,
         HorsService   = false,
         PlanCol       = p.Col,
         PlanRow       = p.Row,
     };
 
+    // Le PmsRoomDef garde les tarifs historiques pour compat descendante du seed,
+    // mais ils ne sont plus écrits sur Room — seul le mapping type/gamme sert.
     private sealed record PmsRoomDef(
         string No, string Type, string Gamme,
         int TarifNuit, int TarifN15, int TarifN30,

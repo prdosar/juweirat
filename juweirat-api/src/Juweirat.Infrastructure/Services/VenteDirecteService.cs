@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Infrastructure.Services;
 
-public class VenteDirecteService(AppDbContext db)
+public class VenteDirecteService(AppDbContext db, AccountingService accountingService)
 {
     public async Task<List<VenteDirecteDto>> GetAllAsync(DateOnly? date = null)
     {
@@ -49,7 +49,19 @@ public class VenteDirecteService(AppDbContext db)
         if (prestation is null || !prestation.IsActive)
             return (null, "Prestation introuvable ou inactive");
 
-        var total = prestation.PrixSeule * req.Quantite;
+        // Prestation flexible → prix obligatoirement saisi ; sinon on utilise le catalogue.
+        decimal prixUnitaire;
+        if (prestation.PrixFlexible)
+        {
+            if (req.PrixUnitaire is null || req.PrixUnitaire.Value <= 0)
+                return (null, "Cette prestation est à prix flexible : le prix unitaire doit être saisi (> 0).");
+            prixUnitaire = req.PrixUnitaire.Value;
+        }
+        else
+        {
+            prixUnitaire = prestation.PrixSeule;
+        }
+        var total = prixUnitaire * req.Quantite;
 
         Folio? folio = null;
         if (req.Mode == "SurChambre")
@@ -57,7 +69,10 @@ public class VenteDirecteService(AppDbContext db)
             if (req.FolioId is null)
                 return (null, "FolioId requis pour le mode SurChambre");
 
-            folio = await db.Folios.Include(f => f.Unit).FirstOrDefaultAsync(f => f.Id == req.FolioId.Value);
+            folio = await db.Folios
+                .Include(f => f.Unit)
+                .Include(f => f.Reservation)
+                .FirstOrDefaultAsync(f => f.Id == req.FolioId.Value);
             if (folio is null)  return (null, "Folio introuvable");
             if (folio.Closed)   return (null, "Ce folio est déjà clôturé");
             if (!folio.CheckedIn) return (null, "Le client n'est pas encore enregistré sur ce folio");
@@ -83,15 +98,47 @@ public class VenteDirecteService(AppDbContext db)
             ClientNom            = req.ClientNom?.Trim(),
             FolioId              = folio?.Id,
             Quantite             = req.Quantite,
-            PrixUnitaireSnapshot = prestation.PrixSeule,
+            PrixUnitaireSnapshot = prixUnitaire,
             Total                = total,
             Mode                 = req.Mode,
             PaymentMethod        = req.PaymentMethod,
             Notes                = req.Notes?.Trim(),
+            // TVA figée à la vente : SurChambre hérite du folio, sinon pas exonéré.
+            TvaExonere           = folio?.TvaExonere ?? false,
         };
 
         db.VentesDirectes.Add(vente);
         await db.SaveChangesAsync();
+
+        // Journal comptable — vente + éventuel encaissement immédiat.
+        // Fire-and-forget non bloquant.
+        try
+        {
+            // Client comptable : le client rattaché à la vente (via ID ou via le folio si SurChambre).
+            long? clientForAccounting = vente.ClientId ?? folio?.Reservation?.ClientId;
+
+            await accountingService.PostSaleAsync(
+                clientId:          clientForAccounting,
+                revenueKind:       AccountKind.Prestation,
+                revenueOwnerRefId: vente.PrestationId,
+                amountTtc:         vente.Total,
+                tvaExonere:        vente.TvaExonere,
+                sourceType:        "VenteDirecte",
+                sourceId:          vente.Id,
+                label:             $"{prestation.NameFr} × {vente.Quantite}");
+
+            // Mode=Encaissement → l'argent rentre en caisse immédiatement.
+            if (vente.Mode == "Encaissement")
+            {
+                await accountingService.PostEncaissementAsync(
+                    clientId:   clientForAccounting,
+                    amount:     vente.Total,
+                    sourceType: "VenteDirecte",
+                    sourceId:   vente.Id,
+                    label:      $"Encaissement {prestation.NameFr} · {vente.PaymentMethod ?? "Espèces"}");
+            }
+        }
+        catch { /* silent */ }
 
         var created = await db.VentesDirectes
             .Include(v => v.Prestation)
@@ -121,7 +168,8 @@ public class VenteDirecteService(AppDbContext db)
             v.Mode,
             v.PaymentMethod,
             v.Notes,
-            v.CreatedAt
+            v.CreatedAt,
+            v.TvaExonere
         );
     }
 }

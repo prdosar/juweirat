@@ -42,7 +42,8 @@ public record ReservationDto(
     string? CarteExpiration,
     decimal TotalHebergement,
     decimal TotalPrestations,
-    List<ReservationPrestationDto> Prestations
+    List<ReservationPrestationDto> Prestations,
+    bool TvaExonere = false
 );
 
 public record CreateReservationRequest(
@@ -62,7 +63,8 @@ public record CreateReservationRequest(
     string? CarteNom = null,
     string? CarteSuffix = null,
     string? CarteExpiration = null,
-    List<PrestationLigneRequest>? Prestations = null
+    List<PrestationLigneRequest>? Prestations = null,
+    bool TvaExonere = false
 );
 
 public record UpdateReservationStatusRequest(
@@ -102,7 +104,7 @@ public record TarifPreviewDto(
     int TarifN15,
     int TarifN30,
     string Tier,           // "Nuitee" | "N15Nuits" | "N30Nuits"
-    string Source,         // "company" | "category" | "room" | "default"
+    string Source,         // "company" | "category"
     string? CompanyName,   // libellé si tarif compagnie appliqué
     int TotalHebergement
 );
@@ -117,5 +119,16 @@ public record UpdateReservationRequest(
     decimal? GarantieMontantCash  = null,
     string? CarteNom              = null,
     string? CarteSuffix           = null,
-    string? CarteExpiration       = null
+    string? CarteExpiration       = null,
+    // Édition du séjour : dates, catégorie, chambre. Déclenchent un recalcul tarif waterfall.
+    long? CategoryId              = null,
+    long? RoomId                  = null,
+    DateOnly? CheckInDate         = null,
+    DateOnly? CheckOutDate        = null,
+    // Prestations : si non null, remplace la liste actuelle (delete-then-add).
+    List<PrestationLigneRequest>? Prestations = null,
+    // Confirmation explicite requise si le nouveau total est inférieur à AmountPaid.
+    bool AcceptRefundImbalance    = false,
+    // Exonération TVA (bool? = pas de modification si null).
+    bool? TvaExonere              = null
 );

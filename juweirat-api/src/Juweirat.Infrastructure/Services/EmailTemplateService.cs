@@ -122,17 +122,21 @@ public static class EmailTemplateService
         return sb.ToString();
     }
 
-    public static string BuildBookingAdminNotification(string firstName, string lastName, string email, string phone, string nationality, string categoryName, DateOnly checkIn, DateOnly checkOut, int adults, int children, string? notes)
+    public static string BuildBookingAdminNotification(string firstName, string lastName, string email, string phone, string nationality, string categoryName, DateOnly checkIn, DateOnly checkOut, int adults, int children, string? notes, bool fromAdmin = false)
     {
         var nights = (checkOut.ToDateTime(TimeOnly.MinValue) - checkIn.ToDateTime(TimeOnly.MinValue)).Days;
         var guestName = $"{firstName} {lastName}";
+        var origineText = fromAdmin
+            ? "Une nouvelle réservation vient d'être saisie à la réception depuis le back-office Juweirat."
+            : "Une nouvelle demande de réservation a été enregistrée en ligne depuis le site web Juweirat.";
+        var badgeText = fromAdmin ? "NOUVELLE RÉSERVATION — RÉCEPTION" : "NOUVELLE RÉSERVATION EN LIGNE";
 
         var body = $@"
         <h2 style=""margin: 0 0 8px 0; font-size: 18px; font-weight: 800; color: {BrandGreen};"">
           Nouvelle réservation reçue
         </h2>
         <p style=""margin: 0 0 20px 0; font-size: 13px; color: {MutedColor};"">
-          Une nouvelle demande de réservation a été enregistrée en ligne depuis le site web Juweirat.
+          {origineText}
         </p>
 
         <!-- Guest Details Card -->
@@ -199,23 +203,31 @@ public static class EmailTemplateService
         return WrapInLuxuryLayout(
             title: $"Nouvelle réservation — {guestName}",
             preheader: $"Réservation reçue pour {guestName} du {checkIn:dd/MM/yyyy} au {checkOut:dd/MM/yyyy}",
-            badgeText: "NOUVELLE RÉSERVATION EN LIGNE",
+            badgeText: badgeText,
             bodyContent: body,
             actionButtonText: "Accéder au PMS",
             actionButtonUrl: "http://localhost:3001/dashboard"
         );
     }
 
-    public static string BuildBookingClientConfirmation(string firstName, string lastName, string categoryName, DateOnly checkIn, DateOnly checkOut, int adults, int children)
+    public static string BuildBookingClientConfirmation(string firstName, string lastName, string categoryName, DateOnly checkIn, DateOnly checkOut, int adults, int children, bool fromAdmin = false)
     {
         var nights = (checkOut.ToDateTime(TimeOnly.MinValue) - checkIn.ToDateTime(TimeOnly.MinValue)).Days;
-        
+        var introText = fromAdmin
+            ? "Nous vous confirmons l'enregistrement de votre réservation par notre équipe. Notre conciergerie prépare votre arrivée pour vous offrir un séjour d'exception à Lomé."
+            : "Nous avons le plaisir de vous confirmer la prise en compte de votre demande de réservation. Notre conciergerie prépare votre arrivée pour vous offrir un séjour d'exception à Lomé.";
+        var badgeText = fromAdmin ? "CONFIRMATION DE RÉSERVATION" : "CONFIRMATION DE DEMANDE";
+        var titleText = fromAdmin ? "Confirmation de votre réservation" : "Votre réservation à la Résidence Juweirat";
+        var preheaderText = fromAdmin
+            ? $"Réservation confirmée pour le {checkIn:dd/MM/yyyy} à la Résidence Juweirat"
+            : $"Demande de séjour reçue pour le {checkIn:dd/MM/yyyy} à la Résidence Juweirat";
+
         var body = $@"
         <h2 style=""margin: 0 0 8px 0; font-size: 18px; font-weight: 800; color: {BrandGreen};"">
           Bienvenue à la Résidence Juweirat, {firstName} !
         </h2>
         <p style=""margin: 0 0 18px 0; font-size: 13px; color: {MutedColor}; line-height: 1.5;"">
-          Nous avons le plaisir de vous confirmer la prise en compte de votre demande de réservation. Notre conciergerie prépare votre arrivée pour vous offrir un séjour d'exception à Lomé.
+          {introText}
         </p>
 
         <!-- Stay Summary Box -->
@@ -261,9 +273,9 @@ public static class EmailTemplateService
         </p>";
 
         return WrapInLuxuryLayout(
-            title: "Votre réservation à la Résidence Juweirat",
-            preheader: $"Demande de séjour reçue pour le {checkIn:dd/MM/yyyy} à la Résidence Juweirat",
-            badgeText: "CONFIRMATION DE DEMANDE",
+            title: titleText,
+            preheader: preheaderText,
+            badgeText: badgeText,
             bodyContent: body,
             actionButtonText: "Découvrir la résidence",
             actionButtonUrl: "https://juweirat.com"

@@ -1,13 +1,14 @@
 using Juweirat.Application.Common.Pagination;
 using Juweirat.Application.DTOs.Clients;
 using Juweirat.Domain.Entities;
+using Juweirat.Domain.Enums;
 using Juweirat.Infrastructure.Data;
 using Juweirat.Infrastructure.Extensions;
 using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Infrastructure.Services;
 
-public class ClientService(AppDbContext db)
+public class ClientService(AppDbContext db, AccountingService accountingService)
 {
     public async Task<PagedResult<ClientDto>> GetPagedAsync(ClientFilterParams filter)
     {
@@ -110,6 +111,15 @@ public class ClientService(AppDbContext db)
 
         db.Clients.Add(client);
         await db.SaveChangesAsync();
+
+        // Compte auxiliaire compta — non bloquant si le module compta est absent/en erreur.
+        try
+        {
+            await accountingService.EnsureAuxiliaryAccountAsync(
+                AccountKind.Client, client.Id, client.FullName);
+        }
+        catch { /* silent — le compte pourra être créé rétroactivement par le seed */ }
+
         return (ToDto(client), null);
     }
 

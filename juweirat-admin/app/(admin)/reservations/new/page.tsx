@@ -160,7 +160,9 @@ function NewReservationPageInner() {
   // Step 4 — logement + prestations
   const [categoryId, setCategoryId] = useState(0);
   const [roomId, setRoomId]         = useState(0);
-  const [selectedPrestations, setSelectedPrestations] = useState<Map<number, number | null>>(new Map());
+  // Pour chaque prestation cochée : quantity override (null = auto selon mode) + prix unitaire manuel (utilisé uniquement si prestation.prixFlexible).
+  type PrestationSelection = { quantity: number | null; prixUnitaire: number | null };
+  const [selectedPrestations, setSelectedPrestations] = useState<Map<number, PrestationSelection>>(new Map());
   const [internalNotes, setInternalNotes] = useState('');
 
   // Step 5 — garantie & tarif
@@ -171,6 +173,7 @@ function NewReservationPageInner() {
   const [carteExpiration, setCarteExpiration] = useState('');
   const [source,   setSource]   = useState<string>(SOURCES[0]);
   const [currency, setCurrency] = useState<string>(CURRENCIES[0]);
+  const [tvaExonere, setTvaExonere] = useState(false);
   const [discount, setDiscount] = useState('0');
   const [deposit,  setDeposit]  = useState('0');
 
@@ -252,20 +255,29 @@ function NewReservationPageInner() {
     .slice(0, 12);
 
   function quantityFor(p: PrestationAnnexeDto): number {
-    const override = selectedPrestations.get(p.id);
+    const override = selectedPrestations.get(p.id)?.quantity ?? null;
     if (override != null) return override;
     if (p.mode === 'ParPersonneParNuit') return totalPax * Math.max(1, nights);
     if (p.mode === 'ParPersonne')        return totalPax;
     return 1;
   }
+  // Prix unitaire effectif : prix flexible saisi manuellement, sinon prix catalogue.
+  function priceFor(p: PrestationAnnexeDto): number {
+    if (!p.prixFlexible) return p.prixInclus;
+    return selectedPrestations.get(p.id)?.prixUnitaire ?? 0;
+  }
   const extrasTotal = [...selectedPrestations.keys()].reduce((acc, pid) => {
     const p = prestationList.find(x => x.id === pid);
-    return p ? acc + p.prixInclus * quantityFor(p) : acc;
+    return p ? acc + priceFor(p) * quantityFor(p) : acc;
   }, 0);
 
   const discountNum = Math.max(0, Number(String(discount).replace(/[^\d]/g, '')) || 0);
   const depositNum  = Math.max(0, Number(String(deposit).replace(/[^\d]/g, '')) || 0);
   const total       = Math.max(0, hebergement + extrasTotal - discountNum);
+  // Décomposition HT/TVA — mêmes règles que le backend AccountingService.PostSaleAsync
+  // (TTC → HT arrondi, TVA = reste). Si exonération : HT = TTC, TVA = 0.
+  const ht          = tvaExonere ? total : Math.round(total / 1.18);
+  const tva         = tvaExonere ? 0     : total - ht;
   const balance     = Math.max(0, total - depositNum);
 
   const summaryClientLabel = clientMode === 'new'
@@ -302,6 +314,14 @@ function NewReservationPageInner() {
     }
     if (current === 3) {
       if (!categoryId) return 'Sélectionnez une catégorie de logement.';
+      // Prestations flexibles cochées mais sans prix → bloquer.
+      for (const pid of selectedPrestations.keys()) {
+        const p = prestationList.find(x => x.id === pid);
+        if (p?.prixFlexible) {
+          const prix = selectedPrestations.get(pid)?.prixUnitaire ?? 0;
+          if (prix <= 0) return `Saisissez le prix unitaire pour la prestation « ${p.nameFr} ».`;
+        }
+      }
     }
     if (current === 4) {
       if (!garantieType) return 'Choisissez un mode de garantie (dépôt ou carte).';
@@ -387,7 +407,12 @@ function NewReservationPageInner() {
       const carteSuffix = garantieType === 'Carte' ? carteNumero.replace(/\s/g, '').slice(-4) : null;
       const prestationsPayload = [...selectedPrestations.keys()].map(pid => {
         const p = prestationList.find(x => x.id === pid)!;
-        return { prestationId: pid, quantite: quantityFor(p) };
+        return {
+          prestationId: pid,
+          quantite: quantityFor(p),
+          // Prix saisi manuellement uniquement pour les prestations flexibles.
+          prixUnitaire: p.prixFlexible ? priceFor(p) : undefined,
+        };
       });
 
       const body = {
@@ -408,6 +433,7 @@ function NewReservationPageInner() {
         carteSuffix,
         carteExpiration:     garantieType === 'Carte' ? carteExpiration : null,
         prestations:         prestationsPayload.length > 0 ? prestationsPayload : null,
+        tvaExonere,
       };
       const created = await reservations.create(body);
       router.push(`/reservations/${created.id}`);
@@ -901,18 +927,67 @@ function NewReservationPageInner() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   {prestationList.map(p => {
                     const on = selectedPrestations.has(p.id);
-                    const label = `${p.nameFr} · ${p.prixInclus.toLocaleString('fr-FR')} F${p.mode === 'ParPersonneParNuit' ? ' /pers./nuit' : p.mode === 'ParPersonne' ? ' /pers.' : ''}`;
+                    const label = p.prixFlexible
+                      ? `${p.nameFr} · prix libre`
+                      : `${p.nameFr} · ${p.prixInclus.toLocaleString('fr-FR')} F${p.mode === 'ParPersonneParNuit' ? ' /pers./nuit' : p.mode === 'ParPersonne' ? ' /pers.' : ''}`;
                     return (
                       <button
                         key={p.id}
                         type="button"
                         onClick={() => {
                           const next = new Map(selectedPrestations);
-                          if (on) next.delete(p.id); else next.set(p.id, null);
+                          if (on) next.delete(p.id);
+                          else    next.set(p.id, { quantity: null, prixUnitaire: null });
                           setSelectedPrestations(next);
                         }}
                         style={chip(on)}
                       >{label}</button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Champs prix pour chaque prestation flexible cochée */}
+              {[...selectedPrestations.keys()]
+                .map(pid => prestationList.find(p => p.id === pid))
+                .filter((p): p is PrestationAnnexeDto => !!p && p.prixFlexible)
+                .length > 0 && (
+                <div style={{
+                  marginTop: 14, padding: '12px 14px',
+                  background: '#fff8ec', border: '1px solid #f5c882',
+                  borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 10,
+                }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#7a4f00', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                    Prestations à prix flexible — saisir le prix unitaire
+                  </span>
+                  {[...selectedPrestations.keys()].map(pid => {
+                    const p = prestationList.find(x => x.id === pid);
+                    if (!p || !p.prixFlexible) return null;
+                    const val = selectedPrestations.get(pid)?.prixUnitaire ?? null;
+                    return (
+                      <div key={pid} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{ flex: 1, fontSize: 13, color: C.ink }}>{p.nameFr}</span>
+                        <input
+                          type="number" min={0} step={100}
+                          value={val ?? ''}
+                          onChange={e => {
+                            const next = new Map(selectedPrestations);
+                            const raw  = e.target.value;
+                            next.set(pid, {
+                              quantity:     selectedPrestations.get(pid)?.quantity ?? null,
+                              prixUnitaire: raw === '' ? null : Number(raw),
+                            });
+                            setSelectedPrestations(next);
+                          }}
+                          placeholder="Ex : 2 500"
+                          style={{
+                            width: 140, padding: '8px 12px', border: '1px solid #d4a04c',
+                            borderRadius: 8, background: '#fff', fontSize: 13,
+                            textAlign: 'right', color: C.ink, outline: 'none',
+                          }}
+                        />
+                        <span style={{ fontSize: 11, color: C.ink4 }}>F / unité</span>
+                      </div>
                     );
                   })}
                 </div>
@@ -1026,6 +1101,25 @@ function NewReservationPageInner() {
                   <input inputMode="numeric" value={deposit} onChange={e => setDeposit(e.target.value)} placeholder="0" style={fieldInput} />
                 </label>
               </div>
+
+              <label style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 20,
+                padding: '13px 14px', border: `1px solid ${C.sep}`,
+                borderRadius: 10, background: '#f8faf9', cursor: 'pointer',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={tvaExonere}
+                  onChange={e => setTvaExonere(e.target.checked)}
+                  style={{ marginTop: 2, accentColor: C.accent }}
+                />
+                <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: C.ink }}>Exonération de TVA</span>
+                  <span style={{ fontSize: 11, color: C.ink4 }}>
+                    Si coché, les factures liées à ce séjour ne feront pas apparaître de TVA. Sinon la facture est décomposée en HT + TVA 18% + TTC.
+                  </span>
+                </span>
+              </label>
             </section>
           )}
 
@@ -1099,8 +1193,24 @@ function NewReservationPageInner() {
 
             <div style={{ height: 1, background: C.darkSep }} />
 
+            {/* Décomposition TVA — masquée quand pas de montant à afficher */}
+            {total > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
+                {tvaExonere ? (
+                  <Row label="TVA" value="Exonérée" />
+                ) : (
+                  <>
+                    <Row label="Montant HT"  value={fcfa(ht)} />
+                    <Row label="TVA (18 %)"  value={fcfa(tva)} />
+                  </>
+                )}
+              </div>
+            )}
+
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-              <span style={{ fontSize: 12, color: C.darkLabel }}>Total</span>
+              <span style={{ fontSize: 12, color: C.darkLabel }}>
+                {tvaExonere ? 'Total' : 'Total TTC'}
+              </span>
               <span style={{ fontSize: 20, fontWeight: 700 }}>{fcfa(total)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 11, color: C.darkLabel }}>

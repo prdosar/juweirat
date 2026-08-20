@@ -6,6 +6,156 @@ export interface LoginResponse {
   expiresAt: string;
 }
 
+export type UserRole = 'admin' | 'utilisateur' | 'comptable';
+
+export interface JournalEntryDto {
+  sourceType: string;      // "Payment" | "VenteDirecte" | "Facture"
+  sourceId: number;
+  date: string;
+  label: string;
+  ht: number;
+  tva: number;
+  ttc: number;
+  encaisse: number;
+  decaisse: number;
+  paymentMethod: string | null;
+}
+
+export interface JournalReportDto {
+  from: string | null;
+  to: string | null;
+  entries: JournalEntryDto[];
+  totalHt: number;
+  totalTva: number;
+  totalTtc: number;
+  totalEncaisse: number;
+  totalDecaisse: number;
+}
+
+export interface CashSessionDto {
+  id: number;
+  registerId: number;
+  registerName: string;
+  openedByUserId: number;
+  openedByUserName: string;
+  openedAt: string;
+  openingFloat: number;
+  closedByUserId: number | null;
+  closedByUserName: string | null;
+  closedAt: string | null;
+  closingCountedTotal: number | null;
+  status: 'Open' | 'Closed';
+  notes: string | null;
+}
+
+export interface CashSessionReportDto {
+  session: CashSessionDto;
+  theoreticalTotal: number;
+  countedTotal: number | null;
+  ecart: number | null;
+  totalEncaisse: number;
+  totalDecaisse: number;
+  totalEntreeManuelle: number;
+  movementsCount: number;
+}
+
+export interface CashRegisterDto {
+  id: number;
+  name: string;
+  location: string | null;
+  isActive: boolean;
+  accountId: number | null;
+  accountBalance: number;
+  createdAt: string;
+}
+
+export interface AccountDto {
+  id: number;
+  kind: string;
+  name: string;
+  ownerRefId: number | null;
+  balance: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LedgerLineDto {
+  movementId: number;
+  date: string;
+  direction: 'debit' | 'credit';
+  amount: number;
+  balance: number;
+  reason: string;
+  counterpartAccountName: string;
+  label: string | null;
+  sourceType: string | null;
+  sourceId: number | null;
+}
+
+export interface LedgerReportDto {
+  account: AccountDto;
+  from: string | null;
+  to: string | null;
+  openingBalance: number;
+  totalDebit: number;
+  totalCredit: number;
+  closingBalance: number;
+  lines: LedgerLineDto[];
+}
+
+export interface BalanceLineDto {
+  accountId: number;
+  kind: string;
+  name: string;
+  ownerRefId: number | null;
+  openingBalance: number;
+  totalDebit: number;
+  totalCredit: number;
+  closingBalance: number;
+}
+
+export interface BalanceReportDto {
+  from: string | null;
+  to: string | null;
+  kindFilter: string | null;
+  lines: BalanceLineDto[];
+  totalDebit: number;
+  totalCredit: number;
+}
+
+export interface TvaReportLineDto {
+  sourceType: string;
+  sourceId: number;
+  date: string;
+  label: string;
+  ht: number;
+  tva: number;
+  ttc: number;
+}
+
+export interface TvaReportDto {
+  from: string | null;
+  to: string | null;
+  totalHt: number;
+  totalTva: number;
+  totalTtc: number;
+  tvaRate: number;
+  lines: TvaReportLineDto[];
+}
+
+export interface UserDto {
+  id: number;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  email: string;
+  role: UserRole;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+}
+
 export interface RoomImageDto {
   id: number;
   filePath: string;
@@ -52,9 +202,10 @@ export interface RoomDto {
   capacityAdults: number;
   capacityChildren: number;
   sizeSqm: number | null;
-  pricePerNight: number;
-  pricePerWeek: number | null;
-  pricePerMonth: number | null;
+  // Tarifs journaliers proxyés depuis la RoomCategory rattachée.
+  tarifNuit: number;
+  tarifN15: number;
+  tarifN30: number;
   status: string;
   isFeatured: boolean;
   categoryId: number | null;
@@ -172,6 +323,7 @@ export interface VenteDirecteDto {
   paymentMethod: string | null;
   notes: string | null;
   createdAt: string;
+  tvaExonere?: boolean;
 }
 
 export interface PrestationAnnexeDto {
@@ -184,6 +336,8 @@ export interface PrestationAnnexeDto {
   prixSeule: number;
   isActive: boolean;
   sortOrder: number;
+  // Quand true, le prix est saisi à chaque vente (les prix ci-dessus sont ignorés).
+  prixFlexible: boolean;
 }
 
 export interface PrestationConsumptionDto {
@@ -253,6 +407,7 @@ export interface ReservationDto {
   totalHebergement: number;
   totalPrestations: number;
   prestations: ReservationPrestationDto[];
+  tvaExonere?: boolean;
 }
 
 export interface PaymentDto {

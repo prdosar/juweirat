@@ -60,7 +60,7 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
 
   /* Dynamic calculations */
   const localNights = useMemo(() => nightsBetween(localCheckIn, localCheckOut), [localCheckIn, localCheckOut])
-  const pricing     = useMemo(() => calcStayPrice(room.pricePerNight, room.pricePerWeek, room.pricePerMonth, localNights), [room, localNights])
+  const pricing     = useMemo(() => calcStayPrice(room.tarifNuit, room.tarifN15, room.tarifN30, localNights), [room, localNights])
 
   const fr   = lang === 'fr'
   const name = fr ? room.nameFr : room.nameEn
@@ -572,7 +572,7 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
             <div className="space-y-2.5">
               <div className="flex justify-between text-sm">
                 <span className="text-charcoal/60 font-light">
-                  {formatFCFA(room.pricePerNight)} × {localNights} {fr ? (localNights > 1 ? 'nuits' : 'nuit') : (localNights > 1 ? 'nights' : 'night')}
+                  {formatFCFA(room.tarifNuit)} × {localNights} {fr ? (localNights > 1 ? 'nuits' : 'nuit') : (localNights > 1 ? 'nights' : 'night')}
                 </span>
                 <span className="text-charcoal font-medium">{formatFCFA(pricing.originalTotal)}</span>
               </div>

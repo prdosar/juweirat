@@ -5,10 +5,11 @@ const MODEL = 'gpt-4o-mini'
 
 function buildRoomSummary(rooms: Room[]): string {
   return rooms.map(r => {
+    // Tarifs journaliers pour chaque palier (< 15 nuits, 15-29 nuits, ≥ 30 nuits)
     const prices = [
-      `${r.pricePerNight.toLocaleString('fr-FR')} FCFA/nuit`,
-      r.pricePerWeek  ? `${r.pricePerWeek.toLocaleString('fr-FR')} FCFA/semaine`  : null,
-      r.pricePerMonth ? `${r.pricePerMonth.toLocaleString('fr-FR')} FCFA/mois`    : null,
+      `${r.tarifNuit.toLocaleString('fr-FR')} FCFA/nuit`,
+      r.tarifN15 > 0 ? `${r.tarifN15.toLocaleString('fr-FR')} FCFA/nuit (dès 15 nuits)` : null,
+      r.tarifN30 > 0 ? `${r.tarifN30.toLocaleString('fr-FR')} FCFA/nuit (dès 30 nuits)` : null,
     ].filter(Boolean).join(' · ')
 
     const amenities = r.amenities.map(a => a.nameFr).join(', ')

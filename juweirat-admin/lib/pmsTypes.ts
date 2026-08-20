@@ -154,6 +154,12 @@ export interface FactureSnapshotDto {
   departure: string | null;
   nights: number;
   pax: number;
+  // Fiscalité — nullable pour rétro-compat avec les factures antérieures.
+  tvaExonere?: boolean | null;
+  totalHt?: number | null;
+  tva?: number | null;
+  totalTtc?: number | null;
+  tvaRate?: number | null;
 }
 
 export interface MaintenanceTicketDto {
@@ -183,6 +189,21 @@ export interface MaintenanceCategoryDto {
   name: string;
   isActive: boolean;
   staffCount: number;
+}
+
+export interface HousekeepingLogDto {
+  id: number;
+  roomId: number;
+  staffId: number;
+  staffFullName: string;
+  staffPhone: string | null;
+  cleanedAt: string;
+  notes: string | null;
+}
+
+export interface RoomHistoryDto {
+  housekeeping: HousekeepingLogDto[];
+  maintenance: MaintenanceTicketDto[];
 }
 
 export interface MaintenanceStaffDto {

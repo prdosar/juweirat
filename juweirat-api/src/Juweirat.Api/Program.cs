@@ -49,6 +49,11 @@ builder.Services.AddScoped<PrestationAnnexeService>();
 builder.Services.AddScoped<VenteDirecteService>();
 builder.Services.AddScoped<CompanyService>();
 builder.Services.AddScoped<MaintenanceStaffService>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<AccountingService>();
+builder.Services.AddScoped<CashSessionService>();
+builder.Services.AddScoped<BackfillService>();
+builder.Services.AddScoped<UserService>();
 
 // ─── Authentication / JWT ────────────────────────────────────────────────────
 var jwtSection = builder.Configuration.GetSection("Jwt");
@@ -149,12 +154,14 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-// Auto-apply pending migrations on startup, then seed PMS data
+// Auto-apply pending migrations on startup, then seed PMS + Accounting data
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
     await PmsSeeder.SeedAsync(db);
+    await AccountingSeeder.SeedAsync(db);
+    await UserSeeder.SeedAsync(db);
 }
 
 app.Run();

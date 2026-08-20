@@ -55,6 +55,13 @@ public class PmsController(PmsService pms, ClotureService cloture, FactureServic
         return dto is null ? NotFound() : Ok(dto);
     }
 
+    [HttpGet("units/{id:long}/history")]
+    public async Task<IActionResult> GetUnitHistory(long id, [FromQuery] int limit = 50)
+    {
+        var dto = await pms.GetRoomHistoryAsync(id, limit);
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
     // ── Folios ────────────────────────────────────────────────────────────────
 
     [HttpGet("folios")]

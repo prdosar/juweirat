@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Infrastructure.Services;
 
-public class FactureService(AppDbContext db)
+public class FactureService(AppDbContext db, AccountingService accountingService)
 {
     // ── List / Get ────────────────────────────────────────────────────────────
 
@@ -42,7 +42,10 @@ public class FactureService(AppDbContext db)
 
     public async Task<(FactureDto? dto, string? error)> EmettreAsync(long folioId)
     {
-        var folio = await db.Folios.Include(f => f.Unit).FirstOrDefaultAsync(f => f.Id == folioId);
+        var folio = await db.Folios
+            .Include(f => f.Unit)
+            .Include(f => f.Reservation)
+            .FirstOrDefaultAsync(f => f.Id == folioId);
         if (folio is null) return (null, null);
 
         var existingActive = await db.Factures.AnyAsync(f => f.FolioId == folioId && f.Status == FactureStatus.Emise);
@@ -72,6 +75,26 @@ public class FactureService(AppDbContext db)
         // Maintain denormalized FactureId on Folio
         folio.FactureId = facture.Id;
         await db.SaveChangesAsync();
+
+        // Journal comptable — vente hébergement HT + TVA au compte client.
+        // Fire-and-forget non bloquant.
+        try
+        {
+            var clientId = folio.Reservation?.ClientId;
+            if (clientId is not null && snapshot.Total > 0)
+            {
+                await accountingService.PostSaleAsync(
+                    clientId:          clientId,
+                    revenueKind:       AccountKind.RevenueHebergement,
+                    revenueOwnerRefId: null,
+                    amountTtc:         snapshot.Total,
+                    tvaExonere:        folio.TvaExonere,
+                    sourceType:        "Facture",
+                    sourceId:          facture.Id,
+                    label:             $"Facture {facture.Number} · {snapshot.UnitLabel ?? folio.Unit?.RoomNumber}");
+            }
+        }
+        catch { /* silent */ }
 
         var created = await db.Factures.Include(f => f.Folio).FirstAsync(f => f.Id == facture.Id);
         return (ToDto(created), null);
@@ -138,6 +161,9 @@ public class FactureService(AppDbContext db)
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    // Taux TVA unique appliqué au Togo (hôtellerie standard) — configurable dans une v2.
+    private const decimal TVA_RATE = 0.18m;
+
     private static FactureSnapshot BuildSnapshot(Folio folio)
     {
         var nights         = folio.Departure.DayNumber - folio.Arrival.DayNumber;
@@ -146,6 +172,20 @@ public class FactureService(AppDbContext db)
         var totalDep       = folio.Dependances;
         var totalDeb       = folio.Debiteur;
         var total          = totalHeb + totalPdj + totalDep + totalDeb;
+
+        // Décomposition HT/TVA/TTC — les prix stockés dans le folio sont TTC.
+        int totalTtc = total;
+        int totalHt, tva;
+        if (folio.TvaExonere)
+        {
+            totalHt = totalTtc;
+            tva     = 0;
+        }
+        else
+        {
+            totalHt = (int)Math.Round(totalTtc / (1m + TVA_RATE), 0);
+            tva     = totalTtc - totalHt;
+        }
 
         var elecMention = folio.ElecIncluded ? "" : " (hors électricité)";
         var tierLabel   = folio.TarifTier switch
@@ -175,7 +215,7 @@ public class FactureService(AppDbContext db)
         return new FactureSnapshot
         {
             Lines        = lines,
-            Total        = total,
+            Total        = totalTtc,
             Arrhes       = folio.Arrhes,
             Paid         = folio.Paid,
             PayMode      = folio.PayMode,
@@ -188,6 +228,11 @@ public class FactureService(AppDbContext db)
             Departure    = folio.Departure,
             Nights       = nights,
             Pax          = folio.Pax,
+            TvaExonere   = folio.TvaExonere,
+            TotalHt      = totalHt,
+            Tva          = tva,
+            TotalTtc     = totalTtc,
+            TvaRate      = folio.TvaExonere ? null : TVA_RATE,
         };
     }
 
@@ -202,7 +247,8 @@ public class FactureService(AppDbContext db)
             f.Snapshot.PayMode, f.Snapshot.Recipient,
             f.Snapshot.Client, f.Snapshot.Societe, f.Snapshot.Reservataire,
             f.Snapshot.UnitLabel, f.Snapshot.Arrival, f.Snapshot.Departure,
-            f.Snapshot.Nights, f.Snapshot.Pax
+            f.Snapshot.Nights, f.Snapshot.Pax,
+            f.Snapshot.TvaExonere, f.Snapshot.TotalHt, f.Snapshot.Tva, f.Snapshot.TotalTtc, f.Snapshot.TvaRate
         ),
         f.CreatedAt, f.UpdatedAt
     );

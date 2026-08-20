@@ -29,7 +29,12 @@ public record FactureSnapshotDto(
     DateOnly? Arrival,
     DateOnly? Departure,
     int Nights,
-    int Pax
+    int Pax,
+    bool? TvaExonere = null,
+    int? TotalHt     = null,
+    int? Tva         = null,
+    int? TotalTtc    = null,
+    decimal? TvaRate = null
 );
 
 public record FactureLineDto(string Label, int Montant);

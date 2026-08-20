@@ -1,13 +1,14 @@
 using Juweirat.Application.Common.Pagination;
 using Juweirat.Application.DTOs.Companies;
 using Juweirat.Domain.Entities;
+using Juweirat.Domain.Enums;
 using Juweirat.Infrastructure.Data;
 using Juweirat.Infrastructure.Extensions;
 using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Infrastructure.Services;
 
-public class CompanyService(AppDbContext db)
+public class CompanyService(AppDbContext db, AccountingService accountingService)
 {
     public async Task<List<CompanyDto>> GetAllAsync()
     {
@@ -73,6 +74,14 @@ public class CompanyService(AppDbContext db)
         db.Companies.Add(company);
         await db.SaveChangesAsync();
         company.Clients = [];
+
+        try
+        {
+            await accountingService.EnsureAuxiliaryAccountAsync(
+                AccountKind.Company, company.Id, company.Name);
+        }
+        catch { /* silent */ }
+
         return (ToDto(company), null);
     }
 

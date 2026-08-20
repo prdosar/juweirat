@@ -48,6 +48,9 @@ public class Folio
     public string? PayMode { get; set; }         // Espèces | Carte bancaire | Virement | …
     public string? FactRecipient { get; set; }   // "client" | "societe"
 
+    // Fiscalité
+    public bool TvaExonere { get; set; }
+
     // Cycle de vie
     public FolioResaStatus ResaStatus { get; set; } = FolioResaStatus.Confirmee;
     public bool CheckedIn { get; set; }
