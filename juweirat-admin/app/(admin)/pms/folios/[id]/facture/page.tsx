@@ -104,6 +104,8 @@ function buildFactureHTML(
       color: #1F2421;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       font-size: 11px;
+      /* Toute la facture en gras (les font-weight supérieurs restent). */
+      font-weight: 700;
       line-height: 1.35;
       margin: 0;
       padding: 0;

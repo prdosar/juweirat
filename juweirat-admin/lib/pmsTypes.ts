@@ -92,6 +92,7 @@ export interface FolioPendingItemDto {
   guest: string | null;
   unitLabel: string;
   date: string;
+  reservationId: number | null;
 }
 
 export interface ClotureDto {

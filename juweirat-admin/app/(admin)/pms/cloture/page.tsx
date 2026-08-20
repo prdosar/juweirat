@@ -4,8 +4,9 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import { pmsCloture, pmsConfig } from '@/lib/pms';
+import { reservations } from '@/lib/api';
 import type { CloturePreviewDto, ClotureDto, HotelConfigDto } from '@/lib/pmsTypes';
-import { CheckCircle, XCircle, AlertTriangle, Lock } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, Lock, UserX } from 'lucide-react';
 
 export default function CloturePage() {
   const [config, setConfig]   = useState<HotelConfigDto | null>(null);
@@ -15,6 +16,8 @@ export default function CloturePage() {
   const [busy, setBusy]       = useState(false);
   const [error, setError]     = useState('');
   const [done, setDone]       = useState<ClotureDto | null>(null);
+  // Id de la ligne No Show en cours de traitement (pour désactiver son bouton).
+  const [noShowBusyId, setNoShowBusyId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     const [cfg, pv, hist] = await Promise.all([
@@ -24,6 +27,25 @@ export default function CloturePage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Bascule une arrivée non traitée en No Show :
+  // - appelle /api/reservations/{id}/process-noshow (retenue + comptabilité + statut)
+  // - recharge le preview pour retirer la ligne
+  async function markNoShow(folioId: number, reservationId: number | null, guest: string | null) {
+    if (!reservationId) {
+      setError("Ce folio n'a pas de réservation associée — no-show impossible.");
+      return;
+    }
+    const label = guest?.trim() || `folio ${folioId}`;
+    if (!confirm(`Marquer « ${label} » en No Show ? La retenue sera calculée et encaissée automatiquement.`)) return;
+    setNoShowBusyId(folioId); setError('');
+    try {
+      await reservations.processNoShow(reservationId);
+      await load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Erreur pendant le traitement No Show');
+    } finally { setNoShowBusyId(null); }
+  }
 
   async function execute() {
     if (!confirm(`Clôturer la journée du ${config?.dateHotel} ? Cette opération est irréversible.`)) return;
@@ -84,10 +106,24 @@ export default function CloturePage() {
                     <p className="text-sm font-semibold text-amber-700 mb-2 flex items-center gap-2">
                       <XCircle size={14} /> {preview.pendingArrivals.length} arrivée(s) non traitée(s)
                     </p>
+                    <p className="text-[11px] text-amber-700/80 mb-2">
+                      Le client n'est jamais arrivé — appliquer le No Show pour libérer la clôture.
+                    </p>
                     {preview.pendingArrivals.map(p => (
-                      <div key={p.id} className="flex items-center justify-between text-sm py-1">
-                        <span className="text-gray-700">{p.guest ?? '—'} · <span className="font-mono text-xs">{p.number}</span></span>
-                        <Link href={`/pms/folios/${p.id}`} className="text-amber-700 hover:underline text-xs">Check-in →</Link>
+                      <div key={p.id} className="flex items-center justify-between text-sm py-1.5">
+                        <span className="text-gray-700">
+                          {p.guest ?? '—'} · <span className="font-mono text-xs">{p.number}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => markNoShow(p.id, p.reservationId, p.guest)}
+                          disabled={noShowBusyId === p.id || !p.reservationId}
+                          title={!p.reservationId ? "Folio sans réservation associée" : "Marquer en No Show et appliquer la retenue"}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-white bg-amber-600 rounded-md hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <UserX size={12} />
+                          {noShowBusyId === p.id ? 'Traitement…' : 'Marquer No Show'}
+                        </button>
                       </div>
                     ))}
                   </div>
