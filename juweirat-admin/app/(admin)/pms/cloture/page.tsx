@@ -244,8 +244,11 @@ export default function CloturePage() {
             </div>
 
             {noShowModal.preview.alreadyBilled && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
-                Une retenue a déjà été appliquée sur cette résa — un nouveau traitement va être refusé côté serveur.
+              <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5 text-xs text-blue-800 space-y-1">
+                <p className="font-semibold">Retenue déjà appliquée sur cette réservation.</p>
+                <p className="text-blue-700 font-light">
+                  Aucun nouvel encaissement ne sera créé. Cliquez sur « Retirer de la liste » pour finaliser le statut No Show et libérer la clôture.
+                </p>
               </div>
             )}
 
@@ -257,34 +260,40 @@ export default function CloturePage() {
                 </span>
               </div>
               <div className="flex justify-between items-baseline pt-2 border-t border-gray-100">
-                <span className="text-xs text-gray-500 font-semibold uppercase tracking-wider">Montant retenu</span>
+                <span className="text-xs text-gray-500 font-semibold uppercase tracking-wider">
+                  {noShowModal.preview.alreadyBilled ? 'Montant déjà encaissé' : 'Montant à retenir'}
+                </span>
                 <span className="text-2xl font-black text-amber-700">
                   {noShowModal.preview.penaltyAmount.toLocaleString('fr')} <span className="text-xs font-bold">{noShowModal.preview.currency}</span>
                 </span>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Mode d'encaissement</p>
-              <div className="grid grid-cols-2 gap-2">
-                {NOSHOW_METHODS.map(({ value, label, icon: Icon }) => {
-                  const on = noShowMethod === value;
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setNoShowMethod(value)}
-                      className={`flex items-center gap-2 p-3 rounded-lg border-2 text-xs font-semibold text-left transition-all ${
-                        on ? 'border-green bg-green/5 text-green-dark' : 'border-gray-100 text-gray-600 hover:border-gray-200'
-                      }`}
-                    >
-                      <Icon size={15} />
-                      <span className="truncate">{label}</span>
-                    </button>
-                  );
-                })}
+            {/* Sélecteur de mode masqué quand la retenue est déjà encaissée
+                — le popup sert alors juste à libérer la ligne bloquée. */}
+            {!noShowModal.preview.alreadyBilled && (
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Mode d'encaissement</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {NOSHOW_METHODS.map(({ value, label, icon: Icon }) => {
+                    const on = noShowMethod === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setNoShowMethod(value)}
+                        className={`flex items-center gap-2 p-3 rounded-lg border-2 text-xs font-semibold text-left transition-all ${
+                          on ? 'border-green bg-green/5 text-green-dark' : 'border-gray-100 text-gray-600 hover:border-gray-200'
+                        }`}
+                      >
+                        <Icon size={15} />
+                        <span className="truncate">{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
 
             {noShowError && (
               <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">{noShowError}</div>
@@ -302,10 +311,14 @@ export default function CloturePage() {
               <button
                 type="button"
                 onClick={confirmNoShow}
-                disabled={noShowSubmitting || noShowModal.preview.alreadyBilled}
+                disabled={noShowSubmitting}
                 className="flex-1 py-2.5 rounded-lg bg-amber-600 text-white text-sm font-bold hover:bg-amber-700 disabled:opacity-50"
               >
-                {noShowSubmitting ? 'Application…' : 'Appliquer la retenue'}
+                {noShowSubmitting
+                  ? 'Traitement…'
+                  : noShowModal.preview.alreadyBilled
+                    ? 'Retirer de la liste'
+                    : 'Appliquer la retenue'}
               </button>
             </div>
           </div>

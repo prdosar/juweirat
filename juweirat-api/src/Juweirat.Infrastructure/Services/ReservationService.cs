@@ -405,16 +405,30 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         if (r.CheckInDate > systemDate)
             return (null, "Le No Show ne peut être traité qu'à partir du jour d'arrivée");
 
-        var alreadyBilled = r.Payments.Any(p => p.Notes != null && p.Notes.StartsWith("Retenue No Show"));
-        if (alreadyBilled) return (null, "Une retenue No Show a déjà été appliquée");
+        var existingPenalty = r.Payments.FirstOrDefault(p => p.Notes != null && p.Notes.StartsWith("Retenue No Show"));
 
-        // Passage automatique en statut NoShow si nécessaire
+        // Passage automatique en statut NoShow si nécessaire (toujours, même
+        // quand la retenue est déjà appliquée — on répare le folio bloqué
+        // dans la liste de clôture).
         if (r.Status != ReservationStatus.NoShow)
             r.Status = ReservationStatus.NoShow;
-        // Marque le folio lié en NoShow pour qu'il disparaisse de la liste des
-        // arrivées en attente sur la page Clôture.
         if (r.Folio is not null && r.Folio.ResaStatus != FolioStatus.NoShow)
             r.Folio.ResaStatus = FolioStatus.NoShow;
+
+        // Retenue déjà appliquée → on ne recrée PAS de Payment (évite doublon).
+        // On sauve juste les statuts corrigés et on renvoie succès avec le
+        // paiement existant, pour que le popup admin retire la ligne de la liste.
+        if (existingPenalty is not null)
+        {
+            await db.SaveChangesAsync();
+            var reloaded = await db.Reservations
+                .Include(r => r.Room).Include(r => r.Category).Include(r => r.Client)
+                .Include(r => r.Payments)
+                .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
+                .FirstAsync(r => r.Id == id);
+            var existingNights = r.Nights < 15 ? 1 : r.Nights < 30 ? 2 : 4;
+            return (new NoShowBillingResultDto(reloaded.Id, existingNights, existingPenalty.Amount, reloaded.Currency, ToDto(reloaded)), null);
+        }
 
         var penaltyNights = r.Nights < 15 ? 1 : r.Nights < 30 ? 2 : 4;
         var penaltyAmount = penaltyNights * r.PricePerNightSnapshot;
