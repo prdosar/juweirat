@@ -173,6 +173,39 @@ class MainShell extends ConsumerWidget {
                 context.go('/rapports');
               },
             ),
+            const Divider(),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Text(
+                'COMPTABILITÉ & FINANCE',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF6B7280)),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.account_balance_wallet_rounded),
+              title: const Text('Comptabilité & Caisse'),
+              subtitle: const Text('Journal, Sessions, TVA', style: TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.push('/comptabilite');
+              },
+            ),
+            const Divider(),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Text(
+                'ADMINISTRATION',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF6B7280)),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.manage_accounts_rounded),
+              title: const Text('Gestion des Utilisateurs'),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.push('/users');
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.notifications_rounded),
               title: const Text('Centre d\'Alertes'),

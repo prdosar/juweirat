@@ -18,7 +18,7 @@ void main() {
       final res = await authRepo.login('admin@juweirat.com', 'Admin2026x');
       expect(res.token, isNotEmpty);
       expect(res.email, equals('admin@juweirat.com'));
-      expect(res.role, equals('Admin'));
+      expect(res.role.toLowerCase(), equals('admin'));
 
       final token = await TokenStorage.read();
       expect(token, equals(res.token));

@@ -60,6 +60,18 @@ final messagesRepositoryProvider = Provider<MessagesRepository>((ref) {
   return MessagesRepository(ref.watch(apiClientProvider));
 });
 
+final accountingRepositoryProvider = Provider<AccountingRepository>((ref) {
+  return AccountingRepository(ref.watch(apiClientProvider));
+});
+
+final cashSessionRepositoryProvider = Provider<CashSessionRepository>((ref) {
+  return CashSessionRepository(ref.watch(apiClientProvider));
+});
+
+final usersRepositoryProvider = Provider<UsersRepository>((ref) {
+  return UsersRepository(ref.watch(apiClientProvider));
+});
+
 final pollingServiceProvider = Provider<PollingService>((ref) {
   final service = PollingService(ref.watch(apiClientProvider));
   service.start();

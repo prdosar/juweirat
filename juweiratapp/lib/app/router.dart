@@ -14,6 +14,8 @@ import 'package:juweiratapp/features/pms/gouvernante/presentation/gouvernante_pa
 import 'package:juweiratapp/features/pms/maintenance/presentation/maintenance_page.dart';
 import 'package:juweiratapp/features/pms/cloture/presentation/cloture_page.dart';
 import 'package:juweiratapp/features/ventes/presentation/ventes_page.dart';
+import 'package:juweiratapp/features/comptabilite/presentation/comptabilite_page.dart';
+import 'package:juweiratapp/features/users/presentation/users_page.dart';
 import 'package:juweiratapp/shared/widgets/main_shell.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -111,6 +113,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/ventes-directes',
             builder: (context, state) => const VentesDirectesPage(),
+          ),
+          GoRoute(
+            path: '/comptabilite',
+            builder: (context, state) => const ComptabilitePage(),
+          ),
+          GoRoute(
+            path: '/users',
+            builder: (context, state) => const UsersPage(),
           ),
         ],
       ),

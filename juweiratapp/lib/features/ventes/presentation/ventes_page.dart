@@ -132,8 +132,9 @@ class VentesDirectesPage extends ConsumerWidget {
                       separatorBuilder: (_, __) => const SizedBox(width: 8),
                       itemBuilder: (context, index) {
                         final p = prestations[index];
+                        final isFlex = p.prixFlexible;
                         return Container(
-                          width: 140,
+                          width: 145,
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: Colors.white,
@@ -144,17 +145,37 @@ class VentesDirectesPage extends ConsumerWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                p.nameFr,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: JuweiratColors.charcoal),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    p.nameFr,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: JuweiratColors.charcoal),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (isFlex) ...[
+                                    const SizedBox(height: 3),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFEF3C7),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: const Text('Prix flexible', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFFB45309))),
+                                    ),
+                                  ],
+                                ],
                               ),
                               FittedBox(
                                 fit: BoxFit.scaleDown,
                                 child: Text(
-                                  money(p.price),
-                                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: JuweiratColors.greenDark),
+                                  isFlex ? 'Prix libre' : money(p.price),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 13,
+                                    color: isFlex ? const Color(0xFFB45309) : JuweiratColors.greenDark,
+                                  ),
                                 ),
                               ),
                             ],
@@ -183,9 +204,25 @@ class VentesDirectesPage extends ConsumerWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    v.prestationNameFr,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: JuweiratColors.charcoal),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          v.prestationNameFr,
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: JuweiratColors.charcoal),
+                                        ),
+                                      ),
+                                      if (v.tvaExonere)
+                                        Container(
+                                          margin: const EdgeInsets.only(left: 6),
+                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFDBEAFE),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: const Text('Exonéré TVA', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF1D4ED8))),
+                                        ),
+                                    ],
                                   ),
                                   const SizedBox(height: 2),
                                   Text(

@@ -215,6 +215,12 @@ class PmsRepository {
     if (res is List) return res.map((e) => MaintenanceTicketDto.fromJson(e as Map<String, dynamic>)).toList();
     return [];
   }
+
+  Future<RoomHistoryDto?> getUnitHistory(int unitId, {int limit = 50}) async {
+    final res = await apiClient.get(Endpoints.pmsUnitHistory(unitId), query: {'limit': limit});
+    if (res is Map<String, dynamic>) return RoomHistoryDto.fromJson(res);
+    return null;
+  }
 }
 
 class RoomsRepository {
@@ -309,9 +315,107 @@ class NotificationsRepository {
   NotificationsRepository(this.apiClient);
 
   Future<List<NotificationItemDto>> getNotifications() async {
-    // 100% Read-Only fetch
     final res = await apiClient.get(Endpoints.mobileNotifications);
     if (res is List) return res.map((e) => NotificationItemDto.fromJson(e as Map<String, dynamic>)).toList();
     return [];
+  }
+
+  Future<NotificationSummaryDto?> getSummary() async {
+    final res = await apiClient.get(Endpoints.notificationSummary);
+    if (res is Map<String, dynamic>) return NotificationSummaryDto.fromJson(res);
+    return null;
+  }
+}
+
+class AccountingRepository {
+  final ApiClient apiClient;
+  AccountingRepository(this.apiClient);
+
+  Future<JournalReportDto?> getJournal({DateTime? from, DateTime? to, String? paymentMethod}) async {
+    final query = <String, dynamic>{};
+    if (from != null) query['from'] = from.toIso8601String();
+    if (to != null) query['to'] = to.toIso8601String();
+    if (paymentMethod != null && paymentMethod.isNotEmpty) query['paymentMethod'] = paymentMethod;
+
+    final res = await apiClient.get(Endpoints.comptaJournal, query: query.isNotEmpty ? query : null);
+    if (res is Map<String, dynamic>) return JournalReportDto.fromJson(res);
+    return null;
+  }
+
+  Future<BalanceReportDto?> getBalance({DateTime? from, DateTime? to, String? kind}) async {
+    final query = <String, dynamic>{};
+    if (from != null) query['from'] = from.toIso8601String();
+    if (to != null) query['to'] = to.toIso8601String();
+    if (kind != null && kind.isNotEmpty) query['kind'] = kind;
+
+    final res = await apiClient.get(Endpoints.comptaBalance, query: query.isNotEmpty ? query : null);
+    if (res is Map<String, dynamic>) return BalanceReportDto.fromJson(res);
+    return null;
+  }
+
+  Future<TvaReportDto?> getTvaReport({DateTime? from, DateTime? to}) async {
+    final query = <String, dynamic>{};
+    if (from != null) query['from'] = from.toIso8601String();
+    if (to != null) query['to'] = to.toIso8601String();
+
+    final res = await apiClient.get(Endpoints.comptaTva, query: query.isNotEmpty ? query : null);
+    if (res is Map<String, dynamic>) return TvaReportDto.fromJson(res);
+    return null;
+  }
+
+  Future<List<AccountDto>> getAccounts({String? kind, bool? includeInactive}) async {
+    final query = <String, dynamic>{};
+    if (kind != null && kind.isNotEmpty) query['kind'] = kind;
+    if (includeInactive != null) query['includeInactive'] = includeInactive;
+
+    final res = await apiClient.get(Endpoints.accounts, query: query.isNotEmpty ? query : null);
+    if (res is List) return res.map((e) => AccountDto.fromJson(e as Map<String, dynamic>)).toList();
+    return [];
+  }
+
+  Future<List<CashRegisterDto>> getCashRegisters({bool includeInactive = false}) async {
+    final res = await apiClient.get(Endpoints.cashRegisters, query: {'includeInactive': includeInactive});
+    if (res is List) return res.map((e) => CashRegisterDto.fromJson(e as Map<String, dynamic>)).toList();
+    return [];
+  }
+}
+
+class CashSessionRepository {
+  final ApiClient apiClient;
+  CashSessionRepository(this.apiClient);
+
+  Future<CashSessionDto?> getCurrent() async {
+    final res = await apiClient.get(Endpoints.cashSessionsCurrent);
+    if (res is Map<String, dynamic>) return CashSessionDto.fromJson(res);
+    return null;
+  }
+
+  Future<List<CashSessionDto>> getHistory({int limit = 50}) async {
+    final res = await apiClient.get(Endpoints.cashSessions, query: {'limit': limit});
+    if (res is List) return res.map((e) => CashSessionDto.fromJson(e as Map<String, dynamic>)).toList();
+    return [];
+  }
+
+  Future<CashSessionReportDto?> getReport(int sessionId) async {
+    final res = await apiClient.get(Endpoints.cashSessionReport(sessionId));
+    if (res is Map<String, dynamic>) return CashSessionReportDto.fromJson(res);
+    return null;
+  }
+}
+
+class UsersRepository {
+  final ApiClient apiClient;
+  UsersRepository(this.apiClient);
+
+  Future<List<UserDto>> getUsers({bool includeInactive = true}) async {
+    final res = await apiClient.get(Endpoints.users, query: {'includeInactive': includeInactive});
+    if (res is List) return res.map((e) => UserDto.fromJson(e as Map<String, dynamic>)).toList();
+    return [];
+  }
+
+  Future<UserDto?> getById(int id) async {
+    final res = await apiClient.get(Endpoints.userById(id));
+    if (res is Map<String, dynamic>) return UserDto.fromJson(res);
+    return null;
   }
 }

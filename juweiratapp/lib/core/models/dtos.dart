@@ -152,7 +152,10 @@ class ReservationDto {
     this.totalHebergement = 0,
     this.totalPrestations = 0,
     this.prestations = const [],
+    this.tvaExonere = false,
   });
+
+  final bool tvaExonere;
 
   factory ReservationDto.fromJson(Map<String, dynamic> json) {
     final rawPres = json['prestations'] as List<dynamic>? ?? [];
@@ -195,6 +198,7 @@ class ReservationDto {
       carteExpiration: json['carteExpiration'] as String?,
       totalHebergement: _toInt(json['totalHebergement']),
       totalPrestations: _toInt(json['totalPrestations']),
+      tvaExonere: json['tvaExonere'] as bool? ?? false,
       prestations: rawPres
           .map((e) => ReservationPrestationDto.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -373,6 +377,38 @@ class RoomCategoryDto {
   }
 }
 
+class RoomOccupationDto {
+  final int reservationId;
+  final String reference;
+  final String clientName;
+  final String? companyName;
+  final String checkInDate;
+  final String checkOutDate;
+  final String status;
+
+  const RoomOccupationDto({
+    required this.reservationId,
+    required this.reference,
+    required this.clientName,
+    this.companyName,
+    required this.checkInDate,
+    required this.checkOutDate,
+    required this.status,
+  });
+
+  factory RoomOccupationDto.fromJson(Map<String, dynamic> json) {
+    return RoomOccupationDto(
+      reservationId: _toInt(json['reservationId']),
+      reference: json['reference'] as String? ?? '',
+      clientName: json['clientName'] as String? ?? '',
+      companyName: json['companyName'] as String?,
+      checkInDate: json['checkInDate'] as String? ?? '',
+      checkOutDate: json['checkOutDate'] as String? ?? '',
+      status: json['status'] as String? ?? '',
+    );
+  }
+}
+
 class RoomDto {
   final int id;
   final String roomNumber;
@@ -384,6 +420,9 @@ class RoomDto {
   final int capacityAdults;
   final int capacityChildren;
   final int? sizeSqm;
+  final int tarifNuit;
+  final int tarifN15;
+  final int tarifN30;
   final int pricePerNight;
   final int? pricePerWeek;
   final int? pricePerMonth;
@@ -395,6 +434,7 @@ class RoomDto {
   final String? pmsGamme;
   final List<RoomImageDto> images;
   final List<AmenityDto> amenities;
+  final RoomOccupationDto? currentOccupation;
 
   const RoomDto({
     required this.id,
@@ -407,6 +447,9 @@ class RoomDto {
     required this.capacityAdults,
     required this.capacityChildren,
     this.sizeSqm,
+    this.tarifNuit = 0,
+    this.tarifN15 = 0,
+    this.tarifN30 = 0,
     required this.pricePerNight,
     this.pricePerWeek,
     this.pricePerMonth,
@@ -418,11 +461,18 @@ class RoomDto {
     this.pmsGamme,
     this.images = const [],
     this.amenities = const [],
+    this.currentOccupation,
   });
 
   factory RoomDto.fromJson(Map<String, dynamic> json) {
     final rawImgs = json['images'] as List<dynamic>? ?? [];
     final rawAm = json['amenities'] as List<dynamic>? ?? [];
+    final rawOcc = json['currentOccupation'] as Map<String, dynamic>?;
+
+    final tarifNuit = _toInt(json['tarifNuit'], _toInt(json['pricePerNight']));
+    final tarifN15 = _toInt(json['tarifN15']);
+    final tarifN30 = _toInt(json['tarifN30']);
+
     return RoomDto(
       id: _toInt(json['id']),
       roomNumber: json['roomNumber'] as String? ?? '',
@@ -434,7 +484,10 @@ class RoomDto {
       capacityAdults: _toInt(json['capacityAdults'], 2),
       capacityChildren: _toInt(json['capacityChildren'], 0),
       sizeSqm: _toIntOrNull(json['sizeSqm']),
-      pricePerNight: _toInt(json['pricePerNight']),
+      tarifNuit: tarifNuit,
+      tarifN15: tarifN15,
+      tarifN30: tarifN30,
+      pricePerNight: tarifNuit,
       pricePerWeek: _toIntOrNull(json['pricePerWeek']),
       pricePerMonth: _toIntOrNull(json['pricePerMonth']),
       status: json['status'] as String? ?? 'Available',
@@ -445,6 +498,7 @@ class RoomDto {
       pmsGamme: json['pmsGamme'] as String?,
       images: rawImgs.map((e) => RoomImageDto.fromJson(e as Map<String, dynamic>)).toList(),
       amenities: rawAm.map((e) => AmenityDto.fromJson(e as Map<String, dynamic>)).toList(),
+      currentOccupation: rawOcc != null ? RoomOccupationDto.fromJson(rawOcc) : null,
     );
   }
 }
@@ -513,6 +567,7 @@ class VenteDirecteDto {
   final String? paymentMethod;
   final String? notes;
   final String createdAt;
+  final bool tvaExonere;
 
   const VenteDirecteDto({
     required this.id,
@@ -531,6 +586,7 @@ class VenteDirecteDto {
     this.paymentMethod,
     this.notes,
     required this.createdAt,
+    this.tvaExonere = false,
   });
 
   factory VenteDirecteDto.fromJson(Map<String, dynamic> json) {
@@ -551,6 +607,7 @@ class VenteDirecteDto {
       paymentMethod: json['paymentMethod'] as String?,
       notes: json['notes'] as String?,
       createdAt: json['createdAt'] as String? ?? '',
+      tvaExonere: json['tvaExonere'] as bool? ?? false,
     );
   }
 }
@@ -562,8 +619,13 @@ class PrestationDto {
   final String? descriptionFr;
   final String? descriptionEn;
   final int price;
+  final int prixInclus;
+  final int prixSeule;
+  final String mode;
   final String? icon;
   final bool isActive;
+  final int sortOrder;
+  final bool prixFlexible;
 
   const PrestationDto({
     required this.id,
@@ -572,20 +634,35 @@ class PrestationDto {
     this.descriptionFr,
     this.descriptionEn,
     required this.price,
+    this.prixInclus = 0,
+    this.prixSeule = 0,
+    this.mode = 'ParPersonneParNuit',
     this.icon,
     this.isActive = true,
+    this.sortOrder = 0,
+    this.prixFlexible = false,
   });
 
   factory PrestationDto.fromJson(Map<String, dynamic> json) {
+    final pInclus = _toInt(json['prixInclus']);
+    final pSeule = _toInt(json['prixSeule']);
+    final pFallback = _toInt(json['price']);
+    final effectivePrice = pSeule > 0 ? pSeule : (pInclus > 0 ? pInclus : pFallback);
+
     return PrestationDto(
       id: _toInt(json['id']),
       nameFr: json['nameFr'] as String? ?? '',
       nameEn: json['nameEn'] as String? ?? '',
       descriptionFr: json['descriptionFr'] as String?,
       descriptionEn: json['descriptionEn'] as String?,
-      price: _toInt(json['price']),
+      price: effectivePrice,
+      prixInclus: pInclus,
+      prixSeule: pSeule,
+      mode: json['mode'] as String? ?? 'ParPersonneParNuit',
       icon: json['icon'] as String?,
       isActive: json['isActive'] as bool? ?? true,
+      sortOrder: _toInt(json['sortOrder']),
+      prixFlexible: json['prixFlexible'] as bool? ?? false,
     );
   }
 }
@@ -1091,34 +1168,142 @@ class DebiteurDto {
   }
 }
 
+class FactureLineDto {
+  final String label;
+  final int montant;
+
+  const FactureLineDto({
+    required this.label,
+    required this.montant,
+  });
+
+  factory FactureLineDto.fromJson(Map<String, dynamic> json) {
+    return FactureLineDto(
+      label: json['label'] as String? ?? '',
+      montant: _toInt(json['montant']),
+    );
+  }
+}
+
+class FactureSnapshotDto {
+  final List<FactureLineDto> lines;
+  final int total;
+  final int arrhes;
+  final int paid;
+  final String? payMode;
+  final String? recipient;
+  final String? client;
+  final String? societe;
+  final String? reservataire;
+  final String? unitLabel;
+  final String? arrival;
+  final String? departure;
+  final int nights;
+  final int pax;
+  final bool? tvaExonere;
+  final int? totalHt;
+  final int? tva;
+  final int? totalTtc;
+  final double? tvaRate;
+
+  const FactureSnapshotDto({
+    this.lines = const [],
+    required this.total,
+    this.arrhes = 0,
+    this.paid = 0,
+    this.payMode,
+    this.recipient,
+    this.client,
+    this.societe,
+    this.reservataire,
+    this.unitLabel,
+    this.arrival,
+    this.departure,
+    this.nights = 1,
+    this.pax = 1,
+    this.tvaExonere,
+    this.totalHt,
+    this.tva,
+    this.totalTtc,
+    this.tvaRate,
+  });
+
+  factory FactureSnapshotDto.fromJson(Map<String, dynamic> json) {
+    final rawLines = json['lines'] as List<dynamic>? ?? [];
+    return FactureSnapshotDto(
+      lines: rawLines.map((e) => FactureLineDto.fromJson(e as Map<String, dynamic>)).toList(),
+      total: _toInt(json['total']),
+      arrhes: _toInt(json['arrhes']),
+      paid: _toInt(json['paid']),
+      payMode: json['payMode'] as String?,
+      recipient: json['recipient'] as String?,
+      client: json['client'] as String?,
+      societe: json['societe'] as String?,
+      reservataire: json['reservataire'] as String?,
+      unitLabel: json['unitLabel'] as String?,
+      arrival: json['arrival'] as String?,
+      departure: json['departure'] as String?,
+      nights: _toInt(json['nights'], 1),
+      pax: _toInt(json['pax'], 1),
+      tvaExonere: json['tvaExonere'] as bool?,
+      totalHt: _toIntOrNull(json['totalHt']),
+      tva: _toIntOrNull(json['tva']),
+      totalTtc: _toIntOrNull(json['totalTtc']),
+      tvaRate: json['tvaRate'] != null ? _toDouble(json['tvaRate']) : null,
+    );
+  }
+}
+
 class FactureDto {
   final int id;
   final String number;
-  final int? folioId;
-  final String? clientNom;
-  final int totalTtc;
-  final String dateEmission;
-  final String? statut;
+  final int folioId;
+  final String folioNumber;
+  final String date;
+  final String status;
+  final int printCount;
+  final int corrections;
+  final String? corrigeeLe;
+  final FactureSnapshotDto? snapshot;
+  final String createdAt;
+  final String updatedAt;
+
+  // Compatibility helpers
+  String get clientNom => snapshot?.client ?? snapshot?.societe ?? 'Client';
+  int get totalTtc => snapshot?.totalTtc ?? snapshot?.total ?? 0;
+  String get dateEmission => date;
+  String get statut => status;
 
   const FactureDto({
     required this.id,
     required this.number,
-    this.folioId,
-    this.clientNom,
-    required this.totalTtc,
-    required this.dateEmission,
-    this.statut,
+    required this.folioId,
+    required this.folioNumber,
+    required this.date,
+    required this.status,
+    this.printCount = 0,
+    this.corrections = 0,
+    this.corrigeeLe,
+    this.snapshot,
+    required this.createdAt,
+    required this.updatedAt,
   });
 
   factory FactureDto.fromJson(Map<String, dynamic> json) {
+    final rawSnap = json['snapshot'] as Map<String, dynamic>?;
     return FactureDto(
       id: _toInt(json['id']),
       number: json['number'] as String? ?? '',
-      folioId: _toIntOrNull(json['folioId']),
-      clientNom: json['clientNom'] as String?,
-      totalTtc: _toInt(json['totalTtc']),
-      dateEmission: json['dateEmission'] as String? ?? '',
-      statut: json['statut'] as String?,
+      folioId: _toInt(json['folioId']),
+      folioNumber: json['folioNumber'] as String? ?? '',
+      date: json['date'] as String? ?? '',
+      status: json['status'] as String? ?? 'Emise',
+      printCount: _toInt(json['printCount']),
+      corrections: _toInt(json['corrections']),
+      corrigeeLe: json['corrigeeLe'] as String?,
+      snapshot: rawSnap != null ? FactureSnapshotDto.fromJson(rawSnap) : null,
+      createdAt: json['createdAt'] as String? ?? '',
+      updatedAt: json['updatedAt'] as String? ?? '',
     );
   }
 }
@@ -1163,6 +1348,88 @@ class MaintenanceDto {
 
 typedef MaintenanceTicketDto = MaintenanceDto;
 
+class HousekeepingLogDto {
+  final int id;
+  final int roomId;
+  final int staffId;
+  final String staffFullName;
+  final String? staffPhone;
+  final String cleanedAt;
+  final String? notes;
+
+  const HousekeepingLogDto({
+    required this.id,
+    required this.roomId,
+    required this.staffId,
+    required this.staffFullName,
+    this.staffPhone,
+    required this.cleanedAt,
+    this.notes,
+  });
+
+  factory HousekeepingLogDto.fromJson(Map<String, dynamic> json) {
+    return HousekeepingLogDto(
+      id: _toInt(json['id']),
+      roomId: _toInt(json['roomId']),
+      staffId: _toInt(json['staffId']),
+      staffFullName: json['staffFullName'] as String? ?? '',
+      staffPhone: json['staffPhone'] as String?,
+      cleanedAt: json['cleanedAt'] as String? ?? '',
+      notes: json['notes'] as String?,
+    );
+  }
+}
+
+class RoomHistoryDto {
+  final List<HousekeepingLogDto> housekeeping;
+  final List<MaintenanceTicketDto> maintenance;
+
+  const RoomHistoryDto({
+    this.housekeeping = const [],
+    this.maintenance = const [],
+  });
+
+  factory RoomHistoryDto.fromJson(Map<String, dynamic> json) {
+    final rawHk = json['housekeeping'] as List<dynamic>? ?? [];
+    final rawMt = json['maintenance'] as List<dynamic>? ?? [];
+    return RoomHistoryDto(
+      housekeeping: rawHk.map((e) => HousekeepingLogDto.fromJson(e as Map<String, dynamic>)).toList(),
+      maintenance: rawMt.map((e) => MaintenanceTicketDto.fromJson(e as Map<String, dynamic>)).toList(),
+    );
+  }
+}
+
+class NotificationSummaryDto {
+  final String systemDate;
+  final String todayDate;
+  final int pendingReservationsCount;
+  final int websiteReservationsTodayCount;
+  final int unreadMessagesCount;
+  final int daysNotClosedCount;
+
+  const NotificationSummaryDto({
+    required this.systemDate,
+    required this.todayDate,
+    this.pendingReservationsCount = 0,
+    this.websiteReservationsTodayCount = 0,
+    this.unreadMessagesCount = 0,
+    this.daysNotClosedCount = 0,
+  });
+
+  int get totalAlerts => pendingReservationsCount + websiteReservationsTodayCount + unreadMessagesCount + (daysNotClosedCount > 0 ? 1 : 0);
+
+  factory NotificationSummaryDto.fromJson(Map<String, dynamic> json) {
+    return NotificationSummaryDto(
+      systemDate: json['systemDate'] as String? ?? '',
+      todayDate: json['todayDate'] as String? ?? '',
+      pendingReservationsCount: _toInt(json['pendingReservationsCount']),
+      websiteReservationsTodayCount: _toInt(json['websiteReservationsTodayCount']),
+      unreadMessagesCount: _toInt(json['unreadMessagesCount']),
+      daysNotClosedCount: _toInt(json['daysNotClosedCount']),
+    );
+  }
+}
+
 class NotificationItemDto {
   final String id;
   final String type;
@@ -1199,6 +1466,457 @@ class NotificationItemDto {
           ? (DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now())
           : DateTime.now(),
       isRead: json['isRead'] as bool? ?? false,
+    );
+  }
+}
+
+// ── COMPTABILITÉ & TRÉSORERIE DTOs ──────────────────────────────────────────
+
+class AccountDto {
+  final int id;
+  final String kind;
+  final String name;
+  final int? ownerRefId;
+  final int balance;
+  final bool isActive;
+  final String createdAt;
+  final String updatedAt;
+
+  const AccountDto({
+    required this.id,
+    required this.kind,
+    required this.name,
+    this.ownerRefId,
+    required this.balance,
+    this.isActive = true,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory AccountDto.fromJson(Map<String, dynamic> json) {
+    return AccountDto(
+      id: _toInt(json['id']),
+      kind: json['kind'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      ownerRefId: _toIntOrNull(json['ownerRefId']),
+      balance: _toInt(json['balance']),
+      isActive: json['isActive'] as bool? ?? true,
+      createdAt: json['createdAt'] as String? ?? '',
+      updatedAt: json['updatedAt'] as String? ?? '',
+    );
+  }
+}
+
+class AccountMovementDto {
+  final int id;
+  final String date;
+  final int fromAccountId;
+  final String fromAccountName;
+  final int toAccountId;
+  final String toAccountName;
+  final int amount;
+  final String reason;
+  final String? sourceType;
+  final int? sourceId;
+  final int? sessionId;
+  final int? createdByUserId;
+  final String? label;
+
+  const AccountMovementDto({
+    required this.id,
+    required this.date,
+    required this.fromAccountId,
+    required this.fromAccountName,
+    required this.toAccountId,
+    required this.toAccountName,
+    required this.amount,
+    required this.reason,
+    this.sourceType,
+    this.sourceId,
+    this.sessionId,
+    this.createdByUserId,
+    this.label,
+  });
+
+  factory AccountMovementDto.fromJson(Map<String, dynamic> json) {
+    return AccountMovementDto(
+      id: _toInt(json['id']),
+      date: json['date'] as String? ?? '',
+      fromAccountId: _toInt(json['fromAccountId']),
+      fromAccountName: json['fromAccountName'] as String? ?? '',
+      toAccountId: _toInt(json['toAccountId']),
+      toAccountName: json['toAccountName'] as String? ?? '',
+      amount: _toInt(json['amount']),
+      reason: json['reason'] as String? ?? '',
+      sourceType: json['sourceType'] as String?,
+      sourceId: _toIntOrNull(json['sourceId']),
+      sessionId: _toIntOrNull(json['sessionId']),
+      createdByUserId: _toIntOrNull(json['createdByUserId']),
+      label: json['label'] as String?,
+    );
+  }
+}
+
+class CashRegisterDto {
+  final int id;
+  final String name;
+  final String? location;
+  final bool isActive;
+  final int? accountId;
+  final int accountBalance;
+  final String createdAt;
+
+  const CashRegisterDto({
+    required this.id,
+    required this.name,
+    this.location,
+    this.isActive = true,
+    this.accountId,
+    required this.accountBalance,
+    required this.createdAt,
+  });
+
+  factory CashRegisterDto.fromJson(Map<String, dynamic> json) {
+    return CashRegisterDto(
+      id: _toInt(json['id']),
+      name: json['name'] as String? ?? '',
+      location: json['location'] as String?,
+      isActive: json['isActive'] as bool? ?? true,
+      accountId: _toIntOrNull(json['accountId']),
+      accountBalance: _toInt(json['accountBalance']),
+      createdAt: json['createdAt'] as String? ?? '',
+    );
+  }
+}
+
+class CashSessionDto {
+  final int id;
+  final int registerId;
+  final String registerName;
+  final int openedByUserId;
+  final String openedByUserName;
+  final String openedAt;
+  final int openingFloat;
+  final int? closedByUserId;
+  final String? closedByUserName;
+  final String? closedAt;
+  final int? closingCountedTotal;
+  final String status;
+  final String? notes;
+
+  const CashSessionDto({
+    required this.id,
+    required this.registerId,
+    required this.registerName,
+    required this.openedByUserId,
+    required this.openedByUserName,
+    required this.openedAt,
+    required this.openingFloat,
+    this.closedByUserId,
+    this.closedByUserName,
+    this.closedAt,
+    this.closingCountedTotal,
+    required this.status,
+    this.notes,
+  });
+
+  bool get isOpen => status.toLowerCase() == 'open';
+
+  factory CashSessionDto.fromJson(Map<String, dynamic> json) {
+    return CashSessionDto(
+      id: _toInt(json['id']),
+      registerId: _toInt(json['registerId']),
+      registerName: json['registerName'] as String? ?? 'Caisse',
+      openedByUserId: _toInt(json['openedByUserId']),
+      openedByUserName: json['openedByUserName'] as String? ?? 'Utilisateur',
+      openedAt: json['openedAt'] as String? ?? '',
+      openingFloat: _toInt(json['openingFloat']),
+      closedByUserId: _toIntOrNull(json['closedByUserId']),
+      closedByUserName: json['closedByUserName'] as String?,
+      closedAt: json['closedAt'] as String?,
+      closingCountedTotal: _toIntOrNull(json['closingCountedTotal']),
+      status: json['status'] as String? ?? 'Open',
+      notes: json['notes'] as String?,
+    );
+  }
+}
+
+class CashSessionReportDto {
+  final CashSessionDto session;
+  final int theoreticalTotal;
+  final int? countedTotal;
+  final int? ecart;
+  final int totalEncaisse;
+  final int totalDecaisse;
+  final int totalEntreeManuelle;
+  final int movementsCount;
+
+  const CashSessionReportDto({
+    required this.session,
+    required this.theoreticalTotal,
+    this.countedTotal,
+    this.ecart,
+    required this.totalEncaisse,
+    required this.totalDecaisse,
+    required this.totalEntreeManuelle,
+    required this.movementsCount,
+  });
+
+  factory CashSessionReportDto.fromJson(Map<String, dynamic> json) {
+    return CashSessionReportDto(
+      session: CashSessionDto.fromJson(json['session'] as Map<String, dynamic>),
+      theoreticalTotal: _toInt(json['theoreticalTotal']),
+      countedTotal: _toIntOrNull(json['countedTotal']),
+      ecart: _toIntOrNull(json['ecart']),
+      totalEncaisse: _toInt(json['totalEncaisse']),
+      totalDecaisse: _toInt(json['totalDecaisse']),
+      totalEntreeManuelle: _toInt(json['totalEntreeManuelle']),
+      movementsCount: _toInt(json['movementsCount']),
+    );
+  }
+}
+
+class JournalEntryDto {
+  final String sourceType;
+  final int sourceId;
+  final String date;
+  final String label;
+  final int ht;
+  final int tva;
+  final int ttc;
+  final int encaisse;
+  final int decaisse;
+  final String? paymentMethod;
+
+  const JournalEntryDto({
+    required this.sourceType,
+    required this.sourceId,
+    required this.date,
+    required this.label,
+    required this.ht,
+    required this.tva,
+    required this.ttc,
+    required this.encaisse,
+    required this.decaisse,
+    this.paymentMethod,
+  });
+
+  factory JournalEntryDto.fromJson(Map<String, dynamic> json) {
+    return JournalEntryDto(
+      sourceType: json['sourceType'] as String? ?? '',
+      sourceId: _toInt(json['sourceId']),
+      date: json['date'] as String? ?? '',
+      label: json['label'] as String? ?? '',
+      ht: _toInt(json['ht']),
+      tva: _toInt(json['tva']),
+      ttc: _toInt(json['ttc']),
+      encaisse: _toInt(json['encaisse']),
+      decaisse: _toInt(json['decaisse']),
+      paymentMethod: json['paymentMethod'] as String?,
+    );
+  }
+}
+
+class JournalReportDto {
+  final String? from;
+  final String? to;
+  final List<JournalEntryDto> entries;
+  final int totalHt;
+  final int totalTva;
+  final int totalTtc;
+  final int totalEncaisse;
+  final int totalDecaisse;
+
+  const JournalReportDto({
+    this.from,
+    this.to,
+    this.entries = const [],
+    required this.totalHt,
+    required this.totalTva,
+    required this.totalTtc,
+    required this.totalEncaisse,
+    required this.totalDecaisse,
+  });
+
+  factory JournalReportDto.fromJson(Map<String, dynamic> json) {
+    final rawEntries = json['entries'] as List<dynamic>? ?? [];
+    return JournalReportDto(
+      from: json['from'] as String?,
+      to: json['to'] as String?,
+      entries: rawEntries.map((e) => JournalEntryDto.fromJson(e as Map<String, dynamic>)).toList(),
+      totalHt: _toInt(json['totalHt']),
+      totalTva: _toInt(json['totalTva']),
+      totalTtc: _toInt(json['totalTtc']),
+      totalEncaisse: _toInt(json['totalEncaisse']),
+      totalDecaisse: _toInt(json['totalDecaisse']),
+    );
+  }
+}
+
+class BalanceLineDto {
+  final int accountId;
+  final String kind;
+  final String name;
+  final int? ownerRefId;
+  final int openingBalance;
+  final int totalDebit;
+  final int totalCredit;
+  final int closingBalance;
+
+  const BalanceLineDto({
+    required this.accountId,
+    required this.kind,
+    required this.name,
+    this.ownerRefId,
+    required this.openingBalance,
+    required this.totalDebit,
+    required this.totalCredit,
+    required this.closingBalance,
+  });
+
+  factory BalanceLineDto.fromJson(Map<String, dynamic> json) {
+    return BalanceLineDto(
+      accountId: _toInt(json['accountId']),
+      kind: json['kind'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      ownerRefId: _toIntOrNull(json['ownerRefId']),
+      openingBalance: _toInt(json['openingBalance']),
+      totalDebit: _toInt(json['totalDebit']),
+      totalCredit: _toInt(json['totalCredit']),
+      closingBalance: _toInt(json['closingBalance']),
+    );
+  }
+}
+
+class BalanceReportDto {
+  final String? from;
+  final String? to;
+  final String? kindFilter;
+  final List<BalanceLineDto> lines;
+  final int totalDebit;
+  final int totalCredit;
+
+  const BalanceReportDto({
+    this.from,
+    this.to,
+    this.kindFilter,
+    this.lines = const [],
+    required this.totalDebit,
+    required this.totalCredit,
+  });
+
+  factory BalanceReportDto.fromJson(Map<String, dynamic> json) {
+    final rawLines = json['lines'] as List<dynamic>? ?? [];
+    return BalanceReportDto(
+      from: json['from'] as String?,
+      to: json['to'] as String?,
+      kindFilter: json['kindFilter'] as String?,
+      lines: rawLines.map((e) => BalanceLineDto.fromJson(e as Map<String, dynamic>)).toList(),
+      totalDebit: _toInt(json['totalDebit']),
+      totalCredit: _toInt(json['totalCredit']),
+    );
+  }
+}
+
+class TvaReportLineDto {
+  final String sourceType;
+  final int sourceId;
+  final String date;
+  final String label;
+  final int ht;
+  final int tva;
+  final int ttc;
+
+  const TvaReportLineDto({
+    required this.sourceType,
+    required this.sourceId,
+    required this.date,
+    required this.label,
+    required this.ht,
+    required this.tva,
+    required this.ttc,
+  });
+
+  factory TvaReportLineDto.fromJson(Map<String, dynamic> json) {
+    return TvaReportLineDto(
+      sourceType: json['sourceType'] as String? ?? '',
+      sourceId: _toInt(json['sourceId']),
+      date: json['date'] as String? ?? '',
+      label: json['label'] as String? ?? '',
+      ht: _toInt(json['ht']),
+      tva: _toInt(json['tva']),
+      ttc: _toInt(json['ttc']),
+    );
+  }
+}
+
+class TvaReportDto {
+  final String? from;
+  final String? to;
+  final int totalHt;
+  final int totalTva;
+  final int totalTtc;
+  final double tvaRate;
+  final List<TvaReportLineDto> lines;
+
+  const TvaReportDto({
+    this.from,
+    this.to,
+    required this.totalHt,
+    required this.totalTva,
+    required this.totalTtc,
+    required this.tvaRate,
+    this.lines = const [],
+  });
+
+  factory TvaReportDto.fromJson(Map<String, dynamic> json) {
+    final rawLines = json['lines'] as List<dynamic>? ?? [];
+    return TvaReportDto(
+      from: json['from'] as String?,
+      to: json['to'] as String?,
+      totalHt: _toInt(json['totalHt']),
+      totalTva: _toInt(json['totalTva']),
+      totalTtc: _toInt(json['totalTtc']),
+      tvaRate: _toDouble(json['tvaRate'], 0.18),
+      lines: rawLines.map((e) => TvaReportLineDto.fromJson(e as Map<String, dynamic>)).toList(),
+    );
+  }
+}
+
+class UserDto {
+  final int id;
+  final String firstName;
+  final String lastName;
+  final String fullName;
+  final String email;
+  final String role;
+  final bool isActive;
+  final String? lastLoginAt;
+  final String createdAt;
+
+  const UserDto({
+    required this.id,
+    required this.firstName,
+    required this.lastName,
+    required this.fullName,
+    required this.email,
+    required this.role,
+    this.isActive = true,
+    this.lastLoginAt,
+    required this.createdAt,
+  });
+
+  factory UserDto.fromJson(Map<String, dynamic> json) {
+    return UserDto(
+      id: _toInt(json['id']),
+      firstName: json['firstName'] as String? ?? '',
+      lastName: json['lastName'] as String? ?? '',
+      fullName: json['fullName'] as String? ?? '${json['firstName'] ?? ''} ${json['lastName'] ?? ''}'.trim(),
+      email: json['email'] as String? ?? '',
+      role: json['role'] as String? ?? 'utilisateur',
+      isActive: json['isActive'] as bool? ?? true,
+      lastLoginAt: json['lastLoginAt'] as String?,
+      createdAt: json['createdAt'] as String? ?? '',
     );
   }
 }
