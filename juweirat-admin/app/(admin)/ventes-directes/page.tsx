@@ -390,7 +390,7 @@ function VentesDirectesPageInner() {
               <button
                 type="submit"
                 disabled={saving || !selectedPrestation}
-                className="w-full bg-gold text-white font-black py-4 rounded-xl text-base hover:bg-gold/90 disabled:opacity-50 transition-all shadow-sm flex items-center justify-center gap-2"
+                className="w-full bg-green-dark text-white font-black py-4 rounded-xl text-base hover:bg-green disabled:opacity-50 transition-all shadow-sm flex items-center justify-center gap-2"
               >
                 {saving ? 'Enregistrement…' : (
                   mode === 'SurChambre'

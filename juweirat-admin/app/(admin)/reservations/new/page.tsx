@@ -267,6 +267,10 @@ function NewReservationPageInner() {
   const discountNum = Math.max(0, Number(String(discount).replace(/[^\d]/g, '')) || 0);
   const depositNum  = Math.max(0, Number(String(deposit).replace(/[^\d]/g, '')) || 0);
   const total       = Math.max(0, hebergement + extrasTotal - discountNum);
+  // Décomposition HT/TVA — mêmes règles que le backend AccountingService.PostSaleAsync
+  // (TTC → HT arrondi, TVA = reste). Si exonération : HT = TTC, TVA = 0.
+  const ht          = tvaExonere ? total : Math.round(total / 1.18);
+  const tva         = tvaExonere ? 0     : total - ht;
   const balance     = Math.max(0, total - depositNum);
 
   const summaryClientLabel = clientMode === 'new'
@@ -1120,8 +1124,24 @@ function NewReservationPageInner() {
 
             <div style={{ height: 1, background: C.darkSep }} />
 
+            {/* Décomposition TVA — masquée quand pas de montant à afficher */}
+            {total > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
+                {tvaExonere ? (
+                  <Row label="TVA" value="Exonérée" />
+                ) : (
+                  <>
+                    <Row label="Montant HT"  value={fcfa(ht)} />
+                    <Row label="TVA (18 %)"  value={fcfa(tva)} />
+                  </>
+                )}
+              </div>
+            )}
+
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-              <span style={{ fontSize: 12, color: C.darkLabel }}>Total</span>
+              <span style={{ fontSize: 12, color: C.darkLabel }}>
+                {tvaExonere ? 'Total' : 'Total TTC'}
+              </span>
               <span style={{ fontSize: 20, fontWeight: 700 }}>{fcfa(total)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 11, color: C.darkLabel }}>
