@@ -346,7 +346,37 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         return (ToDto(r), null);
     }
 
-    public async Task<(NoShowBillingResultDto? dto, string? error)> ProcessNoShowAsync(long id)
+    // Aperçu : calcule ce que sera la retenue No Show sans rien écrire.
+    // Utilisé par le popup admin pour afficher montant + mode paiement avant confirmation.
+    public async Task<(NoShowPreviewDto? dto, string? error)> PreviewNoShowAsync(long id)
+    {
+        var r = await db.Reservations
+            .Include(r => r.Client)
+            .Include(r => r.Payments)
+            .Include(r => r.Folio)
+            .FirstOrDefaultAsync(r => r.Id == id);
+        if (r is null) return (null, "Réservation introuvable");
+
+        var systemDate = (await db.HotelConfig.FirstOrDefaultAsync())?.DateHotel
+                         ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        if (r.Status is ReservationStatus.Cancelled or ReservationStatus.CheckedOut)
+            return (null, "Cette réservation ne peut plus être marquée No Show");
+        if (r.Folio is { CheckedIn: true, Closed: false })
+            return (null, "Le client est physiquement enregistré (folio en cours) — No Show impossible");
+        if (r.CheckInDate > systemDate)
+            return (null, "Le No Show ne peut être traité qu'à partir du jour d'arrivée");
+
+        var penaltyNights = r.Nights < 15 ? 1 : r.Nights < 30 ? 2 : 4;
+        var penaltyAmount = penaltyNights * r.PricePerNightSnapshot;
+        var alreadyBilled = r.Payments.Any(p => p.Notes != null && p.Notes.StartsWith("Retenue No Show"));
+
+        return (new NoShowPreviewDto(
+            r.Id, r.Reference, r.Client.FullName,
+            penaltyNights, penaltyAmount, r.Currency, alreadyBilled
+        ), null);
+    }
+
+    public async Task<(NoShowBillingResultDto? dto, string? error)> ProcessNoShowAsync(long id, string? paymentMethod = null)
     {
         var r = await db.Reservations
             .Include(r => r.Room)
@@ -381,16 +411,26 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         // Passage automatique en statut NoShow si nécessaire
         if (r.Status != ReservationStatus.NoShow)
             r.Status = ReservationStatus.NoShow;
+        // Marque le folio lié en NoShow pour qu'il disparaisse de la liste des
+        // arrivées en attente sur la page Clôture.
+        if (r.Folio is not null && r.Folio.ResaStatus != FolioStatus.NoShow)
+            r.Folio.ResaStatus = FolioStatus.NoShow;
 
         var penaltyNights = r.Nights < 15 ? 1 : r.Nights < 30 ? 2 : 4;
         var penaltyAmount = penaltyNights * r.PricePerNightSnapshot;
+
+        // Mode de paiement de la retenue : par défaut Cash, sinon celui fourni.
+        var method = PaymentMethod.Cash;
+        if (!string.IsNullOrWhiteSpace(paymentMethod)
+            && Enum.TryParse<PaymentMethod>(paymentMethod, true, out var parsedMethod))
+            method = parsedMethod;
 
         var penaltyPayment = new Payment
         {
             ReservationId = r.Id,
             Amount        = penaltyAmount,
             Currency      = r.Currency,
-            Method        = PaymentMethod.Cash,
+            Method        = method,
             Status        = PaymentStatus.Completed,
             PaidAt        = DateTime.UtcNow,
             Notes         = $"Retenue No Show — {penaltyNights} nuit{(penaltyNights > 1 ? "s" : "")}",

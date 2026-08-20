@@ -250,8 +250,14 @@ export const reservations = {
   create:  (body: unknown) => request<import('./types').ReservationDto>('/api/reservations', { method: 'POST', body: JSON.stringify(body) }),
   updateStatus: (id: number, body: { status: string; internalNotes?: string; cancellationReason?: string }) =>
     request<import('./types').ReservationDto>(`/api/reservations/${id}/status`, { method: 'PATCH', body: JSON.stringify(body) }),
-  processNoShow: (id: number) =>
-    request<import('./types').NoShowBillingResultDto>(`/api/reservations/${id}/process-noshow`, { method: 'POST' }),
+  // Aperçu de la retenue No Show (montant + méthode par défaut) sans effet de bord.
+  noShowPreview: (id: number) =>
+    request<import('./types').NoShowPreviewDto>(`/api/reservations/${id}/noshow-preview`),
+  processNoShow: (id: number, paymentMethod?: string) =>
+    request<import('./types').NoShowBillingResultDto>(
+      `/api/reservations/${id}/process-noshow`,
+      { method: 'POST', body: JSON.stringify({ paymentMethod: paymentMethod ?? null }) },
+    ),
   getTarifPreview: (clientId: number, categoryId: number, nights: number) =>
     request<import('./types').TarifPreviewDto>(
       `/api/reservations/tarif-preview?clientId=${clientId}&categoryId=${categoryId}&nights=${nights}`,

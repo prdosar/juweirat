@@ -91,6 +91,18 @@ public record NoShowBillingResultDto(
     ReservationDto Reservation
 );
 
+// Aperçu sans effet de bord — utilisé pour afficher le montant de retenue
+// dans le popup avant que l'opérateur ne choisisse le mode de paiement.
+public record NoShowPreviewDto(
+    long ReservationId,
+    string Reference,
+    string GuestName,
+    int PenaltyNights,
+    decimal PenaltyAmount,
+    string Currency,
+    bool AlreadyBilled
+);
+
 public record CancellationBillingResultDto(
     long ReservationId,
     int PenaltyNights,     // 0 if cancellation is free

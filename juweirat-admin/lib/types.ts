@@ -435,6 +435,17 @@ export interface NoShowBillingResultDto {
   reservation: ReservationDto;
 }
 
+// Aperçu No Show — pour le popup d'application manuelle.
+export interface NoShowPreviewDto {
+  reservationId: number;
+  reference: string;
+  guestName: string;
+  penaltyNights: number;
+  penaltyAmount: number;
+  currency: string;
+  alreadyBilled: boolean;
+}
+
 export interface CancellationBillingResultDto {
   reservationId: number;
   penaltyNights: number;
