@@ -39,6 +39,17 @@ export function printVenteDirecte(vente: VenteDirecteDto): void {
     ? `${window.location.origin}/img/logo.png`
     : '/img/logo.png';
 
+  // Décomposition TVA — 18% Togo. Prix stockés = TTC.
+  // Les lignes affichent le HT ; le TTC apparaît uniquement sur le total final.
+  const TVA_RATE = 0.18;
+  const exonere  = vente.tvaExonere === true;
+  const ttc      = vente.total;
+  const htTotal  = exonere ? ttc : Math.round(ttc / (1 + TVA_RATE));
+  const tva      = exonere ? 0   : ttc - htTotal;
+  const qty      = Math.max(1, vente.quantite);
+  // Prix unitaire HT dérivé du total HT — cohérent avec l'arrondi comptable.
+  const htUnit   = Math.round(htTotal / qty);
+
   const lines: string[] = [
     pad('Résidence Meublée', W, true).trimEnd(),
     pad('Lomé, Togo', W, true).trimEnd(),
@@ -52,25 +63,18 @@ export function printVenteDirecte(vente: VenteDirecteDto): void {
     '',
     vente.prestationNameFr,
     line(
-      `  ${vente.prixUnitaireSnapshot.toLocaleString('fr')} FCFA × ${vente.quantite}`,
-      `${vente.total.toLocaleString('fr')} FCFA`,
+      `  ${htUnit.toLocaleString('fr')} F HT × ${vente.quantite}`,
+      `${htTotal.toLocaleString('fr')} F`,
       W,
     ),
     '',
     sep('-', W),
   ];
 
-  // Décomposition TVA — 18% Togo. Prix stockés = TTC.
-  const TVA_RATE = 0.18;
-  const exonere  = vente.tvaExonere === true;
-  const ttc      = vente.total;
-  const ht       = exonere ? ttc : Math.round(ttc / (1 + TVA_RATE));
-  const tva      = exonere ? 0   : ttc - ht;
-
   if (!exonere) {
-    lines.push(line('Sous-total HT', `${ht.toLocaleString('fr')} FCFA`, W));
-    lines.push(line('TVA (18%)',     `${tva.toLocaleString('fr')} FCFA`, W));
-    lines.push(line('TOTAL TTC',     `${ttc.toLocaleString('fr')} FCFA`, W));
+    lines.push(line('Total HT',   `${htTotal.toLocaleString('fr')} FCFA`, W));
+    lines.push(line('TVA (18%)',  `${tva.toLocaleString('fr')} FCFA`, W));
+    lines.push(line('TOTAL TTC',  `${ttc.toLocaleString('fr')} FCFA`, W));
   } else {
     lines.push(line('TOTAL (exonéré TVA)', `${ttc.toLocaleString('fr')} FCFA`, W));
   }
@@ -125,10 +129,11 @@ export function printVenteDirecte(vente: VenteDirecteDto): void {
     .big    { font-size: 13px; font-weight: bold; }
     .brand-logo {
       display: block;
-      width: 80px;
-      height: 80px;
+      width: 45mm;
+      height: auto;
+      max-height: 35mm;
       object-fit: contain;
-      margin: 0 auto 4px;
+      margin: 0 auto 6px;
     }
     @media screen {
       body {
