@@ -138,7 +138,7 @@ export default function ClientFormPage() {
               <div className="space-y-1">
                 <label className="text-xs font-medium text-gray-500">Téléphone</label>
                 <input type="tel" value={form.phone} onChange={e => set('phone', e.target.value)}
-                  placeholder="+228 90 00 00 00" className="input" />
+                  placeholder="+228 70 79 08 89" className="input" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">

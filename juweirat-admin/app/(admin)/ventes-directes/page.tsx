@@ -5,8 +5,8 @@ import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import { clients, prestations, ventesDirectes } from '@/lib/api';
 import type { ClientDto, FolioActifDto, PrestationAnnexeDto, VenteDirecteDto } from '@/lib/types';
-import { Search, CheckCircle2, BedDouble, ShoppingBag, Banknote, CreditCard, Smartphone, Building, Printer } from 'lucide-react';
-import { printVenteDirecte } from '@/lib/printReceipt';
+import { Search, CheckCircle2, BedDouble, ShoppingBag, Banknote, CreditCard, Smartphone, Building, Printer, Minus, Plus, Trash2 } from 'lucide-react';
+import { printVenteDirecte, printVenteDirecteBatch } from '@/lib/printReceipt';
 
 const PAY_METHODS = [
   { value: 'Espèces',       icon: Banknote,    label: 'Espèces'       },
@@ -41,11 +41,11 @@ function VentesDirectesPageInner() {
   const [history, setHistory]               = useState<VenteDirecteDto[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
 
-  // ── Sélection prestation ───────────────────────────────────────────────────
-  const [selectedPrestation, setSelectedPrestation] = useState<PrestationAnnexeDto | null>(null);
-  const [quantite, setQuantite]                     = useState(1);
-  // Prix saisi manuellement pour les prestations à prix flexible.
-  const [prixManuel, setPrixManuel]                 = useState('');
+  // ── Panier ─────────────────────────────────────────────────────────────────
+  // Plusieurs prestations vendues au même client en une seule opération.
+  // Pour les prestations à prix flexible, `prixManuel` est saisi par ligne.
+  type CartLine = { prestation: PrestationAnnexeDto; quantite: number; prixManuel: string };
+  const [cart, setCart] = useState<CartLine[]>([]);
 
   // ── Client ────────────────────────────────────────────────────────────────
   const [clientSearch, setClientSearch]   = useState('');
@@ -65,9 +65,10 @@ function VentesDirectesPageInner() {
   const [notes, setNotes]                 = useState('');
 
   // ── Soumission ─────────────────────────────────────────────────────────────
-  const [saving, setSaving]       = useState(false);
-  const [error, setError]         = useState('');
-  const [lastVente, setLastVente] = useState<VenteDirecteDto | null>(null);
+  const [saving, setSaving]           = useState(false);
+  const [error, setError]             = useState('');
+  // Résultat de la dernière opération (batch) — permet la ré-impression du reçu combiné.
+  const [lastVentes, setLastVentes]   = useState<VenteDirecteDto[] | null>(null);
 
   async function loadHistory() {
     setLoadingHistory(true);
@@ -138,16 +139,43 @@ function VentesDirectesPageInner() {
     setMode('Encaissement');
   }
 
-  const prixManuelNum = Number(prixManuel) || 0;
-  const prixUnitaire  = selectedPrestation
-    ? (selectedPrestation.prixFlexible ? prixManuelNum : selectedPrestation.prixSeule)
-    : 0;
-  const total = prixUnitaire * quantite;
+  // Prix unitaire effectif d'une ligne panier (catalogue ou saisi pour flex).
+  function linePrixUnitaire(line: CartLine): number {
+    if (line.prestation.prixFlexible) return Number(line.prixManuel) || 0;
+    return line.prestation.prixSeule;
+  }
+  function lineTotal(line: CartLine): number {
+    return linePrixUnitaire(line) * line.quantite;
+  }
+  const total = cart.reduce((s, l) => s + lineTotal(l), 0);
+
+  function addToCart(p: PrestationAnnexeDto) {
+    setError(''); setLastVentes(null);
+    setCart(prev => {
+      // Prestations catalogue : on incrémente la quantité si déjà dans le panier.
+      // Prestations flexibles : on ajoute toujours une nouvelle ligne (chaque vente
+      // ayant son propre prix libre).
+      if (!p.prixFlexible) {
+        const idx = prev.findIndex(l => l.prestation.id === p.id);
+        if (idx !== -1) {
+          const next = [...prev];
+          next[idx] = { ...next[idx], quantite: next[idx].quantite + 1 };
+          return next;
+        }
+      }
+      return [...prev, { prestation: p, quantite: 1, prixManuel: '' }];
+    });
+  }
+
+  function updateLine(index: number, patch: Partial<CartLine>) {
+    setCart(prev => prev.map((l, i) => i === index ? { ...l, ...patch } : l));
+  }
+  function removeLine(index: number) {
+    setCart(prev => prev.filter((_, i) => i !== index));
+  }
 
   function reset() {
-    setSelectedPrestation(null);
-    setQuantite(1);
-    setPrixManuel('');
+    setCart([]);
     setNotes('');
     setError('');
     // keep client + mode between sales (quicker for multiple sales to same client)
@@ -155,29 +183,38 @@ function VentesDirectesPageInner() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedPrestation) { setError('Veuillez sélectionner une prestation.'); return; }
-    if (selectedPrestation.prixFlexible && prixManuelNum <= 0) {
-      setError('Prestation à prix flexible : saisissez un prix unitaire (> 0).');
-      return;
+    if (cart.length === 0) { setError('Ajoutez au moins une prestation au panier.'); return; }
+    // Validation : chaque prestation flexible doit avoir un prix > 0.
+    for (const line of cart) {
+      if (line.prestation.prixFlexible && linePrixUnitaire(line) <= 0) {
+        setError(`« ${line.prestation.nameFr} » est à prix flexible — saisissez son prix unitaire.`);
+        return;
+      }
+      if (line.quantite <= 0) {
+        setError(`Quantité invalide pour « ${line.prestation.nameFr} ».`);
+        return;
+      }
     }
     if (mode === 'SurChambre' && !folioActif) { setError('Aucun folio actif trouvé pour ce client.'); return; }
 
     setSaving(true);
     setError('');
-    setLastVente(null);
+    setLastVentes(null);
     try {
-      const vente = await ventesDirectes.create({
-        prestationId:  selectedPrestation.id,
-        quantite,
+      const ventes = await ventesDirectes.createBatch({
+        items:         cart.map(l => ({
+          prestationId: l.prestation.id,
+          quantite:     l.quantite,
+          prixUnitaire: l.prestation.prixFlexible ? linePrixUnitaire(l) : undefined,
+        })),
         clientId:      selectedClient?.id,
         clientNom:     !selectedClient && clientNomLibre.trim() ? clientNomLibre.trim() : undefined,
         folioId:       mode === 'SurChambre' ? folioActif?.folioId : undefined,
         mode,
         paymentMethod: mode === 'Encaissement' ? paymentMethod : undefined,
         notes:         notes.trim() || undefined,
-        prixUnitaire:  selectedPrestation.prixFlexible ? prixManuelNum : undefined,
       });
-      setLastVente(vente);
+      setLastVentes(ventes);
       reset();
       await loadHistory();
     } catch (err: unknown) {
@@ -206,18 +243,18 @@ function VentesDirectesPageInner() {
             )}
 
             {/* Succès + impression */}
-            {lastVente && (
+            {lastVentes && lastVentes.length > 0 && (
               <div className="bg-green/10 border border-green/30 rounded-xl p-4 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-green-dark text-sm font-medium">
                   <CheckCircle2 size={18} className="shrink-0" />
                   <span>
-                    <strong>{lastVente.prestationNameFr}</strong> × {lastVente.quantite} —{' '}
-                    <strong>{lastVente.total.toLocaleString('fr')} FCFA</strong> enregistrée
+                    <strong>{lastVentes.length} prestation{lastVentes.length > 1 ? 's' : ''}</strong>{' '}
+                    — <strong>{lastVentes.reduce((s, v) => s + v.total, 0).toLocaleString('fr')} FCFA</strong> enregistrée{lastVentes.length > 1 ? 's' : ''}
                   </span>
                 </div>
                 <button
                   type="button"
-                  onClick={() => printVenteDirecte(lastVente)}
+                  onClick={() => printVenteDirecteBatch(lastVentes)}
                   className="flex items-center gap-1.5 bg-charcoal text-white text-xs font-bold px-3 py-2 rounded-lg hover:bg-charcoal/90 transition-colors shrink-0"
                 >
                   <Printer size={14} /> Imprimer le reçu
@@ -227,22 +264,18 @@ function VentesDirectesPageInner() {
 
             <form onSubmit={handleSubmit} className="space-y-5">
 
-              {/* ── Sélection prestation ─────────────────────────────────────── */}
+              {/* ── Catalogue des prestations ───────────────────────────────── */}
               <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-3">
                 <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                  <ShoppingBag size={14} /> Prestation
+                  <ShoppingBag size={14} /> Prestations disponibles — cliquez pour ajouter
                 </h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {prestationList.map(p => (
                     <button
                       key={p.id}
                       type="button"
-                      onClick={() => { setSelectedPrestation(p); setQuantite(1); setPrixManuel(''); setError(''); setLastVente(null); }}
-                      className={`flex flex-col items-start p-3 rounded-xl border-2 text-left transition-all ${
-                        selectedPrestation?.id === p.id
-                          ? 'border-green-dark bg-green/5'
-                          : 'border-gray-100 hover:border-gray-200'
-                      }`}
+                      onClick={() => addToCart(p)}
+                      className="flex flex-col items-start p-3 rounded-xl border-2 text-left transition-all border-gray-100 hover:border-green-dark hover:bg-green/5"
                     >
                       <span className="text-sm font-bold text-charcoal leading-tight">{p.nameFr}</span>
                       {p.prixFlexible ? (
@@ -263,37 +296,84 @@ function VentesDirectesPageInner() {
                     </p>
                   )}
                 </div>
-
-                {selectedPrestation && (
-                  <div className="flex items-end gap-4 pt-2 border-t border-gray-100">
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Quantité</label>
-                      <input
-                        type="number" min="1" max="999"
-                        value={quantite}
-                        onChange={e => setQuantite(Math.max(1, Number(e.target.value)))}
-                        className="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-center focus:ring-2 focus:ring-green/20 focus:border-green"
-                      />
-                    </div>
-                    {selectedPrestation.prixFlexible && (
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-amber-700 uppercase tracking-wider">Prix unitaire *</label>
-                        <input
-                          type="number" min="0" step="100" autoFocus
-                          value={prixManuel}
-                          onChange={e => setPrixManuel(e.target.value)}
-                          placeholder="Ex : 2 500"
-                          className="w-32 border border-amber-300 rounded-lg px-3 py-2 text-sm font-bold text-right focus:ring-2 focus:ring-amber-200 focus:border-amber-500"
-                        />
-                      </div>
-                    )}
-                    <div className="flex-1 text-right">
-                      <p className="text-xs text-gray-400">Sous-total</p>
-                      <p className="text-2xl font-black text-charcoal">{total.toLocaleString('fr')} <span className="text-sm font-bold">FCFA</span></p>
-                    </div>
-                  </div>
-                )}
               </div>
+
+              {/* ── Panier ───────────────────────────────────────────────────── */}
+              {cart.length > 0 && (
+                <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-3">
+                  <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+                    <span>Panier ({cart.length} article{cart.length > 1 ? 's' : ''})</span>
+                    <button type="button" onClick={() => setCart([])}
+                      className="text-[10px] font-medium text-gray-400 hover:text-red-600 transition-colors normal-case tracking-normal">
+                      Vider le panier
+                    </button>
+                  </h2>
+
+                  <div className="divide-y divide-gray-50">
+                    {cart.map((line, i) => {
+                      const pu   = linePrixUnitaire(line);
+                      const tot  = lineTotal(line);
+                      const flex = line.prestation.prixFlexible;
+                      return (
+                        <div key={`${line.prestation.id}-${i}`} className="py-3 flex items-center gap-3 flex-wrap">
+                          <div className="flex-1 min-w-[140px]">
+                            <p className="text-sm font-semibold text-charcoal">{line.prestation.nameFr}</p>
+                            {flex ? (
+                              <p className="text-[10px] text-amber-700 font-medium mt-0.5">Prix libre</p>
+                            ) : (
+                              <p className="text-[10px] text-gray-400 mt-0.5">{pu.toLocaleString('fr')} F / unité</p>
+                            )}
+                          </div>
+
+                          {/* Prix libre input pour les prestations flexibles */}
+                          {flex && (
+                            <input
+                              type="number" min="0" step="100"
+                              value={line.prixManuel}
+                              onChange={e => updateLine(i, { prixManuel: e.target.value })}
+                              placeholder="Prix *"
+                              className="w-24 border border-amber-300 rounded-md px-2 py-1.5 text-sm font-bold text-right focus:ring-2 focus:ring-amber-200 focus:border-amber-500"
+                            />
+                          )}
+
+                          {/* Quantité +/- */}
+                          <div className="inline-flex items-center gap-1.5">
+                            <button type="button" onClick={() => updateLine(i, { quantite: Math.max(1, line.quantite - 1) })}
+                              className="w-7 h-7 rounded-md border border-gray-200 hover:bg-gray-50 flex items-center justify-center text-gray-500">
+                              <Minus size={12} />
+                            </button>
+                            <input
+                              type="number" min="1" max="999"
+                              value={line.quantite}
+                              onChange={e => updateLine(i, { quantite: Math.max(1, Number(e.target.value)) })}
+                              className="w-12 border border-gray-200 rounded-md px-1 py-1 text-sm font-bold text-center focus:ring-2 focus:ring-green/20 focus:border-green"
+                            />
+                            <button type="button" onClick={() => updateLine(i, { quantite: line.quantite + 1 })}
+                              className="w-7 h-7 rounded-md border border-gray-200 hover:bg-gray-50 flex items-center justify-center text-gray-500">
+                              <Plus size={12} />
+                            </button>
+                          </div>
+
+                          <div className="text-right w-24">
+                            <p className="text-sm font-bold text-charcoal tabular-nums">{tot.toLocaleString('fr')} <span className="text-[10px] font-normal text-gray-400">FCFA</span></p>
+                          </div>
+
+                          <button type="button" onClick={() => removeLine(i)}
+                            title="Retirer du panier"
+                            className="p-1.5 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex items-baseline justify-between pt-3 border-t-2 border-charcoal">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Total du panier</span>
+                    <span className="text-2xl font-black text-charcoal">{total.toLocaleString('fr')} <span className="text-sm font-bold">FCFA</span></span>
+                  </div>
+                </div>
+              )}
 
               {/* ── Client (optionnel) ───────────────────────────────────────── */}
               <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-3">
@@ -417,7 +497,7 @@ function VentesDirectesPageInner() {
               {/* ── Bouton valider ────────────────────────────────────────────── */}
               <button
                 type="submit"
-                disabled={saving || !selectedPrestation}
+                disabled={saving || cart.length === 0}
                 className="w-full bg-green-dark text-white font-black py-4 rounded-xl text-base hover:bg-green disabled:opacity-50 transition-all shadow-sm flex items-center justify-center gap-2"
               >
                 {saving ? 'Enregistrement…' : (

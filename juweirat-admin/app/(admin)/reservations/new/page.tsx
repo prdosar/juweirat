@@ -117,6 +117,10 @@ function NewReservationPageInner() {
 
   useEffect(() => { categories.getAll().then(setCategoryList); }, []);
   useEffect(() => { rooms.getAll().then(setRoomList); }, []);
+
+  // Ids des catégories qui ont au moins une chambre dispo sur la période choisie.
+  // Vide tant que les dates ne sont pas complètes.
+  const [availableCategoryIds, setAvailableCategoryIds] = useState<Set<number> | null>(null);
   useEffect(() => { prestations.getAll(true).then(setPrestationList); }, []);
   useEffect(() => { companies.getAll().then(setCompanyList).catch(() => setCompanyList([])); }, []);
 
@@ -166,8 +170,9 @@ function NewReservationPageInner() {
   const [internalNotes, setInternalNotes] = useState('');
 
   // Step 5 — garantie & tarif
-  const [garantieType, setGarantieType] = useState<'' | 'Cash' | 'Carte'>('');
-  const [garantieMontantCash, setGarantieMontantCash] = useState('');
+  // 'Carte' : le client fournit une empreinte carte (obligatoire pour bloquer la résa).
+  // 'Aucune' : le client n'a pas de carte → alerte "contactez la direction" bloque la création.
+  const [garantieType, setGarantieType] = useState<'' | 'Carte' | 'Aucune'>('');
   const [carteNumero,     setCarteNumero]     = useState('');
   const [carteNom,        setCarteNom]        = useState('');
   const [carteExpiration, setCarteExpiration] = useState('');
@@ -230,6 +235,27 @@ function NewReservationPageInner() {
       .catch(() => { if (!cancelled) setTarifPreview(null); });
     return () => { cancelled = true; };
   }, [clientId, categoryId, nights]);
+
+  // ── Disponibilité catégories pour la période choisie ──
+  // On récupère la liste des catégories qui ont AU MOINS une chambre libre
+  // sur les dates ; celles absentes seront désactivées à l'étape logement.
+  useEffect(() => {
+    if (!checkIn || !checkOut || nights <= 0) { setAvailableCategoryIds(null); return; }
+    let cancelled = false;
+    categories.getAvailable(checkIn, checkOut, Math.max(1, adults))
+      .then(list => { if (!cancelled) setAvailableCategoryIds(new Set(list.map(c => c.id))); })
+      .catch(() => { if (!cancelled) setAvailableCategoryIds(null); });
+    return () => { cancelled = true; };
+  }, [checkIn, checkOut, nights, adults]);
+
+  // Si la catégorie déjà cochée devient complète après un changement de dates,
+  // on la désélectionne pour forcer l'utilisateur à en reprendre une valide.
+  useEffect(() => {
+    if (availableCategoryIds !== null && categoryId > 0 && !availableCategoryIds.has(categoryId)) {
+      setCategoryId(0);
+      setRoomId(0);
+    }
+  }, [availableCategoryIds, categoryId]);
 
   const tier = selectedCat && nights > 0 ? tierFor(nights, selectedCat) : null;
   // Prefer the backend-computed tariff (which correctly applies the company waterfall).
@@ -314,6 +340,9 @@ function NewReservationPageInner() {
     }
     if (current === 3) {
       if (!categoryId) return 'Sélectionnez une catégorie de logement.';
+      if (availableCategoryIds !== null && !availableCategoryIds.has(categoryId)) {
+        return 'La catégorie sélectionnée est complète sur ces dates. Choisissez d\'autres dates ou une autre catégorie.';
+      }
       // Prestations flexibles cochées mais sans prix → bloquer.
       for (const pid of selectedPrestations.keys()) {
         const p = prestationList.find(x => x.id === pid);
@@ -324,8 +353,10 @@ function NewReservationPageInner() {
       }
     }
     if (current === 4) {
-      if (!garantieType) return 'Choisissez un mode de garantie (dépôt ou carte).';
-      if (garantieType === 'Cash' && !garantieMontantCash) return 'Indiquez le montant du dépôt.';
+      if (!garantieType) return 'Choisissez un mode de garantie (carte bancaire ou aucune).';
+      if (garantieType === 'Aucune') {
+        return 'Sans empreinte carte, la réservation ne peut pas être créée depuis cet écran — contactez la direction pour la compléter manuellement.';
+      }
       if (garantieType === 'Carte') {
         if (carteNumero.replace(/\s/g, '').length < 4) return 'Numéro de carte invalide.';
         if (!carteNom.trim())                          return 'Nom sur la carte requis.';
@@ -428,7 +459,6 @@ function NewReservationPageInner() {
         specialRequests:     null,
         internalNotes:       internalNotes || null,
         garantieType:        garantieType || null,
-        garantieMontantCash: garantieType === 'Cash' ? Number(garantieMontantCash) : null,
         carteNom:            garantieType === 'Carte' ? carteNom.trim() : null,
         carteSuffix,
         carteExpiration:     garantieType === 'Carte' ? carteExpiration : null,
@@ -857,21 +887,27 @@ function NewReservationPageInner() {
                   const priced = effectiveNightRate(cat);
                   const isCompanyRate = priced.source === 'company';
                   const savings = isCompanyRate ? cat.tarifNuit - priced.rate : 0;
+                  // Complet = dispo chargée + catégorie absente. Tant que la dispo
+                  // n'est pas chargée (dates incomplètes ou API en cours), on n'affiche rien.
+                  const soldOut = availableCategoryIds !== null && !availableCategoryIds.has(cat.id);
                   return (
                     <button
                       key={cat.id}
                       type="button"
-                      onClick={() => { setCategoryId(cat.id); setRoomId(0); }}
+                      onClick={() => { if (soldOut) return; setCategoryId(cat.id); setRoomId(0); }}
+                      disabled={soldOut}
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        gap: 16, padding: '15px 18px', borderRadius: 12, cursor: 'pointer',
+                        gap: 16, padding: '15px 18px', borderRadius: 12,
+                        cursor: soldOut ? 'not-allowed' : 'pointer',
+                        opacity: soldOut ? 0.55 : 1,
                         background: on ? C.accentSoft : C.card,
-                        border: `1px solid ${on ? C.accent : C.sep2}`,
+                        border: `1px solid ${on ? C.accent : soldOut ? '#f1c9c9' : C.sep2}`,
                         textAlign: 'left',
                       }}
                     >
                       <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <span style={{ fontSize: 13, fontWeight: 500 }}>{cat.nameFr}</span>
                           {isCompanyRate && (
                             <span style={{
@@ -879,6 +915,13 @@ function NewReservationPageInner() {
                               background: '#eef6ff', color: '#1e6bd6',
                               whiteSpace: 'nowrap',
                             }}>🏢 Tarif entreprise</span>
+                          )}
+                          {soldOut && (
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 999,
+                              background: '#fdecec', color: C.danger,
+                              whiteSpace: 'nowrap',
+                            }}>Complet sur ces dates</span>
                           )}
                         </span>
                         <span style={{ fontSize: 11, color: C.ink4 }}>{detail}</span>
@@ -1019,8 +1062,8 @@ function NewReservationPageInner() {
               <span style={{ ...fieldLabel, display: 'block', marginBottom: 10 }}>Garantie de la réservation</span>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 {[
-                  { id: 'Cash'  as const, name: 'Dépôt en espèces', detail: "Montant versé à l'accueil" },
-                  { id: 'Carte' as const, name: 'Carte bancaire',   detail: 'Empreinte de garantie' },
+                  { id: 'Carte'  as const, name: 'Carte bancaire',   detail: 'Empreinte de garantie obligatoire' },
+                  { id: 'Aucune' as const, name: 'Pas de carte',     detail: 'Contact direction requis' },
                 ].map(g => {
                   const on = garantieType === g.id;
                   return (
@@ -1043,13 +1086,17 @@ function NewReservationPageInner() {
                 })}
               </div>
 
-              {garantieType === 'Cash' && (
-                <label style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 18 }}>
-                  <span style={fieldLabel}>Montant du dépôt *</span>
-                  <input type="number" min="0" step="500" value={garantieMontantCash}
-                    onChange={e => setGarantieMontantCash(e.target.value)}
-                    placeholder="Ex : 50 000" style={{ ...fieldInput, maxWidth: 260 }} />
-                </label>
+              {garantieType === 'Aucune' && (
+                <div style={{
+                  marginTop: 18, padding: '14px 16px',
+                  background: '#fff8e1', border: '1px solid #f5c882',
+                  borderRadius: 10, color: '#7a4f00', fontSize: 13, lineHeight: 1.55,
+                }}>
+                  <b>Réservation impossible depuis cet écran.</b><br />
+                  Le client doit fournir une empreinte carte pour bloquer la réservation.
+                  Sans carte, contactez la direction Juweirat pour compléter la saisie
+                  manuellement (téléphone + arrhes en caisse).
+                </div>
               )}
 
               {garantieType === 'Carte' && (

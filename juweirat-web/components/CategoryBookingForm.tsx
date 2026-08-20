@@ -1,9 +1,10 @@
 'use client'
-import { useState, useRef, useMemo } from 'react'
-import { CheckCircle, User, Mail, Phone, Globe, CreditCard, Smartphone, Lock, ChevronRight, CalendarDays, Users, ScrollText, ArrowLeft } from 'lucide-react'
+import { useState, useRef, useMemo, useEffect } from 'react'
+import { CheckCircle, User, Mail, Phone, Globe, CreditCard, Lock, ChevronRight, CalendarDays, Users, ScrollText, ArrowLeft, AlertTriangle } from 'lucide-react'
 import type { Lang } from '@/lib/i18n'
 
 import { calcStayPrice, nightsBetween, formatFCFA } from '@/lib/pricing'
+import { getCategoryAvailability, type CategoryAvailability } from '@/lib/api'
 
 interface Props {
   categoryId:   number
@@ -21,7 +22,10 @@ interface Props {
   tarifN30:     number
 }
 
-type PayMethod = 'fedapay' | 'stripe' | null
+// La garantie remplace le mode de paiement. Le client fournit soit une empreinte
+// carte (obligatoire pour bloquer la résa), soit indique qu'il n'a pas de carte —
+// dans ce cas la direction doit être contactée pour finaliser manuellement.
+type GarantieChoice = 'card' | 'none' | null
 
 function formatDate(d: string, lang: Lang) {
   if (!d) return '—'
@@ -48,10 +52,16 @@ export default function CategoryBookingForm({
   tarifNuit, tarifN15, tarifN30,
 }: Props) {
   const [step,       setStep]       = useState<1 | 2 | 3>(1)
-  const [payMethod,  setPayMethod]  = useState<PayMethod>(null)
+  const [garantie,   setGarantie]   = useState<GarantieChoice>(null)
+  const [carteNumero, setCarteNumero]     = useState('')
+  const [carteNom, setCarteNom]           = useState('')
+  const [carteExpiration, setCarteExpiration] = useState('')
   const [form,       setForm]       = useState({ firstName: '', lastName: '', email: '', phone: '', nationality: '', notes: '' })
   const [agreed,     setAgreed]     = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [availability, setAvailability] = useState<CategoryAvailability | null>(null)
+  const [availLoading,  setAvailLoading]  = useState(false)
 
   /* Ensure initial checkIn is at least today */
   const today = todayStr()
@@ -70,6 +80,17 @@ export default function CategoryBookingForm({
   const localNights = useMemo(() => nightsBetween(localCheckIn, localCheckOut), [localCheckIn, localCheckOut])
   const pricing     = useMemo(() => calcStayPrice(tarifNuit, tarifN15, tarifN30, localNights), [tarifNuit, tarifN15, tarifN30, localNights])
 
+  // Recharge la dispo dès qu'une date change — bloque la suite si tout est pris.
+  useEffect(() => {
+    if (!localCheckIn || !localCheckOut || localNights <= 0) { setAvailability(null); return }
+    let cancelled = false
+    setAvailLoading(true)
+    getCategoryAvailability(categoryId, localCheckIn, localCheckOut, Math.max(1, adults))
+      .then(a => { if (!cancelled) setAvailability(a) })
+      .finally(() => { if (!cancelled) setAvailLoading(false) })
+    return () => { cancelled = true }
+  }, [categoryId, localCheckIn, localCheckOut, adults, localNights])
+
   const fr = lang === 'fr'
 
   function set(k: string, v: string) { setForm(f => ({ ...f, [k]: v })) }
@@ -85,6 +106,9 @@ export default function CategoryBookingForm({
     setLocalCheckOut(val)
   }
 
+  // Une catégorie est bookable si availability = null (chargement) ou available > 0.
+  const soldOut = availability !== null && availability.available <= 0
+
   const step1Valid = Boolean(
     form.firstName.trim() &&
     form.lastName.trim() &&
@@ -92,9 +116,16 @@ export default function CategoryBookingForm({
     form.phone.trim() &&
     localCheckIn &&
     localCheckOut &&
-    localNights > 0
+    localNights > 0 &&
+    !soldOut
   )
-  const step2Valid = payMethod !== null
+
+  const cardValid =
+    carteNumero.replace(/\s/g, '').length >= 4 &&
+    carteNom.trim().length > 0 &&
+    /^\d{2}\/\d{4}$/.test(carteExpiration)
+  // 'none' est intentionnellement non-soumettable : le client doit contacter la direction.
+  const step2Valid = garantie === 'card' && cardValid
 
   if (step === 3) {
     return (
@@ -169,7 +200,7 @@ export default function CategoryBookingForm({
         <div className="flex items-center gap-0">
           {[
             { n: 1, label: fr ? 'Vos informations' : 'Your info' },
-            { n: 2, label: fr ? 'Paiement' : 'Payment' },
+            { n: 2, label: fr ? 'Garantie'         : 'Guarantee' },
           ].map(({ n, label }, i) => (
             <div key={n} className="flex items-center flex-1">
               <button
@@ -251,6 +282,28 @@ export default function CategoryBookingForm({
                   {fr ? 'Veuillez sélectionner au moins 1 nuitée.' : 'Please select at least 1 night.'}
                 </p>
               )}
+
+              {/* Disponibilité temps réel pour cette catégorie */}
+              {localNights > 0 && (
+                availLoading ? (
+                  <p className="text-charcoal/40 text-[11px] mt-2 tracking-widest uppercase font-light">
+                    {fr ? 'Vérification de la disponibilité…' : 'Checking availability…'}
+                  </p>
+                ) : availability && availability.available > 0 ? (
+                  <p className="text-green text-[11px] mt-2 tracking-widest uppercase font-semibold">
+                    ✓ {availability.available} / {availability.total} {fr ? 'unités disponibles' : 'units available'}
+                  </p>
+                ) : availability && availability.available === 0 ? (
+                  <div className="mt-2 flex items-start gap-2 bg-red-50 border border-red-200 px-3 py-2 text-red-700">
+                    <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                    <p className="text-xs">
+                      {fr
+                        ? 'Catégorie complète sur ces dates. Modifiez la période ou choisissez une autre catégorie.'
+                        : 'Category fully booked for these dates. Change the period or pick another category.'}
+                    </p>
+                  </div>
+                ) : null
+              )}
             </div>
 
             {/* Name fields */}
@@ -304,7 +357,7 @@ export default function CategoryBookingForm({
                     required
                     value={form.phone}
                     onChange={e => set('phone', e.target.value)}
-                    placeholder="+228 90 00 00 00"
+                    placeholder="+228 70 79 08 89"
                     className="w-full bg-surface border border-charcoal/10 text-charcoal pl-9 pr-4 py-2.5 text-sm font-light focus:outline-none focus:border-green transition-colors placeholder:text-charcoal/20"
                   />
                 </div>
@@ -344,7 +397,7 @@ export default function CategoryBookingForm({
               disabled={!step1Valid}
               className="w-full flex items-center justify-center gap-2 py-3.5 bg-green text-charcoal text-xs tracking-widest uppercase font-semibold hover:bg-green-light transition-colors duration-300 disabled:opacity-30 disabled:cursor-not-allowed group shadow-sm"
             >
-              {fr ? 'Passer au paiement' : 'Proceed to payment'}
+              {fr ? 'Continuer' : 'Continue'}
               <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
             </button>
           </div>
@@ -366,72 +419,142 @@ export default function CategoryBookingForm({
             </div>
 
             <h3 className="font-display text-2xl font-light text-charcoal">
-              {fr ? 'Mode de règlement' : 'Payment method'}
+              {fr ? 'Garantie de la réservation' : 'Booking guarantee'}
             </h3>
 
             <p className="text-charcoal/50 text-sm font-light">
               {fr
-                ? 'Sélectionnez votre moyen de paiement sécurisé pour valider votre demande.'
-                : 'Select your preferred secure payment method to complete your booking.'}
+                ? "Une empreinte de carte bancaire est requise pour bloquer votre séjour. Aucun débit ne sera effectué avant votre arrivée — la carte sert uniquement de garantie."
+                : 'A credit card imprint is required to secure your stay. No charge will be made before your arrival — the card is only used as guarantee.'}
             </p>
 
-            {/* FedaPay */}
+            {/* Choix : carte bancaire */}
             <button
               type="button"
-              onClick={() => setPayMethod('fedapay')}
-              className={`w-full flex items-center gap-4 p-5 border transition-all duration-200 text-left ${
-                payMethod === 'fedapay' ? 'border-green bg-green/10 shadow-sm' : 'border-charcoal/10 hover:border-charcoal/30 bg-white'
+              onClick={() => setGarantie('card')}
+              className={`w-full flex items-start gap-4 p-5 border transition-all duration-200 text-left ${
+                garantie === 'card' ? 'border-green bg-green/10 shadow-sm' : 'border-charcoal/10 hover:border-charcoal/30 bg-white'
               }`}
             >
-              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                payMethod === 'fedapay' ? 'border-green' : 'border-charcoal/20'
+              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                garantie === 'card' ? 'border-green' : 'border-charcoal/20'
               }`}>
-                {payMethod === 'fedapay' && <span className="w-2.5 h-2.5 rounded-full bg-green" />}
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-1">
-                  <Smartphone size={16} className="text-green shrink-0" />
-                  <span className="text-charcoal text-sm font-medium">Mobile Money (FedaPay)</span>
-                  <span className="ml-auto text-[10px] bg-green/20 text-green px-2 py-0.5 tracking-widest uppercase font-medium">
-                    {fr ? 'Recommandé' : 'Recommended'}
-                  </span>
-                </div>
-                <p className="text-charcoal/40 text-xs font-light pl-7">
-                  Flooz · T-Money · Moov Money — {fr ? 'Paiement instantané par téléphone' : 'Instant mobile payment'}
-                </p>
-              </div>
-            </button>
-
-            {/* Stripe */}
-            <button
-              type="button"
-              onClick={() => setPayMethod('stripe')}
-              className={`w-full flex items-center gap-4 p-5 border transition-all duration-200 text-left ${
-                payMethod === 'stripe' ? 'border-green bg-green/10 shadow-sm' : 'border-charcoal/10 hover:border-charcoal/30 bg-white'
-              }`}
-            >
-              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
-                payMethod === 'stripe' ? 'border-green' : 'border-charcoal/20'
-              }`}>
-                {payMethod === 'stripe' && <span className="w-2.5 h-2.5 rounded-full bg-green" />}
+                {garantie === 'card' && <span className="w-2.5 h-2.5 rounded-full bg-green" />}
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-1">
                   <CreditCard size={16} className="text-green shrink-0" />
                   <span className="text-charcoal text-sm font-medium">
-                    {fr ? 'Carte bancaire (Stripe)' : 'Credit / Debit card (Stripe)'}
+                    {fr ? "J'ai une carte bancaire" : 'I have a credit card'}
                   </span>
                 </div>
-                <p className="text-charcoal/40 text-xs font-light pl-7">Visa · Mastercard · American Express</p>
+                <p className="text-charcoal/40 text-xs font-light pl-7">
+                  Visa · Mastercard · American Express — {fr ? 'seuls les 4 derniers chiffres sont conservés' : 'only the last 4 digits are stored'}
+                </p>
               </div>
             </button>
+
+            {/* Formulaire carte — visible uniquement si option 'card' choisie */}
+            {garantie === 'card' && (
+              <div className="space-y-4 border border-charcoal/10 bg-white p-5">
+                <div>
+                  <label className="block text-charcoal/40 text-[10px] tracking-widest uppercase font-light mb-1.5">
+                    {fr ? 'Numéro de carte *' : 'Card number *'}
+                  </label>
+                  <input
+                    maxLength={19}
+                    value={carteNumero}
+                    onChange={e => {
+                      const raw = e.target.value.replace(/\D/g, '').slice(0, 16)
+                      setCarteNumero(raw.replace(/(.{4})/g, '$1 ').trim())
+                    }}
+                    placeholder="XXXX XXXX XXXX XXXX"
+                    inputMode="numeric"
+                    className="w-full bg-surface border border-charcoal/10 text-charcoal px-4 py-2.5 text-sm font-mono tracking-widest focus:outline-none focus:border-green transition-colors placeholder:text-charcoal/20"
+                  />
+                </div>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-charcoal/40 text-[10px] tracking-widest uppercase font-light mb-1.5">
+                      {fr ? 'Nom sur la carte *' : 'Cardholder name *'}
+                    </label>
+                    <input
+                      value={carteNom}
+                      onChange={e => setCarteNom(e.target.value.toUpperCase())}
+                      placeholder="NOM PRÉNOM"
+                      className="w-full bg-surface border border-charcoal/10 text-charcoal px-4 py-2.5 text-sm font-light focus:outline-none focus:border-green transition-colors placeholder:text-charcoal/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-charcoal/40 text-[10px] tracking-widest uppercase font-light mb-1.5">
+                      {fr ? 'Expiration *' : 'Expiry *'}
+                    </label>
+                    <input
+                      maxLength={7}
+                      value={carteExpiration}
+                      onChange={e => {
+                        let v = e.target.value.replace(/\D/g, '')
+                        if (v.length > 2) v = v.slice(0, 2) + '/' + v.slice(2, 6)
+                        setCarteExpiration(v)
+                      }}
+                      placeholder="MM/AAAA"
+                      inputMode="numeric"
+                      className="w-full bg-surface border border-charcoal/10 text-charcoal px-4 py-2.5 text-sm font-mono focus:outline-none focus:border-green transition-colors placeholder:text-charcoal/20"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Choix : pas de carte → contact direction */}
+            <button
+              type="button"
+              onClick={() => setGarantie('none')}
+              className={`w-full flex items-start gap-4 p-5 border transition-all duration-200 text-left ${
+                garantie === 'none' ? 'border-amber-400 bg-amber-50 shadow-sm' : 'border-charcoal/10 hover:border-charcoal/30 bg-white'
+              }`}
+            >
+              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                garantie === 'none' ? 'border-amber-500' : 'border-charcoal/20'
+              }`}>
+                {garantie === 'none' && <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />}
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-1">
+                  <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                  <span className="text-charcoal text-sm font-medium">
+                    {fr ? "Je n'ai pas de carte bancaire" : 'I have no credit card'}
+                  </span>
+                </div>
+                <p className="text-charcoal/40 text-xs font-light pl-7">
+                  {fr ? 'La direction sera contactée pour finaliser votre réservation' : 'Direction will be contacted to finalize your booking'}
+                </p>
+              </div>
+            </button>
+
+            {garantie === 'none' && (
+              <div className="border border-amber-200 bg-amber-50 p-5 space-y-2">
+                <p className="text-amber-800 text-sm font-semibold flex items-center gap-2">
+                  <AlertTriangle size={14} /> {fr ? 'Réservation non finalisable en ligne' : 'Booking cannot be finalized online'}
+                </p>
+                <p className="text-amber-700 text-xs font-light leading-relaxed">
+                  {fr
+                    ? "Contactez la direction de la Résidence Juweirat pour compléter votre réservation :"
+                    : 'Please contact Juweirat management to complete your booking:'}
+                </p>
+                <ul className="text-amber-800 text-xs font-medium space-y-1 pl-4">
+                  <li>📞 <a href="tel:+22870790889" className="underline">+228 70 79 08 89</a></li>
+                  <li>✉️ <a href="mailto:contact@juweirat.com" className="underline">contact@juweirat.com</a></li>
+                </ul>
+              </div>
+            )}
 
             <div className="flex items-start gap-3 p-4 bg-charcoal/5 border border-charcoal/10">
               <Lock size={14} className="text-green shrink-0 mt-0.5" />
               <p className="text-charcoal/50 text-xs font-light leading-relaxed">
                 {fr
-                  ? 'Vos données de réservation sont transmises de façon cryptée et sécurisée.'
-                  : 'Your booking details are transmitted via encrypted and secure connection.'}
+                  ? 'Vos données sont transmises de façon cryptée et sécurisée. Seuls les 4 derniers chiffres de votre carte sont conservés.'
+                  : 'Your data is transmitted securely. Only the last 4 digits of your card are stored.'}
               </p>
             </div>
 
@@ -451,24 +574,35 @@ export default function CategoryBookingForm({
               </span>
             </label>
 
+            {submitError && (
+              <div className="border border-red-200 bg-red-50 text-red-700 px-4 py-2 text-xs">{submitError}</div>
+            )}
+
             <div className="space-y-3">
               <button
                 type="button"
                 onClick={async () => {
                   setSubmitting(true)
+                  setSubmitError(null)
                   try {
                     const { submitBooking } = await import('@/lib/api')
-                    const ok = await submitBooking({
+                    const result = await submitBooking({
                       ...form,
                       categoryId: categoryId,
                       checkInDate: localCheckIn,
                       checkOutDate: localCheckOut,
                       adults: adults,
                       children: children,
-                      notes: form.notes
+                      notes: form.notes,
+                      carteNom: carteNom.trim(),
+                      carteNumero: carteNumero.replace(/\s/g, ''),
+                      carteExpiration: carteExpiration,
                     })
-                    if (ok) setStep(3)
-                    else alert(fr ? 'Erreur lors de la réservation. Veuillez réessayer.' : 'Booking error. Please try again.')
+                    if (result.ok) setStep(3)
+                    else setSubmitError(
+                      result.error ??
+                      (fr ? 'Erreur lors de la réservation. Veuillez réessayer.' : 'Booking error. Please try again.')
+                    )
                   } finally {
                     setSubmitting(false)
                   }
@@ -585,8 +719,8 @@ export default function CategoryBookingForm({
 
           <p className="text-charcoal/40 text-xs font-light text-center leading-relaxed">
             {fr
-              ? 'Des questions ? Contactez-nous au +228 90 00 00 00 ou par email à contact@juweirat.com'
-              : 'Questions? Contact us at +228 90 00 00 00 or by email at contact@juweirat.com'}
+              ? 'Des questions ? Contactez-nous au +228 70 79 08 89 ou par email à contact@juweirat.com'
+              : 'Questions? Contact us at +228 70 79 08 89 or by email at contact@juweirat.com'}
           </p>
         </div>
       </div>

@@ -23,7 +23,11 @@ public class PublicController(
     public record PublicBookingRequest(
         string FirstName, string LastName, string Email, string Phone, string Nationality,
         long CategoryId, DateOnly CheckInDate, DateOnly CheckOutDate, int Adults, int Children, string Notes,
-        long? RoomId = null
+        long? RoomId = null,
+        // Empreinte carte bancaire — obligatoire côté site (voir CategoryBookingForm).
+        string? CarteNom = null,
+        string? CarteNumero = null,     // brut, on ne garde que les 4 derniers en base
+        string? CarteExpiration = null  // "MM/AAAA"
     );
 
     [HttpPost("booking")]
@@ -67,6 +71,20 @@ public class PublicController(
             if (firstCat != null) categoryId = firstCat.Id;
         }
 
+        // Garde-fou : refuse si aucune chambre disponible dans cette catégorie
+        // pour les dates demandées (HS, résa existante, folio actif ou block).
+        var availability = await categorySvc.GetAvailabilityAsync(categoryId, req.CheckInDate, req.CheckOutDate, Math.Max(1, req.Adults));
+        if (availability is null || availability.Available <= 0)
+            return BadRequest(new { error = "Aucune chambre disponible pour cette catégorie sur les dates demandées." });
+
+        // Empreinte carte : on ne garde que les 4 derniers chiffres du numéro.
+        string? carteSuffix = null;
+        if (!string.IsNullOrWhiteSpace(req.CarteNumero))
+        {
+            var digits = new string(req.CarteNumero.Where(char.IsDigit).ToArray());
+            if (digits.Length >= 4) carteSuffix = digits[^4..];
+        }
+
         var createRes = new CreateReservationRequest(
             CategoryId: categoryId,
             RoomId: req.RoomId,
@@ -76,7 +94,11 @@ public class PublicController(
             Adults: req.Adults,
             Children: req.Children,
             Source: "website",
-            SpecialRequests: req.Notes
+            SpecialRequests: req.Notes,
+            GarantieType: !string.IsNullOrWhiteSpace(carteSuffix) ? "Carte" : null,
+            CarteNom: req.CarteNom?.Trim(),
+            CarteSuffix: carteSuffix,
+            CarteExpiration: req.CarteExpiration?.Trim()
         );
 
         var (res, err) = await reservationService.CreateAsync(createRes);

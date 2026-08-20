@@ -354,13 +354,15 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
 
         if (r is null) return (null, "Réservation introuvable");
 
-        // No Show ne peut être traité qu'après la clôture du jour d'arrivée
-        // (si arrivée = 18, on traite le 19 ou plus tard).
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        // No Show autorisé dès le jour d'arrivée (comparé à la date système du PMS,
+        // pas à la date réelle du serveur), pour permettre de traiter les arrivées
+        // manquées directement depuis la page Clôture avant de clôturer la journée.
+        var systemDate = (await db.HotelConfig.FirstOrDefaultAsync())?.DateHotel
+                         ?? DateOnly.FromDateTime(DateTime.UtcNow);
         if (r.Status is ReservationStatus.Cancelled or ReservationStatus.CheckedIn or ReservationStatus.CheckedOut)
             return (null, "Cette réservation ne peut plus être marquée No Show");
-        if (r.CheckInDate >= today)
-            return (null, "Le No Show ne peut être traité qu'après la clôture du jour d'arrivée");
+        if (r.CheckInDate > systemDate)
+            return (null, "Le No Show ne peut être traité qu'à partir du jour d'arrivée");
 
         var alreadyBilled = r.Payments.Any(p => p.Notes != null && p.Notes.StartsWith("Retenue No Show"));
         if (alreadyBilled) return (null, "Une retenue No Show a déjà été appliquée");

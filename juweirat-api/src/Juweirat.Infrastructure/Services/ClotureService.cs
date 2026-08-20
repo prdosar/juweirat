@@ -26,7 +26,7 @@ public class ClotureService(AppDbContext db)
                 !f.CheckedIn &&
                 f.ResaStatus != FolioStatus.Annulee &&
                 f.ResaStatus != FolioStatus.NoShow)
-            .Select(f => new FolioPendingItemDto(f.Id, f.Number, f.Guest, f.Unit.NameFr, f.Arrival))
+            .Select(f => new FolioPendingItemDto(f.Id, f.Number, f.Guest, f.Unit.NameFr, f.Arrival, f.ReservationId))
             .ToListAsync();
 
         var pendingDepartures = await db.Folios
@@ -35,7 +35,7 @@ public class ClotureService(AppDbContext db)
                 f.Departure == dateHotel &&
                 f.CheckedIn &&
                 !f.Closed)
-            .Select(f => new FolioPendingItemDto(f.Id, f.Number, f.Guest, f.Unit.NameFr, f.Departure))
+            .Select(f => new FolioPendingItemDto(f.Id, f.Number, f.Guest, f.Unit.NameFr, f.Departure, f.ReservationId))
             .ToListAsync();
 
         var activeCount = await db.Folios.CountAsync(f =>

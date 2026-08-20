@@ -8,7 +8,7 @@ public record CloturePreviewDto(
     bool CanClose
 );
 
-public record FolioPendingItemDto(long Id, string Number, string? Guest, string UnitLabel, DateOnly Date);
+public record FolioPendingItemDto(long Id, string Number, string? Guest, string UnitLabel, DateOnly Date, long? ReservationId);
 
 public record ClotureDto(
     long Id,

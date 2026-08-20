@@ -25,6 +25,21 @@ public class RoomCategoriesController(RoomCategoryService svc, IWebHostEnvironme
         return Ok(await svc.GetAvailableAsync(checkIn, checkOut, adults));
     }
 
+    // Compte le nombre de chambres réellement disponibles pour une catégorie
+    // sur les dates données (utilisé par le site public pour bloquer la saisie).
+    [HttpGet("{id:long}/availability")]
+    public async Task<IActionResult> GetAvailability(
+        long id,
+        [FromQuery] DateOnly checkIn,
+        [FromQuery] DateOnly checkOut,
+        [FromQuery] int adults = 1)
+    {
+        if (checkOut <= checkIn)
+            return BadRequest(new { error = "checkOut must be after checkIn" });
+        var dto = await svc.GetAvailabilityAsync(id, checkIn, checkOut, adults);
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
     [HttpGet("{id:long}")]
     public async Task<IActionResult> GetById(long id)
     {

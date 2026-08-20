@@ -69,6 +69,61 @@ public class RoomCategoryService(AppDbContext db)
     {
         await EnsureImagesSeededAsync();
 
+        var unavailable = await ComputeUnavailableRoomIdsAsync(checkIn, checkOut);
+
+        // Une chambre est "réellement dispo sur la période" si :
+        //   - elle n'est pas retirée du parc (Status = Inactive) ni hors service (HS)
+        //   - sa capacité couvre le nombre d'adultes
+        //   - aucune résa/folio/block ne la bloque sur la fenêtre demandée
+        // On NE filtre PAS sur Status = Available : Occupied/Maintenance sont des
+        // états instantanés qui n'empêchent pas une résa future — la disponibilité
+        // à une date donnée est déjà encapsulée dans ComputeUnavailableRoomIdsAsync.
+        var categories = await db.RoomCategories
+            .Include(c => c.Rooms)
+            .Include(c => c.Images)
+            .Where(c => c.Rooms.Any(r =>
+                r.Status != RoomStatus.Inactive &&
+                !r.HorsService &&
+                r.CapacityAdults >= adults &&
+                !unavailable.Contains(r.Id)))
+            .OrderBy(c => c.PmsGamme)
+            .ThenBy(c => c.PmsType)
+            .ToListAsync();
+
+        return categories.Select(ToDto).ToList();
+    }
+
+    // ── Availability count for a single category on given dates ────────────────
+    // Utilisé par le site public pour bloquer les réservations sur une catégorie
+    // dont toutes les chambres sont déjà prises (HS, résa, folio ou block manuel).
+    public record CategoryAvailabilityDto(long CategoryId, int Available, int Total);
+
+    public async Task<CategoryAvailabilityDto?> GetAvailabilityAsync(long categoryId, DateOnly checkIn, DateOnly checkOut, int adults)
+    {
+        var cat = await db.RoomCategories.Include(c => c.Rooms).FirstOrDefaultAsync(c => c.Id == categoryId);
+        if (cat is null) return null;
+
+        // Voir GetAvailableAsync : on ne filtre pas sur Status=Available, seulement
+        // les états permanents (Inactive, HS). La dispo à une date donnée est déjà
+        // gérée par ComputeUnavailableRoomIdsAsync.
+        var eligible = cat.Rooms.Where(r =>
+            r.Status != RoomStatus.Inactive &&
+            !r.HorsService &&
+            r.CapacityAdults >= adults);
+
+        var total = eligible.Count();
+        if (total == 0) return new CategoryAvailabilityDto(categoryId, 0, 0);
+
+        var unavailable = await ComputeUnavailableRoomIdsAsync(checkIn, checkOut);
+        var available   = eligible.Count(r => !unavailable.Contains(r.Id));
+        return new CategoryAvailabilityDto(categoryId, available, total);
+    }
+
+    // Ids des chambres bloquées sur la fenêtre [checkIn, checkOut) :
+    // toute résa (hors annulée/NoShow), tout folio actif (hors annulé/NoShow/clôturé)
+    // et tout block manuel qui chevauche la période.
+    private async Task<HashSet<long>> ComputeUnavailableRoomIdsAsync(DateOnly checkIn, DateOnly checkOut)
+    {
         var occupiedRoomIds = await db.Reservations
             .Where(r =>
                 r.Status != ReservationStatus.Cancelled &&
@@ -94,23 +149,7 @@ public class RoomCategoryService(AppDbContext db)
             .Select(f => f.UnitId)
             .ToListAsync();
 
-        var unavailable = occupiedRoomIds
-            .Union(blockedRoomIds)
-            .Union(folioOccupiedIds)
-            .ToHashSet();
-
-        var categories = await db.RoomCategories
-            .Include(c => c.Rooms)
-            .Include(c => c.Images)
-            .Where(c => c.Rooms.Any(r =>
-                r.Status == RoomStatus.Available &&
-                r.CapacityAdults >= adults &&
-                !unavailable.Contains(r.Id)))
-            .OrderBy(c => c.PmsGamme)
-            .ThenBy(c => c.PmsType)
-            .ToListAsync();
-
-        return categories.Select(ToDto).ToList();
+        return occupiedRoomIds.Union(blockedRoomIds).Union(folioOccupiedIds).ToHashSet();
     }
 
     public async Task<RoomCategoryDto?> GetByIdAsync(long id)

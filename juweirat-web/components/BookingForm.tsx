@@ -296,7 +296,7 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
                     required
                     value={form.phone}
                     onChange={e => set('phone', e.target.value)}
-                    placeholder="+228 90 00 00 00"
+                    placeholder="+228 70 79 08 89"
                     className="w-full bg-surface border border-charcoal/10 text-charcoal pl-9 pr-4 py-2.5 text-sm font-light
                                focus:outline-none focus:border-green transition-colors placeholder:text-charcoal/20"
                   />
@@ -593,8 +593,8 @@ export default function BookingForm({ room, lang, checkIn: initCheckIn, checkOut
           {/* Help */}
           <p className="text-charcoal/40 text-xs font-light text-center leading-relaxed">
             {fr
-              ? 'Besoin d\'aide ? Contactez-nous au +228 90 00 00 00 ou par WhatsApp'
-              : 'Need help? Contact us at +228 90 00 00 00 or via WhatsApp'}
+              ? 'Besoin d\'aide ? Contactez-nous au +228 70 79 08 89 ou par WhatsApp'
+              : 'Need help? Contact us at +228 70 79 08 89 or via WhatsApp'}
           </p>
         </div>
       </div>

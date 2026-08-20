@@ -338,6 +338,13 @@ export const ventesDirectes = {
     // Obligatoire seulement pour les prestations à prix flexible.
     prixUnitaire?: number;
   }) => request<import('./types').VenteDirecteDto>('/api/ventes-directes', { method: 'POST', body: JSON.stringify(body) }),
+  // Vente de plusieurs prestations en un seul appel — un encaissement caisse agrégé.
+  createBatch: (body: {
+    items: Array<{ prestationId: number; quantite: number; prixUnitaire?: number }>;
+    clientId?: number; clientNom?: string;
+    folioId?: number; mode?: string;
+    paymentMethod?: string; notes?: string;
+  }) => request<import('./types').VenteDirecteDto[]>('/api/ventes-directes/batch', { method: 'POST', body: JSON.stringify(body) }),
 };
 
 // ── Prestations Annexes ───────────────────────────────────────────────────────

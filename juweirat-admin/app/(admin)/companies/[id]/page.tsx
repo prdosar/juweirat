@@ -610,7 +610,7 @@ function AddClientToCompanyModal({
                   <input
                     value={form.phone}
                     onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                    placeholder="+228 90 00 00 00"
+                    placeholder="+228 70 79 08 89"
                     className={inputCls}
                   />
                 </div>

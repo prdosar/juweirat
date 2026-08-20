@@ -178,8 +178,8 @@ export default function CalixiaWidget({ lang }: Props) {
         {
           role: 'assistant',
           content: fr
-            ? 'Désolée, je rencontre une difficulté technique. Veuillez réessayer ou contactez-nous directement au +228 90 00 00 00.'
-            : "Sorry, I'm having a technical issue. Please try again or contact us at +228 90 00 00 00.",
+            ? 'Désolée, je rencontre une difficulté technique. Veuillez réessayer ou contactez-nous directement au +228 70 79 08 89.'
+            : "Sorry, I'm having a technical issue. Please try again or contact us at +228 70 79 08 89.",
         },
       ])
     } finally {

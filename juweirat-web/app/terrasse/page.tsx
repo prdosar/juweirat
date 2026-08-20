@@ -176,7 +176,7 @@ export default async function TerrassePage() {
               {fr ? 'Contacter l\'équipe' : 'Contact team'}
             </Link>
             <a
-              href="https://wa.me/22890000000"
+              href="https://wa.me/22870790889"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 px-8 py-3.5 bg-white border border-gray-200 text-charcoal text-xs tracking-widest uppercase font-bold rounded-xl

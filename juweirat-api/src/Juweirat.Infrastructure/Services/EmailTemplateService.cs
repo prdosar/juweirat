@@ -101,7 +101,7 @@ public static class EmailTemplateService
                 SCI JUWEIRAT — Résidence Hôtelière
               </p>
               <p style=""margin: 0 0 5px 0; font-size: 11px; color: {MutedColor};"">
-                Quartier GBOSSIME, 08BP: 80859 · Lomé, TOGO · Tél : (+228) 90 00 00 00
+                Quartier GBOSSIME, 08BP: 80859 · Lomé, TOGO · Tél : (+228) 70 79 08 89
               </p>
               <p style=""margin: 0; font-size: 10.5px; color: #8A8172;"">
                 Email : <a href=""mailto:contact@juweirat.com"" style=""color: {BrandGold}; text-decoration: none; font-weight: 600;"">contact@juweirat.com</a> · 
@@ -269,7 +269,7 @@ public static class EmailTemplateService
         </div>
 
         <p style=""margin: 0; font-size: 12px; color: {MutedColor}; line-height: 1.5;"">
-          Pour toute question ou demande particulière (transfert aéroport, petit-déjeuner), notre équipe reste à votre écoute par téléphone au <strong>(+228) 90 00 00 00</strong> ou par email à <a href=""mailto:contact@juweirat.com"" style=""color: {BrandGold}; text-decoration: none;"">contact@juweirat.com</a>.
+          Pour toute question ou demande particulière (transfert aéroport, petit-déjeuner), notre équipe reste à votre écoute par téléphone au <strong>(+228) 70 79 08 89</strong> ou par email à <a href=""mailto:contact@juweirat.com"" style=""color: {BrandGold}; text-decoration: none;"">contact@juweirat.com</a>.
         </p>";
 
         return WrapInLuxuryLayout(
@@ -349,7 +349,7 @@ public static class EmailTemplateService
           </p>
         </div>
         <p style=""margin: 0; font-size: 12px; color: {MutedColor};"">
-          En cas d'urgence, vous pouvez également nous joindre directement par téléphone au <strong>(+228) 90 00 00 00</strong>.
+          En cas d'urgence, vous pouvez également nous joindre directement par téléphone au <strong>(+228) 70 79 08 89</strong>.
         </p>";
 
         return WrapInLuxuryLayout(
@@ -445,7 +445,7 @@ public static class EmailTemplateService
         </div>
 
         <p style=""margin: 0; font-size: 12.5px; color: {MutedColor}; line-height: 1.5;"">
-          Pour toute information complémentaire, vous pouvez directement répondre à cet email ou nous joindre sur WhatsApp au <strong>+228 90 00 00 00</strong>.
+          Pour toute information complémentaire, vous pouvez directement répondre à cet email ou nous joindre sur WhatsApp au <strong>+228 70 79 08 89</strong>.
         </p>";
 
         return WrapInLuxuryLayout(
