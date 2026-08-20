@@ -4,6 +4,7 @@ class Endpoints {
 
   // Référentiels
   static const String roomCategories = '/api/room-categories';
+  static const String roomCategoriesAvailable = '/api/room-categories/available';
   static const String rooms = '/api/rooms';
   static const String amenities = '/api/amenities';
 
@@ -21,6 +22,7 @@ class Endpoints {
 
   // Ventes directes, prestations & messages
   static const String ventesDirectes = '/api/ventes-directes';
+  static const String ventesDirectesBatch = '/api/ventes-directes/batch';
   static const String prestations = '/api/prestations';
   static const String contactMessages = '/api/contactmessages';
 
