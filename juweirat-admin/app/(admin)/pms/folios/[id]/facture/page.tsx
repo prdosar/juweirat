@@ -317,7 +317,7 @@ function buildFactureHTML(
         <div style="font-weight:700;color:#1B4332;font-size:10px;">${
           config.buildingName
         } — Résidence Hôtelière</div>
-        <div>Tél : +228 90 00 00 00 · Email : contact@juweirat.com</div>
+        <div>Tél : +228 70 79 08 89 · Email : contact@juweirat.com</div>
         <div>Facture générée informatiquement, valable comme justificatif officiel de séjour et de règlement.</div>
       </div>
       <div style="text-align:center;border:1px dashed #C4BCAF;border-radius:4px;padding:4px 10px;background:#FAFAFA;width:130px;">
@@ -1133,7 +1133,7 @@ export default function FacturePrintPage() {
               >
                 {config.buildingName} — Résidence Hôtelière
               </div>
-              <div>Tél : +228 90 00 00 00 · Email : contact@juweirat.com</div>
+              <div>Tél : +228 70 79 08 89 · Email : contact@juweirat.com</div>
               <div>
                 Facture générée informatiquement, valable comme justificatif
                 officiel de séjour et de règlement.

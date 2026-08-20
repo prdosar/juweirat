@@ -357,7 +357,7 @@ export default function CategoryBookingForm({
                     required
                     value={form.phone}
                     onChange={e => set('phone', e.target.value)}
-                    placeholder="+228 90 00 00 00"
+                    placeholder="+228 70 79 08 89"
                     className="w-full bg-surface border border-charcoal/10 text-charcoal pl-9 pr-4 py-2.5 text-sm font-light focus:outline-none focus:border-green transition-colors placeholder:text-charcoal/20"
                   />
                 </div>
@@ -543,7 +543,7 @@ export default function CategoryBookingForm({
                     : 'Please contact Juweirat management to complete your booking:'}
                 </p>
                 <ul className="text-amber-800 text-xs font-medium space-y-1 pl-4">
-                  <li>📞 <a href="tel:+22890000000" className="underline">+228 90 00 00 00</a></li>
+                  <li>📞 <a href="tel:+22870790889" className="underline">+228 70 79 08 89</a></li>
                   <li>✉️ <a href="mailto:contact@juweirat.com" className="underline">contact@juweirat.com</a></li>
                 </ul>
               </div>
@@ -719,8 +719,8 @@ export default function CategoryBookingForm({
 
           <p className="text-charcoal/40 text-xs font-light text-center leading-relaxed">
             {fr
-              ? 'Des questions ? Contactez-nous au +228 90 00 00 00 ou par email à contact@juweirat.com'
-              : 'Questions? Contact us at +228 90 00 00 00 or by email at contact@juweirat.com'}
+              ? 'Des questions ? Contactez-nous au +228 70 79 08 89 ou par email à contact@juweirat.com'
+              : 'Questions? Contact us at +228 70 79 08 89 or by email at contact@juweirat.com'}
           </p>
         </div>
       </div>

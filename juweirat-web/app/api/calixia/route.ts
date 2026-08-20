@@ -52,7 +52,7 @@ Aider les clients à trouver l'appartement idéal et les orienter vers la réser
 - 18 appartements meublés haut de gamme répartis sur plusieurs niveaux
 - Étage 6 : appartements Prestige avec vue panoramique
 - Équipements communs : Wi-Fi, Parking sécurisé, Accès 24h/24
-- Contact : +228 90 00 00 00 | contact@juweirat.com
+- Contact : +228 70 79 08 89 | contact@juweirat.com
 
 ## INVENTAIRE DES APPARTEMENTS (${available} disponibles sur ${total})
 ${buildRoomSummary(rooms)}

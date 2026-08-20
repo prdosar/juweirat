@@ -218,8 +218,8 @@ export default async function CategoryPage({ params }: Props) {
               <div className="bg-white border border-gray-100 rounded-xl p-4 text-center text-xs text-gray-500 space-y-1 shadow-2xs">
                 <p className="font-semibold text-charcoal">{fr ? 'Besoin d\'assistance ?' : 'Need assistance?'}</p>
                 <p>{fr ? 'Contactez-nous sur WhatsApp au' : 'Contact us on WhatsApp at'}</p>
-                <a href="https://wa.me/22890000000" target="_blank" rel="noopener noreferrer" className="font-bold text-green hover:underline inline-block mt-0.5">
-                  +228 90 00 00 00
+                <a href="https://wa.me/22870790889" target="_blank" rel="noopener noreferrer" className="font-bold text-green hover:underline inline-block mt-0.5">
+                  +228 70 79 08 89
                 </a>
               </div>
             </div>
