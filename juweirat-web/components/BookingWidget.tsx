@@ -5,7 +5,7 @@ import { CalendarDays, Users, Baby, ArrowRight, TrendingDown } from 'lucide-reac
 import type { Room } from '@/lib/api'
 import type { Lang } from '@/lib/i18n'
 
-import { calcStayPrice, nightsBetween, formatFCFA } from '@/lib/pricing'
+import { calcStayPrice, nightsBetween, formatFCFA, formatFCFAHT } from '@/lib/pricing'
 
 interface Props {
   room: Room
@@ -154,7 +154,7 @@ export default function BookingWidget({ room, lang }: Props) {
             </p>
             <div className="flex justify-between text-sm">
               <span className="text-charcoal/50 font-light">
-                {formatFCFA(room.tarifNuit)} × {nights} {fr ? (nights > 1 ? 'nuits' : 'nuit') : (nights > 1 ? 'nights' : 'night')}
+                {formatFCFAHT(room.tarifNuit)} × {nights} {fr ? (nights > 1 ? 'nuits' : 'nuit') : (nights > 1 ? 'nights' : 'night')}
               </span>
               <span className="text-charcoal/70">{formatFCFA(sim.originalTotal)}</span>
             </div>
@@ -168,9 +168,18 @@ export default function BookingWidget({ room, lang }: Props) {
               </div>
             )}
             <div className="h-px bg-charcoal/10 my-2" />
+            <div className="flex justify-between text-xs">
+              <span className="text-charcoal/50 font-light">{fr ? 'Sous-total HT' : 'Sub-total excl. VAT'}</span>
+              <span className="text-charcoal/70">{formatFCFA(sim.total)}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-charcoal/50 font-light">{fr ? 'TVA 18 %' : 'VAT 18%'}</span>
+              <span className="text-charcoal/70">+ {formatFCFA(sim.totalTva)}</span>
+            </div>
+            <div className="h-px bg-charcoal/10 my-1" />
             <div className="flex justify-between items-baseline">
-              <span className="text-charcoal text-sm font-medium">{fr ? 'Total estimé' : 'Estimated total'}</span>
-              <span className="text-green text-lg font-semibold">{formatFCFA(sim.total)}</span>
+              <span className="text-charcoal text-sm font-medium">{fr ? 'Total TTC estimé' : 'Estimated total incl. VAT'}</span>
+              <span className="text-green text-lg font-semibold">{formatFCFA(sim.totalTtc)}</span>
             </div>
             <p className="text-charcoal/25 text-[10px] font-light">
               {fr ? '* Estimation — confirmée lors de la réservation' : '* Estimate — confirmed at booking'}

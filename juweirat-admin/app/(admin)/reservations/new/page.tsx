@@ -304,11 +304,11 @@ function NewReservationPageInner() {
 
   const discountNum = Math.max(0, Number(String(discount).replace(/[^\d]/g, '')) || 0);
   const depositNum  = Math.max(0, Number(String(deposit).replace(/[^\d]/g, '')) || 0);
-  const total       = Math.max(0, hebergement + extrasTotal - discountNum);
-  // Décomposition HT/TVA — mêmes règles que le backend AccountingService.PostSaleAsync
-  // (TTC → HT arrondi, TVA = reste). Si exonération : HT = TTC, TVA = 0.
-  const ht          = tvaExonere ? total : Math.round(total / 1.18);
-  const tva         = tvaExonere ? 0     : total - ht;
+  // Convention prix HT : les prix stockés (Rate, PrixSeule…) sont HT.
+  // La TVA 18% est AJOUTÉE, jamais déduite.
+  const ht          = Math.max(0, hebergement + extrasTotal - discountNum);
+  const tva         = tvaExonere ? 0 : Math.round(ht * 0.18);
+  const total       = ht + tva;
   const balance     = Math.max(0, total - depositNum);
 
   const summaryClientLabel = clientMode === 'new'
@@ -1251,7 +1251,7 @@ function NewReservationPageInner() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
               <Row label="Dates" value={checkIn && checkOut ? `${fmtDateShort(checkIn)} → ${fmtDateShort(checkOut)}` : '—'} />
               <Row label="Logement" value={summaryRoomLabel} />
-              <Row label="Hébergement" value={hebergement ? fcfa(hebergement) : '—'} />
+              <Row label="Hébergement HT" value={hebergement ? fcfa(hebergement) : '—'} />
               {tarifPreview && (
                 <div style={{
                   fontSize: 11, padding: '4px 8px', borderRadius: 8,
@@ -1261,37 +1261,36 @@ function NewReservationPageInner() {
                   display: 'flex', alignItems: 'center', gap: 6,
                 }}>
                   {tarifPreview.source === 'company'
-                    ? <>🏢 Tarif entreprise <b style={{ color: '#eaf3ff' }}>{tarifPreview.companyName}</b> · {fcfa(tarifPreview.pricePerNight)}/nuit</>
+                    ? <>🏢 Tarif entreprise <b style={{ color: '#eaf3ff' }}>{tarifPreview.companyName}</b> · {fcfa(tarifPreview.pricePerNight)}/nuit HT</>
                     : tarifPreview.source === 'category'
-                      ? <>Tarif catégorie standard · {fcfa(tarifPreview.pricePerNight)}/nuit</>
-                      : <>Tarif par défaut · {fcfa(tarifPreview.pricePerNight)}/nuit</>}
+                      ? <>Tarif catégorie standard · {fcfa(tarifPreview.pricePerNight)}/nuit HT</>
+                      : <>Tarif par défaut · {fcfa(tarifPreview.pricePerNight)}/nuit HT</>}
                 </div>
               )}
-              <Row label="Prestations" value={extrasTotal ? fcfa(extrasTotal) : '—'} />
+              <Row label="Prestations HT" value={extrasTotal ? fcfa(extrasTotal) : '—'} />
               <Row label="Remise" value={discountNum ? `− ${fcfa(discountNum)}` : '—'} />
             </div>
 
             <div style={{ height: 1, background: C.darkSep }} />
 
-            {/* Décomposition TVA — masquée quand pas de montant à afficher */}
+            {/* Décomposition HT / TVA / TTC — les prix stockés sont HT, la TVA
+                18 % est ajoutée par-dessus (exonérée si tvaExonere). */}
             {total > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
-                {tvaExonere ? (
-                  <Row label="TVA" value="Exonérée" />
-                ) : (
-                  <>
-                    <Row label="Montant HT"  value={fcfa(ht)} />
-                    <Row label="TVA (18 %)"  value={fcfa(tva)} />
-                  </>
-                )}
+                <Row label="Sous-total HT" value={fcfa(ht)} />
+                {tvaExonere
+                  ? <Row label="TVA" value="Exonérée" />
+                  : <Row label="TVA (18 %)" value={`+ ${fcfa(tva)}`} />}
               </div>
             )}
 
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-              <span style={{ fontSize: 12, color: C.darkLabel }}>
-                {tvaExonere ? 'Total' : 'Total TTC'}
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12,
+              paddingTop: 6, borderTop: `1px solid ${C.darkSep}`,
+            }}>
+              <span style={{ fontSize: 12, color: C.darkLabel, fontWeight: 700 }}>
+                {tvaExonere ? 'TOTAL' : 'TOTAL TTC'}
               </span>
-              <span style={{ fontSize: 20, fontWeight: 700 }}>{fcfa(total)}</span>
+              <span style={{ fontSize: 22, fontWeight: 800 }}>{fcfa(total)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 11, color: C.darkLabel }}>
               <span>Reste à payer</span>

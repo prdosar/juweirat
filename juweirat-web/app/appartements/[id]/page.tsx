@@ -151,21 +151,24 @@ export default async function RoomPage({ params }: Props) {
                 <div className="flex flex-wrap gap-x-6 gap-y-3">
                   <div>
                     <p className="text-charcoal/30 text-[10px] tracking-widest uppercase font-light mb-0.5">{t(lang, 'ap_per_night')}</p>
-                    <p className="text-green font-semibold text-base">{formatPrice(room.tarifNuit, lang)}</p>
+                    <p className="text-green font-semibold text-base">{formatPrice(room.tarifNuit, lang)} <span className="text-charcoal/40 text-xs">HT</span></p>
                   </div>
                   {room.tarifN15 > 0 && (
                     <div>
                       <p className="text-charcoal/30 text-[10px] tracking-widest uppercase font-light mb-0.5">{t(lang, 'ap_per_week')}</p>
-                      <p className="text-charcoal/60 text-sm">{formatPrice(room.tarifN15, lang)}</p>
+                      <p className="text-charcoal/60 text-sm">{formatPrice(room.tarifN15, lang)} <span className="text-charcoal/40 text-xs">HT</span></p>
                     </div>
                   )}
                   {room.tarifN30 > 0 && (
                     <div>
                       <p className="text-charcoal/30 text-[10px] tracking-widest uppercase font-light mb-0.5">{t(lang, 'ap_per_month')}</p>
-                      <p className="text-charcoal/60 text-sm">{formatPrice(room.tarifN30, lang)}</p>
+                      <p className="text-charcoal/60 text-sm">{formatPrice(room.tarifN30, lang)} <span className="text-charcoal/40 text-xs">HT</span></p>
                     </div>
                   )}
                 </div>
+                <p className="text-charcoal/40 text-[10px] italic mt-2">
+                  {lang === 'fr' ? 'TVA 18 % ajoutée à la réservation' : '18% VAT added at booking'}
+                </p>
               </div>
 
               {/* Booking widget or unavailable notice */}

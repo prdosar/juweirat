@@ -3,7 +3,7 @@ import { useState, useRef, useMemo, useEffect } from 'react'
 import { CheckCircle, User, Mail, Phone, Globe, CreditCard, Lock, ChevronRight, CalendarDays, Users, ScrollText, ArrowLeft, AlertTriangle } from 'lucide-react'
 import type { Lang } from '@/lib/i18n'
 
-import { calcStayPrice, nightsBetween, formatFCFA } from '@/lib/pricing'
+import { calcStayPrice, nightsBetween, formatFCFA, formatFCFAHT } from '@/lib/pricing'
 import { getCategoryAvailability, type CategoryAvailability } from '@/lib/api'
 
 interface Props {
@@ -165,9 +165,19 @@ export default function CategoryBookingForm({
               <span className="font-medium text-charcoal">{localNights} {fr ? (localNights > 1 ? 'nuits' : 'nuit') : (localNights > 1 ? 'nights' : 'night')}</span>
             </div>
           </div>
-          <div className="flex justify-between items-baseline pt-2 border-t border-charcoal/10">
-            <span className="text-charcoal text-sm font-medium">{fr ? 'Montant total :' : 'Total amount:'}</span>
-            <span className="text-green font-bold text-base">{formatFCFA(pricing.total)}</span>
+          <div className="pt-2 border-t border-charcoal/10 space-y-1">
+            <div className="flex justify-between text-xs">
+              <span className="text-charcoal/60 font-light">{fr ? 'Sous-total HT' : 'Sub-total excl. VAT'}</span>
+              <span className="text-charcoal font-medium">{formatFCFA(pricing.total)}</span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-charcoal/60 font-light">{fr ? 'TVA 18 %' : 'VAT 18%'}</span>
+              <span className="text-charcoal font-medium">+ {formatFCFA(pricing.totalTva)}</span>
+            </div>
+            <div className="flex justify-between items-baseline pt-1 border-t border-charcoal/10">
+              <span className="text-charcoal text-sm font-medium">{fr ? 'Total TTC :' : 'Total incl. VAT:'}</span>
+              <span className="text-green font-bold text-base">{formatFCFA(pricing.totalTtc)}</span>
+            </div>
           </div>
         </div>
 
@@ -275,7 +285,7 @@ export default function CategoryBookingForm({
                     {localNights} {fr ? (localNights > 1 ? 'nuits sélectionnées' : 'nuit sélectionnée') : (localNights > 1 ? 'nights selected' : 'night selected')}
                     {pricing.savings > 0 && <span className="text-green font-semibold ml-1.5">({pricing.rateLabel})</span>}
                   </span>
-                  <span className="text-green font-bold text-sm">{formatFCFA(pricing.total)}</span>
+                  <span className="text-green font-bold text-sm">{formatFCFAHT(pricing.total)}</span>
                 </div>
               ) : (
                 <p className="text-amber-700 text-xs bg-amber-50 p-2 border border-amber-200">
@@ -613,7 +623,7 @@ export default function CategoryBookingForm({
                 <Lock size={13} />
                 {submitting
                   ? (fr ? 'Traitement en cours…' : 'Processing…')
-                  : `${fr ? 'Confirmer la réservation' : 'Confirm booking'} — ${formatFCFA(pricing.total)}`}
+                  : `${fr ? 'Confirmer la réservation' : 'Confirm booking'} — ${formatFCFA(pricing.totalTtc)} ${fr ? 'TTC' : 'incl. VAT'}`}
               </button>
 
               <button
@@ -695,11 +705,12 @@ export default function CategoryBookingForm({
 
             <div className="h-px bg-charcoal/10" />
 
-            {/* Price breakdown */}
+            {/* Price breakdown — Convention prix HT : les tarifs stockés sont HT,
+                la TVA 18% est ajoutée par-dessus pour donner le TTC (net à payer). */}
             <div className="space-y-2.5">
               <div className="flex justify-between text-sm">
                 <span className="text-charcoal/60 font-light">
-                  {formatFCFA(tarifNuit)} × {localNights} {fr ? (localNights > 1 ? 'nuits' : 'nuit') : (localNights > 1 ? 'nights' : 'night')}
+                  {formatFCFAHT(tarifNuit)} × {localNights} {fr ? (localNights > 1 ? 'nuits' : 'nuit') : (localNights > 1 ? 'nights' : 'night')}
                 </span>
                 <span className="text-charcoal font-medium">{formatFCFA(pricing.originalTotal)}</span>
               </div>
@@ -710,9 +721,18 @@ export default function CategoryBookingForm({
                 </div>
               )}
               <div className="h-px bg-charcoal/10 my-1" />
+              <div className="flex justify-between text-xs">
+                <span className="text-charcoal/60 font-light">{fr ? 'Sous-total HT' : 'Sub-total excl. VAT'}</span>
+                <span className="text-charcoal font-medium">{formatFCFA(pricing.total)}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-charcoal/60 font-light">{fr ? 'TVA 18 %' : 'VAT 18%'}</span>
+                <span className="text-charcoal font-medium">+ {formatFCFA(pricing.totalTva)}</span>
+              </div>
+              <div className="h-px bg-charcoal/10 my-1" />
               <div className="flex justify-between items-baseline pt-1">
-                <span className="text-charcoal text-sm font-semibold">{fr ? 'Total séjour' : 'Total stay'}</span>
-                <span className="text-green text-2xl font-bold">{formatFCFA(pricing.total)}</span>
+                <span className="text-charcoal text-sm font-semibold">{fr ? 'Total TTC' : 'Total incl. VAT'}</span>
+                <span className="text-green text-2xl font-bold">{formatFCFA(pricing.totalTtc)}</span>
               </div>
             </div>
           </div>

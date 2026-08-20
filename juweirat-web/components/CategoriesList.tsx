@@ -183,7 +183,7 @@ export default function CategoriesList({ categories, lang }: Props) {
                       <span className="text-gray-400 text-xs">{fr ? 'À partir de' : 'From'}</span>
                       <div className="text-right">
                         <span className="text-green-dark font-black text-lg">{fmt(cat.tarifNuit)}</span>
-                        <span className="text-gray-400 text-xs ml-1">FCFA/n</span>
+                        <span className="text-gray-400 text-xs ml-1">FCFA HT/n</span>
                       </div>
                     </div>
                   </div>
