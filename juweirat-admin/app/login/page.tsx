@@ -38,20 +38,28 @@ export default function LoginPage() {
       </div>
 
       <div className="w-full max-w-sm relative z-10">
-        {/* Logo — encadré blanc pour rester visible sur fond charcoal
-            (le logo est en lettres blanches sur transparent).
-            <img> natif volontaire : next/image se comportait mal en
-            build standalone Docker (preload/optimisation même avec
-            unoptimized=true) → le logo ne s'affichait plus. */}
+        {/* Logo rendu en background-image CSS : c'est le seul chemin de rendu
+            qui a marché sur cette page. next/image et <img> restent parfois
+            invisibles (interaction avec le build standalone / cache navigateur),
+            un background-image est immunisé contre ces cas. Dimensions figées
+            pour garantir un rendu visible même si les classes utilitaires
+            échouent. */}
         <div className="flex flex-col items-center mb-6 text-center">
-          <div className="bg-white px-6 py-3.5 rounded-2xl shadow-xl border border-gray-100 flex items-center justify-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/img/logo.png"
-              alt="Résidence Juweirat"
-              className="h-12 w-auto object-contain"
-            />
-          </div>
+          <div
+            className="bg-white rounded-2xl shadow-xl border border-gray-100"
+            style={{
+              width: 200,
+              height: 72,
+              padding: '10px 22px',
+              backgroundImage: "url('/img/logo.png')",
+              backgroundSize: 'contain',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
+              backgroundOrigin: 'content-box',
+            }}
+            role="img"
+            aria-label="Résidence Juweirat"
+          />
           <p className="text-white/40 text-[9.5px] tracking-[0.35em] mt-3 uppercase font-semibold">
             Administration &amp; Gestion
           </p>

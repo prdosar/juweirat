@@ -44,20 +44,19 @@ public class ClotureService(AppDbContext db)
             await db.SaveChangesAsync();
         }
 
+        // Whitelist stricte : on n'affiche QUE les folios rattachés à une résa
+        // effectivement en attente d'arrivée (Pending ou Confirmed). Toute résa
+        // Cancelled, NoShow, CheckedIn ou CheckedOut est exclue, quel que soit
+        // l'état de folio.ResaStatus (qui peut avoir drift historiquement).
         var pendingArrivals = await db.Folios
             .Include(f => f.Unit)
+            .Include(f => f.Reservation)
             .Where(f =>
                 f.Arrival == dateHotel &&
                 !f.CheckedIn &&
-                f.ResaStatus != FolioStatus.Annulee &&
-                f.ResaStatus != FolioStatus.NoShow &&
-                // Garde-fou défensif : si folio.ResaStatus a drift, le vrai statut
-                // de la résa parente prime — un folio dont la résa est annulée ou
-                // no-show ne doit jamais apparaître dans la liste, même si son
-                // propre statut n'a pas été synchronisé.
-                (f.Reservation == null ||
-                 (f.Reservation.Status != ReservationStatus.Cancelled &&
-                  f.Reservation.Status != ReservationStatus.NoShow)))
+                f.Reservation != null &&
+                (f.Reservation.Status == ReservationStatus.Pending ||
+                 f.Reservation.Status == ReservationStatus.Confirmed))
             .Select(f => new FolioPendingItemDto(f.Id, f.Number, f.Guest, f.Unit.NameFr, f.Arrival, f.ReservationId))
             .ToListAsync();
 
@@ -99,17 +98,14 @@ public class ClotureService(AppDbContext db)
         if (await db.Clotures.AnyAsync(c => c.DateHotel == dateHotel))
             return (null, $"La date {dateHotel:yyyy-MM-dd} a déjà été clôturée");
 
-        // Block if pending arrivals/departures — mêmes garde-fous que le preview :
-        // on ignore les folios dont la résa parente est déjà Cancelled/NoShow,
-        // même si folio.ResaStatus n'a pas été synchronisé.
+        // Même whitelist stricte qu'en preview : seule une résa Pending/Confirmed
+        // peut bloquer la clôture. Le reste est ignoré.
         var pendingArrivals = await db.Folios.CountAsync(f =>
             f.Arrival == dateHotel &&
             !f.CheckedIn &&
-            f.ResaStatus != FolioStatus.Annulee &&
-            f.ResaStatus != FolioStatus.NoShow &&
-            (f.Reservation == null ||
-             (f.Reservation.Status != ReservationStatus.Cancelled &&
-              f.Reservation.Status != ReservationStatus.NoShow)));
+            f.Reservation != null &&
+            (f.Reservation.Status == ReservationStatus.Pending ||
+             f.Reservation.Status == ReservationStatus.Confirmed));
 
         if (pendingArrivals > 0)
             return (null, $"{pendingArrivals} arrivée(s) non traitée(s). Effectuez le check-in ou marquez en no-show avant de clôturer.");
