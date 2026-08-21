@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { auth } from '@/lib/api';
 import { saveAuth } from '@/lib/auth';
@@ -40,16 +39,17 @@ export default function LoginPage() {
 
       <div className="w-full max-w-sm relative z-10">
         {/* Logo — encadré blanc pour rester visible sur fond charcoal
-            (le logo est en lettres blanches sur transparent). */}
+            (le logo est en lettres blanches sur transparent).
+            <img> natif volontaire : next/image se comportait mal en
+            build standalone Docker (preload/optimisation même avec
+            unoptimized=true) → le logo ne s'affichait plus. */}
         <div className="flex flex-col items-center mb-6 text-center">
           <div className="bg-white px-6 py-3.5 rounded-2xl shadow-xl border border-gray-100 flex items-center justify-center">
-            <Image
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src="/img/logo.png"
               alt="Résidence Juweirat"
-              width={180}
-              height={70}
               className="h-12 w-auto object-contain"
-              priority
             />
           </div>
           <p className="text-white/40 text-[9.5px] tracking-[0.35em] mt-3 uppercase font-semibold">
