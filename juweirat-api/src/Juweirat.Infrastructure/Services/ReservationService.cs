@@ -205,7 +205,10 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             }
         }
 
-        var total = totalHeb + totalPrestations;
+        // Remise plafonnée au total (pas de total négatif). Stockée telle quelle,
+        // déduite au calcul du TotalPrice.
+        var discount = Math.Max(0, Math.Min(req.Discount, (int)Math.Round(totalHeb + totalPrestations)));
+        var total    = totalHeb + totalPrestations - discount;
 
         var reservation = new Reservation
         {
@@ -220,6 +223,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             Children              = req.Children,
             PricePerNightSnapshot = tarifResult.PerNight,
             TotalPrice            = total,
+            Discount              = discount,
             Currency              = req.Currency,
             Source                = req.Source,
             SpecialRequests       = req.SpecialRequests,
@@ -342,7 +346,37 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         return (ToDto(r), null);
     }
 
-    public async Task<(NoShowBillingResultDto? dto, string? error)> ProcessNoShowAsync(long id)
+    // Aperçu : calcule ce que sera la retenue No Show sans rien écrire.
+    // Utilisé par le popup admin pour afficher montant + mode paiement avant confirmation.
+    public async Task<(NoShowPreviewDto? dto, string? error)> PreviewNoShowAsync(long id)
+    {
+        var r = await db.Reservations
+            .Include(r => r.Client)
+            .Include(r => r.Payments)
+            .Include(r => r.Folio)
+            .FirstOrDefaultAsync(r => r.Id == id);
+        if (r is null) return (null, "Réservation introuvable");
+
+        var systemDate = (await db.HotelConfig.FirstOrDefaultAsync())?.DateHotel
+                         ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        if (r.Status is ReservationStatus.Cancelled or ReservationStatus.CheckedOut)
+            return (null, "Cette réservation ne peut plus être marquée No Show");
+        if (r.Folio is { CheckedIn: true, Closed: false })
+            return (null, "Le client est physiquement enregistré (folio en cours) — No Show impossible");
+        if (r.CheckInDate > systemDate)
+            return (null, "Le No Show ne peut être traité qu'à partir du jour d'arrivée");
+
+        var penaltyNights = r.Nights < 15 ? 1 : r.Nights < 30 ? 2 : 4;
+        var penaltyAmount = penaltyNights * r.PricePerNightSnapshot;
+        var alreadyBilled = r.Payments.Any(p => p.Notes != null && p.Notes.StartsWith("Retenue No Show"));
+
+        return (new NoShowPreviewDto(
+            r.Id, r.Reference, r.Client.FullName,
+            penaltyNights, penaltyAmount, r.Currency, alreadyBilled
+        ), null);
+    }
+
+    public async Task<(NoShowBillingResultDto? dto, string? error)> ProcessNoShowAsync(long id, string? paymentMethod = null)
     {
         var r = await db.Reservations
             .Include(r => r.Room)
@@ -350,6 +384,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             .Include(r => r.Client)
             .Include(r => r.Payments)
             .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
+            .Include(r => r.Folio)
             .FirstOrDefaultAsync(r => r.Id == id);
 
         if (r is null) return (null, "Réservation introuvable");
@@ -359,27 +394,57 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         // manquées directement depuis la page Clôture avant de clôturer la journée.
         var systemDate = (await db.HotelConfig.FirstOrDefaultAsync())?.DateHotel
                          ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        if (r.Status is ReservationStatus.Cancelled or ReservationStatus.CheckedIn or ReservationStatus.CheckedOut)
+        if (r.Status is ReservationStatus.Cancelled or ReservationStatus.CheckedOut)
             return (null, "Cette réservation ne peut plus être marquée No Show");
+        // Le folio est la source de vérité de la présence physique du client :
+        // si le check-in a réellement été effectué (folio.CheckedIn), refuser.
+        // Autrement, un statut résa CheckedIn (posé par erreur depuis la fiche résa
+        // sans que le client soit venu) ne doit pas bloquer le traitement No Show.
+        if (r.Folio is { CheckedIn: true, Closed: false })
+            return (null, "Le client est physiquement enregistré (folio en cours) — No Show impossible");
         if (r.CheckInDate > systemDate)
             return (null, "Le No Show ne peut être traité qu'à partir du jour d'arrivée");
 
-        var alreadyBilled = r.Payments.Any(p => p.Notes != null && p.Notes.StartsWith("Retenue No Show"));
-        if (alreadyBilled) return (null, "Une retenue No Show a déjà été appliquée");
+        var existingPenalty = r.Payments.FirstOrDefault(p => p.Notes != null && p.Notes.StartsWith("Retenue No Show"));
 
-        // Passage automatique en statut NoShow si nécessaire
+        // Passage automatique en statut NoShow si nécessaire (toujours, même
+        // quand la retenue est déjà appliquée — on répare le folio bloqué
+        // dans la liste de clôture).
         if (r.Status != ReservationStatus.NoShow)
             r.Status = ReservationStatus.NoShow;
+        if (r.Folio is not null && r.Folio.ResaStatus != FolioStatus.NoShow)
+            r.Folio.ResaStatus = FolioStatus.NoShow;
+
+        // Retenue déjà appliquée → on ne recrée PAS de Payment (évite doublon).
+        // On sauve juste les statuts corrigés et on renvoie succès avec le
+        // paiement existant, pour que le popup admin retire la ligne de la liste.
+        if (existingPenalty is not null)
+        {
+            await db.SaveChangesAsync();
+            var reloaded = await db.Reservations
+                .Include(r => r.Room).Include(r => r.Category).Include(r => r.Client)
+                .Include(r => r.Payments)
+                .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
+                .FirstAsync(r => r.Id == id);
+            var existingNights = r.Nights < 15 ? 1 : r.Nights < 30 ? 2 : 4;
+            return (new NoShowBillingResultDto(reloaded.Id, existingNights, existingPenalty.Amount, reloaded.Currency, ToDto(reloaded)), null);
+        }
 
         var penaltyNights = r.Nights < 15 ? 1 : r.Nights < 30 ? 2 : 4;
         var penaltyAmount = penaltyNights * r.PricePerNightSnapshot;
+
+        // Mode de paiement de la retenue : par défaut Cash, sinon celui fourni.
+        var method = PaymentMethod.Cash;
+        if (!string.IsNullOrWhiteSpace(paymentMethod)
+            && Enum.TryParse<PaymentMethod>(paymentMethod, true, out var parsedMethod))
+            method = parsedMethod;
 
         var penaltyPayment = new Payment
         {
             ReservationId = r.Id,
             Amount        = penaltyAmount,
             Currency      = r.Currency,
-            Method        = PaymentMethod.Cash,
+            Method        = method,
             Status        = PaymentStatus.Completed,
             PaidAt        = DateTime.UtcNow,
             Notes         = $"Retenue No Show — {penaltyNights} nuit{(penaltyNights > 1 ? "s" : "")}",
@@ -394,7 +459,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
                 clientId:          r.ClientId,
                 revenueKind:       AccountKind.RevenueNoShow,
                 revenueOwnerRefId: null,
-                amountTtc:         penaltyAmount,
+                amountHt:         penaltyAmount,
                 tvaExonere:        r.TvaExonere,
                 sourceType:        "Payment",
                 sourceId:          penaltyPayment.Id,
@@ -482,7 +547,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
                     clientId:          r.ClientId,
                     revenueKind:       AccountKind.RevenueCancellation,
                     revenueOwnerRefId: null,
-                    amountTtc:         penaltyAmount,
+                    amountHt:         penaltyAmount,
                     tvaExonere:        r.TvaExonere,
                     sourceType:        "Payment",
                     sourceId:          cancellationPayment.Id,
@@ -715,12 +780,18 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             }
         }
 
+        // Remise éditable — null = pas de changement, sinon plafonnée au brut.
+        var discountChanged = req.Discount.HasValue && req.Discount.Value != r.Discount;
+
         // ── Recalcul total et garde-fou paiement ──────────────────────────────
-        if (stayChanged || prestationsChanged)
+        if (stayChanged || prestationsChanged || discountChanged)
         {
             var totalHeb          = r.PricePerNightSnapshot * r.Nights;
             var totalPrestations  = r.Prestations.Sum(p => p.TotalLigne);
-            var newTotal          = totalHeb + totalPrestations;
+            var brut              = totalHeb + totalPrestations;
+            var discount          = req.Discount ?? r.Discount;
+            discount              = Math.Max(0, Math.Min(discount, (int)Math.Round(brut)));
+            var newTotal          = brut - discount;
 
             var amountPaid = r.Payments
                 .Where(p => p.Status == PaymentStatus.Completed)
@@ -733,6 +804,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
                     "Confirmez la modification pour créer un avoir client de la différence.");
             }
 
+            r.Discount   = discount;
             r.TotalPrice = newTotal;
         }
 
@@ -820,7 +892,8 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
     private static ReservationDto ToDto(Reservation r)
     {
         var totalPrestations = r.Prestations.Sum(p => p.TotalLigne);
-        var totalHeb         = r.TotalPrice - totalPrestations;
+        // TotalPrice inclut déjà la remise déduite → TotalHebergement = TotalPrice + Discount - Prestations
+        var totalHeb         = r.TotalPrice + r.Discount - totalPrestations;
 
         var prestationsDto = r.Prestations.Select(p => new ReservationPrestationDto(
             p.Id, p.PrestationId,
@@ -840,7 +913,8 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             r.ConfirmedAt, r.CancelledAt, r.CreatedAt,
             r.GarantieType, r.GarantieMontantCash, r.CarteNom, r.CarteSuffix, r.CarteExpiration,
             totalHeb, totalPrestations, prestationsDto,
-            r.TvaExonere
+            r.TvaExonere,
+            r.Discount
         );
     }
 }

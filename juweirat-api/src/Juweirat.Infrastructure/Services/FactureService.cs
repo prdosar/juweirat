@@ -81,13 +81,16 @@ public class FactureService(AppDbContext db, AccountingService accountingService
         try
         {
             var clientId = folio.Reservation?.ClientId;
-            if (clientId is not null && snapshot.Total > 0)
+            // On envoie le HT (snapshot.TotalHt) : PostSaleAsync ajoute la TVA
+            // sur le compte TvaCollected et le TTC sur le compte client.
+            var htToPost = snapshot.TotalHt ?? 0;
+            if (clientId is not null && htToPost > 0)
             {
                 await accountingService.PostSaleAsync(
                     clientId:          clientId,
                     revenueKind:       AccountKind.RevenueHebergement,
                     revenueOwnerRefId: null,
-                    amountTtc:         snapshot.Total,
+                    amountHt:          htToPost,
                     tvaExonere:        folio.TvaExonere,
                     sourceType:        "Facture",
                     sourceId:          facture.Id,
@@ -173,19 +176,11 @@ public class FactureService(AppDbContext db, AccountingService accountingService
         var totalDeb       = folio.Debiteur;
         var total          = totalHeb + totalPdj + totalDep + totalDeb;
 
-        // Décomposition HT/TVA/TTC — les prix stockés dans le folio sont TTC.
-        int totalTtc = total;
-        int totalHt, tva;
-        if (folio.TvaExonere)
-        {
-            totalHt = totalTtc;
-            tva     = 0;
-        }
-        else
-        {
-            totalHt = (int)Math.Round(totalTtc / (1m + TVA_RATE), 0);
-            tva     = totalTtc - totalHt;
-        }
+        // Décomposition HT/TVA/TTC — les prix stockés dans le folio (Rate, PdjPrix,
+        // Dépendances, Débiteur) sont HT ; la TVA est calculée en AJOUTANT le taux.
+        int totalHt  = total;
+        int tva      = folio.TvaExonere ? 0 : (int)Math.Round(totalHt * TVA_RATE, 0);
+        int totalTtc = totalHt + tva;
 
         var elecMention = folio.ElecIncluded ? "" : " (hors électricité)";
         var tierLabel   = folio.TarifTier switch

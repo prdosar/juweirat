@@ -135,11 +135,12 @@ function buildFooterLines(v: VenteDirecteDto): string[] {
 
 export function printVenteDirecte(vente: VenteDirecteDto): void {
   const exonere  = vente.tvaExonere === true;
-  const ttc      = vente.total;
-  const htTotal  = exonere ? ttc : Math.round(ttc / (1 + TVA_RATE));
-  const tva      = exonere ? 0   : ttc - htTotal;
+  // Convention prix HT : `vente.total` est déjà HT (net après remise).
+  // La TVA est calculée en AJOUTANT le taux.
+  const htTotal  = vente.total;
+  const tva      = exonere ? 0 : Math.round(htTotal * TVA_RATE);
+  const ttc      = htTotal + tva;
   const qty      = Math.max(1, vente.quantite);
-  // Prix unitaire HT dérivé du total HT — cohérent avec l'arrondi comptable.
   const htUnit   = Math.round(htTotal / qty);
 
   const lines: string[] = [
@@ -181,9 +182,10 @@ export function printVenteDirecteBatch(ventes: VenteDirecteDto[]): void {
   // Toutes les ventes du batch partagent le mode et le folio (créées ensemble).
   const first    = ventes[0];
   const exonere  = first.tvaExonere === true;
-  const ttcTotal = ventes.reduce((s, v) => s + v.total, 0);
-  const htTotal  = exonere ? ttcTotal : Math.round(ttcTotal / (1 + TVA_RATE));
-  const tva      = exonere ? 0        : ttcTotal - htTotal;
+  // Convention prix HT : chaque `v.total` est déjà HT (net après remise ligne).
+  const htTotal  = ventes.reduce((s, v) => s + v.total, 0);
+  const tva      = exonere ? 0 : Math.round(htTotal * TVA_RATE);
+  const ttcTotal = htTotal + tva;
 
   const lines: string[] = [
     pad('Résidence Meublée', W, true).trimEnd(),
@@ -199,12 +201,15 @@ export function printVenteDirecteBatch(ventes: VenteDirecteDto[]): void {
   ];
 
   for (const v of ventes) {
-    // Chaque ligne : nom, puis (HT unitaire × qté = HT total ligne).
+    // Chaque ligne : nom, puis (HT unitaire × qté = HT ligne). v.total est déjà HT.
     const qty        = Math.max(1, v.quantite);
-    const htLigne    = exonere ? v.total : Math.round(v.total / (1 + TVA_RATE));
+    const htLigne    = v.total;
     const htUnitaire = Math.round(htLigne / qty);
     lines.push(v.prestationNameFr);
     lines.push(line(`  ${htUnitaire.toLocaleString('fr')} F HT × ${v.quantite}`, `${htLigne.toLocaleString('fr')} F`));
+    if (v.remisePercent && v.remisePercent > 0) {
+      lines.push(line(`  remise ${v.remisePercent}%`, ''));
+    }
   }
   lines.push('');
   lines.push(sep('-'));

@@ -7,8 +7,20 @@ using FolioStatus = Juweirat.Domain.Enums.FolioResaStatus;
 
 namespace Juweirat.Infrastructure.Services;
 
-public class PmsService(AppDbContext db)
+public class PmsService(AppDbContext db, AccountingService accountingService)
 {
+    // Mappe le PayMode texte (ex. "Espèces", "Mobile Money (TMoney) [TX-9021]")
+    // vers l'enum PaymentMethod. Le libellé complet est conservé dans Notes.
+    private static PaymentMethod ParsePaymentMethod(string? payMode)
+    {
+        if (string.IsNullOrWhiteSpace(payMode)) return PaymentMethod.Cash;
+        var s = payMode.ToLowerInvariant();
+        if (s.Contains("mobile") || s.Contains("tmoney") || s.Contains("flooz")) return PaymentMethod.MobileMoney;
+        if (s.Contains("carte") || s.Contains("card"))                            return PaymentMethod.CreditCard;
+        if (s.Contains("virement") || s.Contains("transfer"))                    return PaymentMethod.BankTransfer;
+        return PaymentMethod.Cash; // Espèces, chèque et autres → Cash + libellé dans Notes
+    }
+
     // ── HotelConfig ──────────────────────────────────────────────────────────
 
     public async Task<HotelConfigDto?> GetConfigAsync()
@@ -167,7 +179,7 @@ public class PmsService(AppDbContext db)
 
     public async Task<Juweirat.Application.Common.Pagination.PagedResult<FolioDto>> GetPagedFoliosAsync(FolioFilterParams filter)
     {
-        var query = db.Folios.Include(f => f.Unit).AsQueryable();
+        var query = db.Folios.Include(f => f.Unit).Include(f => f.Reservation).AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {
@@ -238,7 +250,7 @@ public class PmsService(AppDbContext db)
 
     public async Task<List<FolioDto>> GetFoliosAsync(bool? closed = null, long? unitId = null, string? resaStatus = null)
     {
-        var query = db.Folios.Include(f => f.Unit).AsQueryable();
+        var query = db.Folios.Include(f => f.Unit).Include(f => f.Reservation).AsQueryable();
 
         if (closed.HasValue)    query = query.Where(f => f.Closed == closed.Value);
         if (unitId.HasValue)    query = query.Where(f => f.UnitId == unitId.Value);
@@ -251,7 +263,10 @@ public class PmsService(AppDbContext db)
 
     public async Task<FolioDto?> GetFolioByIdAsync(long id)
     {
-        var folio = await db.Folios.Include(f => f.Unit).FirstOrDefaultAsync(f => f.Id == id);
+        var folio = await db.Folios
+            .Include(f => f.Unit)
+            .Include(f => f.Reservation)
+            .FirstOrDefaultAsync(f => f.Id == id);
         return folio is null ? null : ToFolioDto(folio);
     }
 
@@ -279,23 +294,25 @@ public class PmsService(AppDbContext db)
         var nights = folio.Departure.DayNumber - folio.Arrival.DayNumber;
 
         return new ContractDataDto(
-            PrenomNom:     prenomNom,
-            Nationalite:   client?.Nationality,
-            PieceIdentite: pieceId,
-            Adresse:       string.IsNullOrEmpty(adresse) ? null : adresse,
-            Societe:       folio.Societe,
-            AptNo:         folio.Unit.PmsRoomNo ?? folio.Unit.RoomNumber,
-            Floor:         folio.Unit.Floor,
-            PmsType:       folio.Unit.PmsType,
-            Arrival:       folio.Arrival.ToString("yyyy-MM-dd"),
-            Departure:     folio.Departure.ToString("yyyy-MM-dd"),
-            Nights:        nights,
-            Rate:          folio.Rate,
-            MonthlyLoyer:  folio.Rate * 30,
-            ElecIncluded:  folio.ElecIncluded,
-            TarifTier:     folio.TarifTier.ToString(),
-            FolioNumber:   folio.Number,
-            Today:         DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd")
+            PrenomNom:            prenomNom,
+            Nationalite:          client?.Nationality,
+            PieceIdentite:        pieceId,
+            Adresse:              string.IsNullOrEmpty(adresse) ? null : adresse,
+            Societe:              folio.Societe,
+            AptNo:                folio.Unit.PmsRoomNo ?? folio.Unit.RoomNumber,
+            Floor:                folio.Unit.Floor,
+            PmsType:              folio.Unit.PmsType,
+            Arrival:              folio.Arrival.ToString("yyyy-MM-dd"),
+            Departure:            folio.Departure.ToString("yyyy-MM-dd"),
+            Nights:               nights,
+            Rate:                 folio.Rate,
+            MonthlyLoyer:         folio.Rate * 30,
+            ElecIncluded:         folio.ElecIncluded,
+            TarifTier:            folio.TarifTier.ToString(),
+            FolioNumber:          folio.Number,
+            Today:                DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd"),
+            Discount:             folio.Reservation?.Discount ?? 0,
+            ReservationReference: folio.Reservation?.Reference
         );
     }
 
@@ -367,7 +384,10 @@ public class PmsService(AppDbContext db)
         db.Folios.Add(folio);
         await db.SaveChangesAsync();
 
-        var created = await db.Folios.Include(f => f.Unit).FirstAsync(f => f.Id == folio.Id);
+        var created = await db.Folios
+            .Include(f => f.Unit)
+            .Include(f => f.Reservation)
+            .FirstAsync(f => f.Id == folio.Id);
         return (ToFolioDto(created), null);
     }
 
@@ -375,6 +395,7 @@ public class PmsService(AppDbContext db)
     {
         var folio = await db.Folios
             .Include(f => f.Unit).ThenInclude(u => u!.Category)
+            .Include(f => f.Reservation)
             .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (folio.Closed) return (null, "Folio is closed");
@@ -432,7 +453,10 @@ public class PmsService(AppDbContext db)
 
     public async Task<(FolioDto? dto, string? error)> CheckInAsync(long id)
     {
-        var folio = await db.Folios.Include(f => f.Unit).FirstOrDefaultAsync(f => f.Id == id);
+        var folio = await db.Folios
+            .Include(f => f.Unit)
+            .Include(f => f.Reservation)
+            .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (folio.CheckedIn) return (null, "Already checked in");
         if (folio.Closed)    return (null, "Folio is closed");
@@ -451,7 +475,10 @@ public class PmsService(AppDbContext db)
 
     public async Task<(FolioDto? dto, string? error)> CheckOutAsync(long id)
     {
-        var folio = await db.Folios.Include(f => f.Unit).FirstOrDefaultAsync(f => f.Id == id);
+        var folio = await db.Folios
+            .Include(f => f.Unit)
+            .Include(f => f.Reservation)
+            .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (!folio.CheckedIn) return (null, "Not checked in");
         if (folio.Closed)     return (null, "Folio already closed");
@@ -464,7 +491,10 @@ public class PmsService(AppDbContext db)
 
         folio.Closed       = true;
         folio.CheckoutDate = DateOnly.FromDateTime(DateTime.UtcNow);
-        folio.Unit.StatutMenage = MenageStatus.Sale; // rule 4: checkout → sale
+        // Départ = chambre libérée (disponible pour ré-attribution) ET marquée sale
+        // (à nettoyer) en une même transaction — les deux états sont indissociables.
+        folio.Unit.Status       = RoomStatus.Available;
+        folio.Unit.StatutMenage = MenageStatus.Sale;
 
         await db.SaveChangesAsync();
         return (ToFolioDto(folio), null);
@@ -474,7 +504,10 @@ public class PmsService(AppDbContext db)
 
     public async Task<(FolioDto? dto, string? error)> EncaisserAsync(long id, EncaisserRequest req)
     {
-        var folio = await db.Folios.Include(f => f.Unit).FirstOrDefaultAsync(f => f.Id == id);
+        var folio = await db.Folios
+            .Include(f => f.Unit)
+            .Include(f => f.Reservation)
+            .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (folio.Closed) return (null, "Folio is closed");
 
@@ -488,7 +521,43 @@ public class PmsService(AppDbContext db)
 
         if (req.PayMode is not null) folio.PayMode = req.PayMode;
 
+        // Trace paiement dans la fiche client (Payments de la résa liée) — le folio
+        // walk-in sans résa n'a pas de fiche client donc pas de ligne Payment ici.
+        Payment? paymentEntity = null;
+        if (folio.ReservationId is not null)
+        {
+            paymentEntity = new Payment
+            {
+                ReservationId = folio.ReservationId.Value,
+                Amount        = req.Montant,
+                Currency      = "XOF",
+                Method        = ParsePaymentMethod(req.PayMode),
+                Status        = PaymentStatus.Completed,
+                PaidAt        = DateTime.UtcNow,
+                Notes         = $"Encaissement folio {folio.Number}" + (req.PayMode is not null ? $" · {req.PayMode}" : ""),
+            };
+            db.Payments.Add(paymentEntity);
+        }
+
         await db.SaveChangesAsync();
+
+        // Journal comptable — encaissement caisse depuis compte client.
+        // Fire-and-forget non bloquant.
+        try
+        {
+            var clientId = folio.Reservation?.ClientId;
+            if (clientId is not null && req.Montant > 0)
+            {
+                await accountingService.PostEncaissementAsync(
+                    clientId:   clientId,
+                    amount:     req.Montant,
+                    sourceType: paymentEntity is not null ? "Payment" : "Folio",
+                    sourceId:   paymentEntity?.Id ?? folio.Id,
+                    label:      $"Encaissement folio {folio.Number} · {req.PayMode ?? "Espèces"}");
+            }
+        }
+        catch { /* silent */ }
+
         return (ToFolioDto(folio), null);
     }
 
@@ -496,12 +565,20 @@ public class PmsService(AppDbContext db)
 
     public async Task<(FolioDto? dto, string? error)> TransferDebiteurAsync(long id, TransfertDebiteurRequest req)
     {
-        var folio = await db.Folios.Include(f => f.Unit).FirstOrDefaultAsync(f => f.Id == id);
+        var folio = await db.Folios
+            .Include(f => f.Unit)
+            .Include(f => f.Reservation)
+            .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (folio.Closed) return (null, "Folio is closed");
 
         var (_, _, solde) = ComputeFinancials(folio);
         if (solde <= 0) return (null, "No outstanding balance to transfer");
+
+        // Montant à transférer : plafonné au solde ; défaut = tout le solde.
+        var montant = req.Montant.HasValue && req.Montant.Value > 0
+            ? Math.Min(req.Montant.Value, solde)
+            : solde;
 
         db.Debtors.Add(new Debtor
         {
@@ -509,12 +586,13 @@ public class PmsService(AppDbContext db)
             Client  = folio.Guest ?? BuildGuest(folio.Prenom, folio.Nom),
             Label   = req.Label ?? $"Solde folio {folio.Number} — {folio.Unit.RoomNumber}",
             DueDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(30)),
-            Amount  = solde,
+            Amount  = montant,
             Paid    = 0,
         });
 
-        // Settle folio by counting transferred amount as paid
-        folio.Paid += solde;
+        // Compte le montant transféré comme payé pour ne pas laisser le folio en dette
+        // (la créance vit désormais côté Debtor).
+        folio.Paid += montant;
 
         await db.SaveChangesAsync();
         return (ToFolioDto(folio), null);
@@ -528,7 +606,8 @@ public class PmsService(AppDbContext db)
         var nights          = f.Departure.DayNumber - f.Arrival.DayNumber;
         var totalHeb        = TarifEngine.ComputeHeb(f.Rate, f.Heb, nights);
         var totalPdj        = f.PdjParJour * f.PdjPrix * nights;
-        var solde           = TarifEngine.ComputeSolde(totalHeb, totalPdj, f.Debiteur, f.Dependances, f.Paid, f.Arrhes);
+        // Solde en TTC : client paie TTC, prix stockés HT → ComputeSolde ajoute la TVA.
+        var solde           = TarifEngine.ComputeSolde(totalHeb, totalPdj, f.Debiteur, f.Dependances, f.Paid, f.Arrhes, f.TvaExonere);
         return (totalHeb, totalPdj, solde);
     }
 
@@ -577,8 +656,11 @@ public class PmsService(AppDbContext db)
         var totalPdj        = f.PdjParJour * f.PdjPrix * nights;
         var totalDebiteur   = f.Debiteur;
         var totalDependances = f.Dependances;
+        // TotalGeneral = HT (les composants sont HT). Le TTC est calculé côté client.
         var totalGeneral    = totalHeb + totalPdj + totalDebiteur + totalDependances;
-        var solde           = TarifEngine.ComputeSolde(totalHeb, totalPdj, totalDebiteur, totalDependances, f.Paid, f.Arrhes);
+        var solde           = TarifEngine.ComputeSolde(totalHeb, totalPdj, totalDebiteur, totalDependances, f.Paid, f.Arrhes, f.TvaExonere);
+        var tva             = f.TvaExonere ? 0 : (int)Math.Round(totalGeneral * TarifEngine.TVA_RATE);
+        var totalTtc        = totalGeneral + tva;
 
         return new FolioDto(
             f.Id, f.Number,
@@ -591,9 +673,10 @@ public class PmsService(AppDbContext db)
             f.PdjParJour, f.PdjPrix, f.Debiteur, f.Dependances,
             f.Arrhes, f.Paid, f.PayMode, f.FactRecipient,
             f.ResaStatus.ToString(), f.CheckedIn, f.Closed, f.CheckoutDate, f.Note,
-            f.ReservationId, f.FactureId,
+            f.ReservationId, f.Reservation?.Reference, f.FactureId,
             f.CreatedAt, f.UpdatedAt,
-            totalHeb, totalPdj, totalDebiteur, totalDependances, totalGeneral, solde
+            totalHeb, totalPdj, totalDebiteur, totalDependances, totalGeneral, solde,
+            f.TvaExonere, tva, totalTtc
         );
     }
 }

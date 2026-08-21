@@ -17,6 +17,18 @@ public static class TarifEngine
     public static int ComputeHeb(int rate, int heb, int nights)
         => heb > 0 ? heb : rate * nights;
 
-    public static int ComputeSolde(int totalHeb, int totalPdj, int totalDebiteur, int totalDependances, int paid, int arrhes)
-        => Math.Max(0, totalHeb + totalPdj + totalDebiteur + totalDependances - paid - arrhes);
+    // Taux TVA appliqué à l'hôtellerie au Togo.
+    public const decimal TVA_RATE = 0.18m;
+
+    // Solde à régler par le client (TTC). Convention : les montants passés
+    // (totalHeb, totalPdj, totalDebiteur, totalDependances) sont HT.
+    // paid et arrhes sont l'argent reçu du client (TTC).
+    // Retourne : max(0, TTC_total - paid - arrhes).
+    public static int ComputeSolde(int totalHeb, int totalPdj, int totalDebiteur, int totalDependances, int paid, int arrhes, bool tvaExonere = false)
+    {
+        var totalHt  = totalHeb + totalPdj + totalDebiteur + totalDependances;
+        var tva      = tvaExonere ? 0 : (int)Math.Round(totalHt * TVA_RATE);
+        var totalTtc = totalHt + tva;
+        return Math.Max(0, totalTtc - paid - arrhes);
+    }
 }

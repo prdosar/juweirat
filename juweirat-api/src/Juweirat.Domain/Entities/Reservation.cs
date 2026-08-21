@@ -16,6 +16,9 @@ public class Reservation
     public int Children { get; set; } = 0;
     public decimal PricePerNightSnapshot { get; set; }
     public decimal TotalPrice { get; set; }
+    // Remise appliquée à la résa en FCFA — déduite de TotalPrice. 0 par défaut.
+    // Visible sur le contrat de bail et l'estimatif comptable.
+    public int Discount { get; set; }
     public string Currency { get; set; } = "XOF";
     public ReservationStatus Status { get; set; } = ReservationStatus.Pending;
     public string? Source { get; set; } // website | phone | walkIn | bookingCom | airbnb

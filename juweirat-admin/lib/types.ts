@@ -324,6 +324,7 @@ export interface VenteDirecteDto {
   notes: string | null;
   createdAt: string;
   tvaExonere?: boolean;
+  remisePercent?: number;
 }
 
 export interface PrestationAnnexeDto {
@@ -408,6 +409,7 @@ export interface ReservationDto {
   totalPrestations: number;
   prestations: ReservationPrestationDto[];
   tvaExonere?: boolean;
+  discount?: number;
 }
 
 export interface PaymentDto {
@@ -431,6 +433,17 @@ export interface NoShowBillingResultDto {
   penaltyAmount: number;
   currency: string;
   reservation: ReservationDto;
+}
+
+// Aperçu No Show — pour le popup d'application manuelle.
+export interface NoShowPreviewDto {
+  reservationId: number;
+  reference: string;
+  guestName: string;
+  penaltyNights: number;
+  penaltyAmount: number;
+  currency: string;
+  alreadyBilled: boolean;
 }
 
 export interface CancellationBillingResultDto {

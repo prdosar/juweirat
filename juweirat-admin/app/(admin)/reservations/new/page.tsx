@@ -170,12 +170,17 @@ function NewReservationPageInner() {
   const [internalNotes, setInternalNotes] = useState('');
 
   // Step 5 — garantie & tarif
-  // 'Carte' : le client fournit une empreinte carte (obligatoire pour bloquer la résa).
-  // 'Aucune' : le client n'a pas de carte → alerte "contactez la direction" bloque la création.
-  const [garantieType, setGarantieType] = useState<'' | 'Carte' | 'Aucune'>('');
+  // Admin :
+  //   'Carte'   : empreinte carte bancaire (4 derniers chiffres conservés).
+  //   'Cash'    : dépôt en espèces — montant garanti saisi.
+  //   'Societe' : facturation garantie sur le compte société du client.
+  //               Uniquement disponible si le client est rattaché à une société.
+  // L'option "Pas de carte / contact direction" existe uniquement sur le site public.
+  const [garantieType, setGarantieType] = useState<'' | 'Carte' | 'Cash' | 'Societe'>('');
   const [carteNumero,     setCarteNumero]     = useState('');
   const [carteNom,        setCarteNom]        = useState('');
   const [carteExpiration, setCarteExpiration] = useState('');
+  const [cashMontant,     setCashMontant]     = useState('');
   const [source,   setSource]   = useState<string>(SOURCES[0]);
   const [currency, setCurrency] = useState<string>(CURRENCIES[0]);
   const [tvaExonere, setTvaExonere] = useState(false);
@@ -299,11 +304,11 @@ function NewReservationPageInner() {
 
   const discountNum = Math.max(0, Number(String(discount).replace(/[^\d]/g, '')) || 0);
   const depositNum  = Math.max(0, Number(String(deposit).replace(/[^\d]/g, '')) || 0);
-  const total       = Math.max(0, hebergement + extrasTotal - discountNum);
-  // Décomposition HT/TVA — mêmes règles que le backend AccountingService.PostSaleAsync
-  // (TTC → HT arrondi, TVA = reste). Si exonération : HT = TTC, TVA = 0.
-  const ht          = tvaExonere ? total : Math.round(total / 1.18);
-  const tva         = tvaExonere ? 0     : total - ht;
+  // Convention prix HT : les prix stockés (Rate, PrixSeule…) sont HT.
+  // La TVA 18% est AJOUTÉE, jamais déduite.
+  const ht          = Math.max(0, hebergement + extrasTotal - discountNum);
+  const tva         = tvaExonere ? 0 : Math.round(ht * 0.18);
+  const total       = ht + tva;
   const balance     = Math.max(0, total - depositNum);
 
   const summaryClientLabel = clientMode === 'new'
@@ -353,14 +358,18 @@ function NewReservationPageInner() {
       }
     }
     if (current === 4) {
-      if (!garantieType) return 'Choisissez un mode de garantie (carte bancaire ou aucune).';
-      if (garantieType === 'Aucune') {
-        return 'Sans empreinte carte, la réservation ne peut pas être créée depuis cet écran — contactez la direction pour la compléter manuellement.';
-      }
+      if (!garantieType) return 'Choisissez un mode de garantie (carte, cash ou société).';
       if (garantieType === 'Carte') {
         if (carteNumero.replace(/\s/g, '').length < 4) return 'Numéro de carte invalide.';
         if (!carteNom.trim())                          return 'Nom sur la carte requis.';
         if (!/^\d{2}\/\d{4}$/.test(carteExpiration))   return 'Date d\'expiration invalide (MM/AAAA).';
+      }
+      if (garantieType === 'Cash') {
+        const m = Number(String(cashMontant).replace(/[^\d]/g, '')) || 0;
+        if (m <= 0) return 'Saisissez le montant du dépôt en espèces.';
+      }
+      if (garantieType === 'Societe' && !selectedClient?.companyId) {
+        return 'La garantie société n\'est disponible que si le client est rattaché à une entreprise.';
       }
     }
     return '';
@@ -436,6 +445,9 @@ function NewReservationPageInner() {
       }
 
       const carteSuffix = garantieType === 'Carte' ? carteNumero.replace(/\s/g, '').slice(-4) : null;
+      const cashMontantNum = garantieType === 'Cash'
+        ? (Number(String(cashMontant).replace(/[^\d]/g, '')) || 0)
+        : null;
       const prestationsPayload = [...selectedPrestations.keys()].map(pid => {
         const p = prestationList.find(x => x.id === pid)!;
         return {
@@ -459,11 +471,13 @@ function NewReservationPageInner() {
         specialRequests:     null,
         internalNotes:       internalNotes || null,
         garantieType:        garantieType || null,
+        garantieMontantCash: cashMontantNum,
         carteNom:            garantieType === 'Carte' ? carteNom.trim() : null,
         carteSuffix,
         carteExpiration:     garantieType === 'Carte' ? carteExpiration : null,
         prestations:         prestationsPayload.length > 0 ? prestationsPayload : null,
         tvaExonere,
+        discount:            discountNum > 0 ? discountNum : 0,
       };
       const created = await reservations.create(body);
       router.push(`/reservations/${created.id}`);
@@ -1060,11 +1074,14 @@ function NewReservationPageInner() {
               </div>
 
               <span style={{ ...fieldLabel, display: 'block', marginBottom: 10 }}>Garantie de la réservation</span>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: selectedClient?.companyId ? '1fr 1fr 1fr' : '1fr 1fr', gap: 12 }}>
                 {[
-                  { id: 'Carte'  as const, name: 'Carte bancaire',   detail: 'Empreinte de garantie obligatoire' },
-                  { id: 'Aucune' as const, name: 'Pas de carte',     detail: 'Contact direction requis' },
-                ].map(g => {
+                  { id: 'Carte'   as const, name: 'Carte bancaire',   detail: 'Empreinte de garantie',                       show: true },
+                  { id: 'Cash'    as const, name: 'Dépôt cash',       detail: 'Espèces conservées en caisse',                show: true },
+                  { id: 'Societe' as const, name: 'Garantie société', detail: selectedClient?.companyName
+                                                                        ? `Facturée à ${selectedClient.companyName}`
+                                                                        : 'Client rattaché à une société',                    show: !!selectedClient?.companyId },
+                ].filter(g => g.show).map(g => {
                   const on = garantieType === g.id;
                   return (
                     <button
@@ -1085,19 +1102,6 @@ function NewReservationPageInner() {
                   );
                 })}
               </div>
-
-              {garantieType === 'Aucune' && (
-                <div style={{
-                  marginTop: 18, padding: '14px 16px',
-                  background: '#fff8e1', border: '1px solid #f5c882',
-                  borderRadius: 10, color: '#7a4f00', fontSize: 13, lineHeight: 1.55,
-                }}>
-                  <b>Réservation impossible depuis cet écran.</b><br />
-                  Le client doit fournir une empreinte carte pour bloquer la réservation.
-                  Sans carte, contactez la direction Juweirat pour compléter la saisie
-                  manuellement (téléphone + arrhes en caisse).
-                </div>
-              )}
 
               {garantieType === 'Carte' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 18 }}>
@@ -1123,6 +1127,35 @@ function NewReservationPageInner() {
                       }} placeholder="MM/AAAA" style={{ ...fieldInput, fontFamily: 'monospace' }} />
                     </label>
                   </div>
+                </div>
+              )}
+
+              {garantieType === 'Cash' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 18 }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    <span style={fieldLabel}>Montant garanti (FCFA) *</span>
+                    <input
+                      inputMode="numeric"
+                      value={cashMontant}
+                      onChange={e => setCashMontant(e.target.value.replace(/[^\d]/g, ''))}
+                      placeholder="ex. 50 000"
+                      style={{ ...fieldInput, fontFamily: 'monospace' }}
+                    />
+                    <span style={{ fontSize: 11, color: C.ink4 }}>
+                      Espèces conservées en caisse jusqu'au check-out. Restitué au départ après vérification de l'appartement.
+                    </span>
+                  </label>
+                </div>
+              )}
+
+              {garantieType === 'Societe' && selectedClient?.companyId && (
+                <div style={{
+                  marginTop: 18, padding: '14px 16px',
+                  background: '#eef6ff', border: '1px solid #bfdcff',
+                  borderRadius: 10, color: '#1e4d8f', fontSize: 13, lineHeight: 1.55,
+                }}>
+                  🏢 <b>{selectedClient.companyName}</b> se porte garante.<br />
+                  Le solde du séjour sera facturé au compte société. Aucun encaissement direct auprès du client n'est nécessaire.
                 </div>
               )}
 
@@ -1218,7 +1251,7 @@ function NewReservationPageInner() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
               <Row label="Dates" value={checkIn && checkOut ? `${fmtDateShort(checkIn)} → ${fmtDateShort(checkOut)}` : '—'} />
               <Row label="Logement" value={summaryRoomLabel} />
-              <Row label="Hébergement" value={hebergement ? fcfa(hebergement) : '—'} />
+              <Row label="Hébergement HT" value={hebergement ? fcfa(hebergement) : '—'} />
               {tarifPreview && (
                 <div style={{
                   fontSize: 11, padding: '4px 8px', borderRadius: 8,
@@ -1228,37 +1261,36 @@ function NewReservationPageInner() {
                   display: 'flex', alignItems: 'center', gap: 6,
                 }}>
                   {tarifPreview.source === 'company'
-                    ? <>🏢 Tarif entreprise <b style={{ color: '#eaf3ff' }}>{tarifPreview.companyName}</b> · {fcfa(tarifPreview.pricePerNight)}/nuit</>
+                    ? <>🏢 Tarif entreprise <b style={{ color: '#eaf3ff' }}>{tarifPreview.companyName}</b> · {fcfa(tarifPreview.pricePerNight)}/nuit HT</>
                     : tarifPreview.source === 'category'
-                      ? <>Tarif catégorie standard · {fcfa(tarifPreview.pricePerNight)}/nuit</>
-                      : <>Tarif par défaut · {fcfa(tarifPreview.pricePerNight)}/nuit</>}
+                      ? <>Tarif catégorie standard · {fcfa(tarifPreview.pricePerNight)}/nuit HT</>
+                      : <>Tarif par défaut · {fcfa(tarifPreview.pricePerNight)}/nuit HT</>}
                 </div>
               )}
-              <Row label="Prestations" value={extrasTotal ? fcfa(extrasTotal) : '—'} />
+              <Row label="Prestations HT" value={extrasTotal ? fcfa(extrasTotal) : '—'} />
               <Row label="Remise" value={discountNum ? `− ${fcfa(discountNum)}` : '—'} />
             </div>
 
             <div style={{ height: 1, background: C.darkSep }} />
 
-            {/* Décomposition TVA — masquée quand pas de montant à afficher */}
+            {/* Décomposition HT / TVA / TTC — les prix stockés sont HT, la TVA
+                18 % est ajoutée par-dessus (exonérée si tvaExonere). */}
             {total > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
-                {tvaExonere ? (
-                  <Row label="TVA" value="Exonérée" />
-                ) : (
-                  <>
-                    <Row label="Montant HT"  value={fcfa(ht)} />
-                    <Row label="TVA (18 %)"  value={fcfa(tva)} />
-                  </>
-                )}
+                <Row label="Sous-total HT" value={fcfa(ht)} />
+                {tvaExonere
+                  ? <Row label="TVA" value="Exonérée" />
+                  : <Row label="TVA (18 %)" value={`+ ${fcfa(tva)}`} />}
               </div>
             )}
 
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-              <span style={{ fontSize: 12, color: C.darkLabel }}>
-                {tvaExonere ? 'Total' : 'Total TTC'}
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12,
+              paddingTop: 6, borderTop: `1px solid ${C.darkSep}`,
+            }}>
+              <span style={{ fontSize: 12, color: C.darkLabel, fontWeight: 700 }}>
+                {tvaExonere ? 'TOTAL' : 'TOTAL TTC'}
               </span>
-              <span style={{ fontSize: 20, fontWeight: 700 }}>{fcfa(total)}</span>
+              <span style={{ fontSize: 22, fontWeight: 800 }}>{fcfa(total)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 11, color: C.darkLabel }}>
               <span>Reste à payer</span>

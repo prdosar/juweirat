@@ -43,7 +43,8 @@ public record ReservationDto(
     decimal TotalHebergement,
     decimal TotalPrestations,
     List<ReservationPrestationDto> Prestations,
-    bool TvaExonere = false
+    bool TvaExonere = false,
+    int Discount = 0
 );
 
 public record CreateReservationRequest(
@@ -64,7 +65,8 @@ public record CreateReservationRequest(
     string? CarteSuffix = null,
     string? CarteExpiration = null,
     List<PrestationLigneRequest>? Prestations = null,
-    bool TvaExonere = false
+    bool TvaExonere = false,
+    int Discount = 0
 );
 
 public record UpdateReservationStatusRequest(
@@ -87,6 +89,18 @@ public record NoShowBillingResultDto(
     decimal PenaltyAmount,
     string Currency,
     ReservationDto Reservation
+);
+
+// Aperçu sans effet de bord — utilisé pour afficher le montant de retenue
+// dans le popup avant que l'opérateur ne choisisse le mode de paiement.
+public record NoShowPreviewDto(
+    long ReservationId,
+    string Reference,
+    string GuestName,
+    int PenaltyNights,
+    decimal PenaltyAmount,
+    string Currency,
+    bool AlreadyBilled
 );
 
 public record CancellationBillingResultDto(
@@ -130,5 +144,7 @@ public record UpdateReservationRequest(
     // Confirmation explicite requise si le nouveau total est inférieur à AmountPaid.
     bool AcceptRefundImbalance    = false,
     // Exonération TVA (bool? = pas de modification si null).
-    bool? TvaExonere              = null
+    bool? TvaExonere              = null,
+    // Remise en FCFA — null pas de modification. 0 pour retirer la remise.
+    int? Discount                 = null
 );

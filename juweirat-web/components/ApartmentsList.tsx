@@ -397,7 +397,7 @@ export default function ApartmentsList({ rooms, lang }: Props) {
                         <div className="flex items-center justify-between">
                           <div className="flex items-baseline gap-1">
                             <span className="text-charcoal/40 text-xs">{fr ? 'à partir de' : 'from'}</span>
-                            <span className="text-green font-medium text-sm">{fmt(room.tarifNuit)} FCFA</span>
+                            <span className="text-green font-medium text-sm">{fmt(room.tarifNuit)} FCFA HT</span>
                             <span className="text-charcoal/30 text-xs">{fr ? '/ nuit' : '/ night'}</span>
                           </div>
                           <span className="text-charcoal/30 text-xs font-light">

@@ -149,6 +149,7 @@ function ContractDocument({ d }: { d: ContractDataDto }) {
         </p>
         <p className="text-[8.5pt] text-gray-500 font-sans tracking-wider uppercase">
           Réf. Folio : {d.folioNumber}
+          {d.reservationReference && <> · Réf. Réservation : {d.reservationReference}</>}
         </p>
       </div>
 
@@ -240,6 +241,11 @@ function ContractDocument({ d }: { d: ContractDataDto }) {
           <p>
             Le loyer est fixé, d’un commun accord entre les parties conformément à la loi de l’offre et de la demande, à la somme de <strong>{numberToWords(monthly)} ({fmt(monthly)}) francs CFA par mois</strong>, soit {numberToWords(quarterly)} ({fmt(quarterly)}) francs CFA par trimestre et {numberToWords(annual)} ({fmt(annual)}) francs CFA par an. <strong>Ce loyer s’entend hors TVA.</strong>
           </p>
+          {d.discount > 0 && (
+            <p className="mt-1.5">
+              Une <strong>remise commerciale</strong> de <strong>{numberToWords(d.discount)} ({fmt(d.discount)}) francs CFA</strong> a été consentie par le Bailleur au Preneur sur le montant total du présent bail, dans les conditions convenues entre les parties.
+            </p>
+          )}
           <p className="mt-1.5">
             Le loyer est <strong>payable trimestriellement et d’avance</strong>, au plus tard le premier jour de chaque trimestre, à raison de trois (03) mois de loyer par terme. Le premier terme est exigible à la prise d’effet du bail.
           </p>

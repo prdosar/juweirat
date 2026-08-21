@@ -100,16 +100,22 @@ public record FolioDto(
     DateOnly? CheckoutDate,
     string? Note,
     long? ReservationId,
+    string? ReservationReference,
     long? FactureId,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    // Computed financials
+    // Computed financials — TOTAUX EN HT, sauf Solde et TotalTtc qui sont TTC.
+    // Convention prix HT : Rate, PdjPrix, Debiteur, Dependances sont stockés HT ;
+    // la TVA est ajoutée à l'affichage/impression.
     int TotalHeb,
     int TotalPdj,
     int TotalDebiteur,
     int TotalDependances,
     int TotalGeneral,
-    int Solde
+    int Solde,
+    bool TvaExonere = false,
+    int Tva = 0,
+    int TotalTtc = 0
 );
 
 public record CreateFolioRequest(
@@ -164,7 +170,9 @@ public record UpdateFolioRequest(
 );
 
 public record EncaisserRequest([Required, Range(1, int.MaxValue)] int Montant, string? PayMode = null);
-public record TransfertDebiteurRequest(string? Label = null);
+// Montant : null ou 0 = transférer tout le solde restant (comportement historique).
+// Sinon, transfert partiel (le reliquat du solde reste dû sur le folio).
+public record TransfertDebiteurRequest(string? Label = null, int? Montant = null);
 
 public record ContractDataDto(
     // Preneur
@@ -188,5 +196,9 @@ public record ContractDataDto(
     string TarifTier,
     // Meta
     string FolioNumber,
-    string Today
+    string Today,
+    // Remise éventuelle appliquée à la résa liée — 0 si aucune remise.
+    int Discount = 0,
+    // Référence résa liée (JW-2026-XXXXX) pour affichage sur le contrat.
+    string? ReservationReference = null
 );

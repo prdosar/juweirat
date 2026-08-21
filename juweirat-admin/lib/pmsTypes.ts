@@ -67,6 +67,7 @@ export interface FolioDto {
   checkoutDate: string | null;
   note: string | null;
   reservationId: number | null;
+  reservationReference: string | null;
   factureId: number | null;
   createdAt: string;
   updatedAt: string;
@@ -74,8 +75,11 @@ export interface FolioDto {
   totalPdj: number;
   totalDebiteur: number;
   totalDependances: number;
-  totalGeneral: number;
-  solde: number;
+  totalGeneral: number;   // HT — les prix stockés (Rate, PdjPrix, etc.) sont HT.
+  solde: number;          // TTC (client paie TTC → dette TTC).
+  tvaExonere: boolean;
+  tva: number;
+  totalTtc: number;
 }
 
 export interface CloturePreviewDto {
@@ -219,23 +223,25 @@ export interface MaintenanceStaffDto {
 }
 
 export interface ContractDataDto {
-  prenomNom:     string | null;
-  nationalite:   string | null;
-  pieceIdentite: string | null;
-  adresse:       string | null;
-  societe:       string | null;
-  aptNo:         string | null;
-  floor:         number;
-  pmsType:       string | null;
-  arrival:       string;
-  departure:     string;
-  nights:        number;
-  rate:          number;
-  monthlyLoyer:  number;
-  elecIncluded:  boolean;
-  tarifTier:     string;
-  folioNumber:   string;
-  today:         string;
+  prenomNom:            string | null;
+  nationalite:          string | null;
+  pieceIdentite:        string | null;
+  adresse:              string | null;
+  societe:              string | null;
+  aptNo:                string | null;
+  floor:                number;
+  pmsType:              string | null;
+  arrival:              string;
+  departure:            string;
+  nights:               number;
+  rate:                 number;
+  monthlyLoyer:         number;
+  elecIncluded:         boolean;
+  tarifTier:            string;
+  folioNumber:          string;
+  today:                string;
+  discount:             number;
+  reservationReference: string | null;
 }
 
 export interface DebiteurDto {

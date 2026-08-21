@@ -6,7 +6,16 @@ import Header from '@/components/Header';
 import { pmsCloture, pmsConfig } from '@/lib/pms';
 import { reservations } from '@/lib/api';
 import type { CloturePreviewDto, ClotureDto, HotelConfigDto } from '@/lib/pmsTypes';
-import { CheckCircle, XCircle, AlertTriangle, Lock, UserX } from 'lucide-react';
+import type { NoShowPreviewDto } from '@/lib/types';
+import { CheckCircle, XCircle, AlertTriangle, Lock, UserX, Banknote, CreditCard, Smartphone, Building } from 'lucide-react';
+
+// Modes acceptés côté back — l'enum PaymentMethod côté C# se parse insensible à la casse.
+const NOSHOW_METHODS: Array<{ value: string; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = [
+  { value: 'Cash',         label: 'Espèces',                       icon: Banknote },
+  { value: 'MobileMoney',  label: 'Mobile Money (T-Money / Flooz)', icon: Smartphone },
+  { value: 'CreditCard',   label: 'Carte bancaire',                 icon: CreditCard },
+  { value: 'BankTransfer', label: 'Virement bancaire',              icon: Building },
+];
 
 export default function CloturePage() {
   const [config, setConfig]   = useState<HotelConfigDto | null>(null);
@@ -18,6 +27,11 @@ export default function CloturePage() {
   const [done, setDone]       = useState<ClotureDto | null>(null);
   // Id de la ligne No Show en cours de traitement (pour désactiver son bouton).
   const [noShowBusyId, setNoShowBusyId] = useState<number | null>(null);
+  // Popup No Show : preview chargée + méthode choisie.
+  const [noShowModal, setNoShowModal] = useState<{ preview: NoShowPreviewDto; folioId: number } | null>(null);
+  const [noShowMethod, setNoShowMethod] = useState<string>('Cash');
+  const [noShowError, setNoShowError]   = useState('');
+  const [noShowSubmitting, setNoShowSubmitting] = useState(false);
 
   const load = useCallback(async () => {
     const [cfg, pv, hist] = await Promise.all([
@@ -28,23 +42,35 @@ export default function CloturePage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Bascule une arrivée non traitée en No Show :
-  // - appelle /api/reservations/{id}/process-noshow (retenue + comptabilité + statut)
-  // - recharge le preview pour retirer la ligne
-  async function markNoShow(folioId: number, reservationId: number | null, guest: string | null) {
+  // 1re étape No Show : charge la preview (montant + nuits calculés côté back)
+  // et ouvre le popup pour laisser l'opérateur choisir le mode de paiement.
+  async function openNoShow(folioId: number, reservationId: number | null) {
     if (!reservationId) {
       setError("Ce folio n'a pas de réservation associée — no-show impossible.");
       return;
     }
-    const label = guest?.trim() || `folio ${folioId}`;
-    if (!confirm(`Marquer « ${label} » en No Show ? La retenue sera calculée et encaissée automatiquement.`)) return;
     setNoShowBusyId(folioId); setError('');
     try {
-      await reservations.processNoShow(reservationId);
+      const preview = await reservations.noShowPreview(reservationId);
+      setNoShowMethod('Cash');
+      setNoShowError('');
+      setNoShowModal({ preview, folioId });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Erreur pendant la préparation du No Show');
+    } finally { setNoShowBusyId(null); }
+  }
+
+  // 2e étape : confirmation dans le popup — applique la retenue avec le mode choisi.
+  async function confirmNoShow() {
+    if (!noShowModal) return;
+    setNoShowSubmitting(true); setNoShowError('');
+    try {
+      await reservations.processNoShow(noShowModal.preview.reservationId, noShowMethod);
+      setNoShowModal(null);
       await load();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Erreur pendant le traitement No Show');
-    } finally { setNoShowBusyId(null); }
+      setNoShowError(e instanceof Error ? e.message : 'Erreur pendant le traitement No Show');
+    } finally { setNoShowSubmitting(false); }
   }
 
   async function execute() {
@@ -116,13 +142,13 @@ export default function CloturePage() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => markNoShow(p.id, p.reservationId, p.guest)}
+                          onClick={() => openNoShow(p.id, p.reservationId)}
                           disabled={noShowBusyId === p.id || !p.reservationId}
                           title={!p.reservationId ? "Folio sans réservation associée" : "Marquer en No Show et appliquer la retenue"}
                           className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-white bg-amber-600 rounded-md hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                         >
                           <UserX size={12} />
-                          {noShowBusyId === p.id ? 'Traitement…' : 'Marquer No Show'}
+                          {noShowBusyId === p.id ? 'Chargement…' : 'Marquer No Show'}
                         </button>
                       </div>
                     ))}
@@ -194,6 +220,110 @@ export default function CloturePage() {
           </>
         )}
       </div>
+
+      {/* Popup No Show — montant calculé côté back + choix du mode de paiement */}
+      {noShowModal && (
+        <div
+          className="fixed inset-0 z-50 bg-charcoal/40 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => !noShowSubmitting && setNoShowModal(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                <UserX size={20} className="text-amber-700" />
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-charcoal">Retenue No Show</h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {noShowModal.preview.guestName} · <span className="font-mono">{noShowModal.preview.reference}</span>
+                </p>
+              </div>
+            </div>
+
+            {noShowModal.preview.alreadyBilled && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5 text-xs text-blue-800 space-y-1">
+                <p className="font-semibold">Retenue déjà appliquée sur cette réservation.</p>
+                <p className="text-blue-700 font-light">
+                  Aucun nouvel encaissement ne sera créé. Cliquez sur « Retirer de la liste » pour finaliser le statut No Show et libérer la clôture.
+                </p>
+              </div>
+            )}
+
+            <div className="bg-surface border border-gray-100 rounded-xl px-4 py-3.5 space-y-1">
+              <div className="flex justify-between items-baseline">
+                <span className="text-xs text-gray-500">Nuits retenues</span>
+                <span className="text-sm font-semibold text-charcoal">
+                  {noShowModal.preview.penaltyNights} nuit{noShowModal.preview.penaltyNights > 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="flex justify-between items-baseline pt-2 border-t border-gray-100">
+                <span className="text-xs text-gray-500 font-semibold uppercase tracking-wider">
+                  {noShowModal.preview.alreadyBilled ? 'Montant déjà encaissé' : 'Montant à retenir'}
+                </span>
+                <span className="text-2xl font-black text-amber-700">
+                  {noShowModal.preview.penaltyAmount.toLocaleString('fr')} <span className="text-xs font-bold">{noShowModal.preview.currency}</span>
+                </span>
+              </div>
+            </div>
+
+            {/* Sélecteur de mode masqué quand la retenue est déjà encaissée
+                — le popup sert alors juste à libérer la ligne bloquée. */}
+            {!noShowModal.preview.alreadyBilled && (
+              <div className="space-y-2">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Mode d'encaissement</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {NOSHOW_METHODS.map(({ value, label, icon: Icon }) => {
+                    const on = noShowMethod === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setNoShowMethod(value)}
+                        className={`flex items-center gap-2 p-3 rounded-lg border-2 text-xs font-semibold text-left transition-all ${
+                          on ? 'border-green bg-green/5 text-green-dark' : 'border-gray-100 text-gray-600 hover:border-gray-200'
+                        }`}
+                      >
+                        <Icon size={15} />
+                        <span className="truncate">{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {noShowError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">{noShowError}</div>
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setNoShowModal(null)}
+                disabled={noShowSubmitting}
+                className="flex-1 py-2.5 rounded-lg border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={confirmNoShow}
+                disabled={noShowSubmitting}
+                className="flex-1 py-2.5 rounded-lg bg-amber-600 text-white text-sm font-bold hover:bg-amber-700 disabled:opacity-50"
+              >
+                {noShowSubmitting
+                  ? 'Traitement…'
+                  : noShowModal.preview.alreadyBilled
+                    ? 'Retirer de la liste'
+                    : 'Appliquer la retenue'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

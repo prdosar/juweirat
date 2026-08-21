@@ -19,7 +19,10 @@ public record VenteDirecteDto(
     string? PaymentMethod,
     string? Notes,
     DateTime CreatedAt,
-    bool TvaExonere = false
+    bool TvaExonere = false,
+    // Pourcentage de remise appliqué (0..100). 0 = pas de remise.
+    // Le Total ci-dessus est APRÈS remise (net à payer HT).
+    decimal RemisePercent = 0
 );
 
 public record CreateVenteDirecteRequest(
@@ -60,5 +63,8 @@ public record BatchVenteRequest(
     long? FolioId = null,
     string Mode = "Encaissement",
     string? PaymentMethod = null,
-    string? Notes = null
+    string? Notes = null,
+    // Remise en % appliquée au total du panier (0..100). Répartie proportionnellement
+    // sur chaque ligne côté serveur pour conserver la comptabilité par prestation.
+    [Range(0, 100)] decimal RemisePercent = 0
 );

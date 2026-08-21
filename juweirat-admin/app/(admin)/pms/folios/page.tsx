@@ -241,6 +241,11 @@ export default function FoliosPage() {
                         >
                           <td className="px-5 py-3.5 font-mono text-xs font-bold text-charcoal">
                             {f.number}
+                            {f.reservationReference && (
+                              <div className="text-[10px] font-normal text-gray-400 mt-0.5">
+                                Résa {f.reservationReference}
+                              </div>
+                            )}
                           </td>
                           <td className="px-5 py-3.5">
                             <p className="font-semibold text-charcoal">{guestName}</p>

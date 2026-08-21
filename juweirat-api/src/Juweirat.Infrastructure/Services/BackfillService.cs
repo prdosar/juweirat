@@ -48,7 +48,7 @@ public class BackfillService(AppDbContext db, AccountingService accountingServic
             {
                 await accountingService.PostSaleAsync(
                     clientId: resa.ClientId, revenueKind: AccountKind.RevenueNoShow, revenueOwnerRefId: null,
-                    amountTtc: p.Amount, tvaExonere: resa.TvaExonere,
+                    amountHt: p.Amount, tvaExonere: resa.TvaExonere,
                     sourceType: "Payment", sourceId: p.Id,
                     label: $"[Backfill] Retenue No Show · résa {resa.Reference}");
                 await accountingService.PostEncaissementAsync(
@@ -61,7 +61,7 @@ public class BackfillService(AppDbContext db, AccountingService accountingServic
             {
                 await accountingService.PostSaleAsync(
                     clientId: resa.ClientId, revenueKind: AccountKind.RevenueCancellation, revenueOwnerRefId: null,
-                    amountTtc: p.Amount, tvaExonere: resa.TvaExonere,
+                    amountHt: p.Amount, tvaExonere: resa.TvaExonere,
                     sourceType: "Payment", sourceId: p.Id,
                     label: $"[Backfill] Retenue annulation · résa {resa.Reference}");
                 await accountingService.PostEncaissementAsync(
@@ -99,7 +99,7 @@ public class BackfillService(AppDbContext db, AccountingService accountingServic
                 clientId:          clientId,
                 revenueKind:       AccountKind.Prestation,
                 revenueOwnerRefId: v.PrestationId,
-                amountTtc:         v.Total,
+                amountHt:         v.Total,
                 tvaExonere:        v.TvaExonere,
                 sourceType:        "VenteDirecte",
                 sourceId:          v.Id,
@@ -137,7 +137,7 @@ public class BackfillService(AppDbContext db, AccountingService accountingServic
                 clientId:          clientId,
                 revenueKind:       AccountKind.RevenueHebergement,
                 revenueOwnerRefId: null,
-                amountTtc:         f.Snapshot.Total,
+                amountHt:         f.Snapshot.Total,
                 tvaExonere:        f.Folio?.TvaExonere ?? false,
                 sourceType:        "Facture",
                 sourceId:          f.Id,

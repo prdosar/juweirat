@@ -137,7 +137,7 @@ export default async function CategoryPage({ params }: Props) {
                       <Zap size={11} /> {fr ? 'Électricité incluse' : 'Electricity included'}
                     </p>
                   </div>
-                  <p className="text-green-dark font-black text-xl">{fmt(cat.tarifNuit)} <span className="text-xs font-semibold text-gray-400">FCFA/n</span></p>
+                  <p className="text-green-dark font-black text-xl">{fmt(cat.tarifNuit)} <span className="text-xs font-semibold text-gray-400">FCFA HT/n</span></p>
                 </div>
                 <div className="flex items-center justify-between pb-3.5 border-b border-gray-100">
                   <div>
@@ -148,7 +148,7 @@ export default async function CategoryPage({ params }: Props) {
                       {fr ? 'Électricité hors forfait (230 FCFA/kWh)' : 'Electricity not included (230 FCFA/kWh)'}
                     </p>
                   </div>
-                  <p className="text-charcoal font-bold text-base">{fmt(cat.tarifN15)} <span className="text-xs text-gray-400">FCFA/n</span></p>
+                  <p className="text-charcoal font-bold text-base">{fmt(cat.tarifN15)} <span className="text-xs text-gray-400">FCFA HT/n</span></p>
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
@@ -159,7 +159,7 @@ export default async function CategoryPage({ params }: Props) {
                       {fr ? 'Contrat de bail requis · Électricité au compteur' : 'Lease agreement · Metered electricity'}
                     </p>
                   </div>
-                  <p className="text-charcoal font-bold text-base">{fmt(cat.tarifN30)} <span className="text-xs text-gray-400">FCFA/n</span></p>
+                  <p className="text-charcoal font-bold text-base">{fmt(cat.tarifN30)} <span className="text-xs text-gray-400">FCFA HT/n</span></p>
                 </div>
               </div>
             </div>
@@ -178,8 +178,11 @@ export default async function CategoryPage({ params }: Props) {
                   </p>
                   <div className="flex items-baseline gap-1.5">
                     <span className="text-green-dark font-black text-3xl">{fmt(cat.tarifNuit)}</span>
-                    <span className="text-gray-400 text-xs font-semibold">FCFA / {fr ? 'nuit' : 'night'}</span>
+                    <span className="text-gray-400 text-xs font-semibold">FCFA HT / {fr ? 'nuit' : 'night'}</span>
                   </div>
+                  <p className="text-gray-400 text-[11px] mt-1 italic">
+                    {fr ? 'TVA 18 % ajoutée à la réservation' : '18% VAT added at booking'}
+                  </p>
                 </div>
 
                 <div className="flex items-center gap-3 text-sm font-medium text-charcoal bg-gray-50 p-3 rounded-lg border border-gray-100">

@@ -43,7 +43,14 @@ const PAYMENT_MODES = [
   'Carte bancaire',
   'Virement bancaire',
   'Chèque',
+  // Mode spécial : la ligne est portée en débiteurs divers au lieu d'être
+  // encaissée en caisse. Le folio est soldé du montant, la créance vit côté
+  // Débiteur (relance/recouvrement séparé).
+  'Transfert en débiteurs divers',
 ];
+
+// Détection du mode "transfert débiteur" (peut évoluer si on renomme le label).
+const DEBTOR_MODE = 'Transfert en débiteurs divers';
 
 export default function FolioDetailPage() {
   const { id }                    = useParams<{ id: string }>();
@@ -111,11 +118,18 @@ export default function FolioDetailPage() {
     setBusy(true);
     setError('');
     try {
-      // Execute each payment line
+      // Chaque ligne : soit encaissement (caisse), soit transfert débiteur.
       for (const line of validLines) {
         const m = parseInt(line.amount);
         const modeLabel = line.ref.trim() ? `${line.mode} [${line.ref.trim()}]` : line.mode;
-        await pmsFolios.encaisser(Number(id), m, modeLabel);
+        if (line.mode === DEBTOR_MODE) {
+          const label = line.ref.trim()
+            ? `Débiteur — ${line.ref.trim()}`
+            : undefined;
+          await pmsFolios.transferDebiteur(Number(id), label, m);
+        } else {
+          await pmsFolios.encaisser(Number(id), m, modeLabel);
+        }
       }
       setShowEncaisser(false);
       load();
@@ -166,7 +180,8 @@ export default function FolioDetailPage() {
   );
 
   const f = folio;
-  const avoir = Math.max(0, f.paid + f.arrhes - f.totalGeneral);
+  // Avoir en TTC : client paie TTC, la dette est en TTC.
+  const avoir = Math.max(0, f.paid + f.arrhes - f.totalTtc);
 
   return (
     <div className="flex flex-col min-h-full">
@@ -186,6 +201,11 @@ export default function FolioDetailPage() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="font-mono font-bold text-lg text-green-dark">{f.number}</p>
+              {f.reservationReference && (
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Réservation liée : <span className="font-mono font-semibold text-charcoal">{f.reservationReference}</span>
+                </p>
+              )}
               <p className="text-base font-semibold text-charcoal mt-0.5">
                 {f.guest ?? (`${f.prenom ?? ''} ${f.nom ?? ''}`.trim() || '—')}
               </p>
@@ -387,15 +407,21 @@ export default function FolioDetailPage() {
 
         {/* Financier */}
         <Section title="Financier">
-          <Row label={`Hébergement (${TIER_LABELS[f.tarifTier] ?? f.tarifTier})`} value={`${f.totalHeb.toLocaleString('fr')} FCFA`} />
-          {f.totalPdj > 0    && <Row label="Petit-déjeuner"  value={`${f.totalPdj.toLocaleString('fr')} FCFA`} />}
-          {f.totalDependances > 0 && <Row label="Dépendances" value={`${f.totalDependances.toLocaleString('fr')} FCFA`} />}
-          {f.totalDebiteur > 0   && <Row label="Débiteur divers" value={`${f.totalDebiteur.toLocaleString('fr')} FCFA`} />}
+          <Row label={`Hébergement (${TIER_LABELS[f.tarifTier] ?? f.tarifTier})`} value={`${f.totalHeb.toLocaleString('fr')} FCFA HT`} />
+          {f.totalPdj > 0    && <Row label="Petit-déjeuner"  value={`${f.totalPdj.toLocaleString('fr')} FCFA HT`} />}
+          {f.totalDependances > 0 && <Row label="Dépendances" value={`${f.totalDependances.toLocaleString('fr')} FCFA HT`} />}
+          {f.totalDebiteur > 0   && <Row label="Débiteur divers" value={`${f.totalDebiteur.toLocaleString('fr')} FCFA HT`} />}
           <div className="border-t border-gray-100 pt-2 space-y-1.5">
-            <Row label="Total général"  value={`${f.totalGeneral.toLocaleString('fr')} FCFA`} />
+            <Row label="Total HT"       value={`${f.totalGeneral.toLocaleString('fr')} FCFA`} />
+            {!f.tvaExonere && f.tva > 0 && (
+              <Row label="TVA (18%)"    value={`${f.tva.toLocaleString('fr')} FCFA`} />
+            )}
+            <Row label={f.tvaExonere ? 'Total (exonéré TVA)' : 'Total TTC'}
+              value={`${f.totalTtc.toLocaleString('fr')} FCFA`}
+              cls="font-bold" />
             <Row label="Arrhes"         value={`${f.arrhes.toLocaleString('fr')} FCFA`} />
             <Row label="Encaissé"       value={`${f.paid.toLocaleString('fr')} FCFA`} />
-            <Row label={f.solde > 0 ? 'Solde restant' : avoir > 0 ? 'Avoir' : 'Soldé'}
+            <Row label={f.solde > 0 ? 'Solde restant (TTC)' : avoir > 0 ? 'Avoir' : 'Soldé'}
               value={f.solde > 0 ? `${f.solde.toLocaleString('fr')} FCFA` : avoir > 0 ? `+${avoir.toLocaleString('fr')} FCFA` : '✓'}
               cls={f.solde > 0 ? 'text-red-600 font-bold' : avoir > 0 ? 'text-green-dark font-bold' : 'text-green-dark font-bold'} />
           </div>
@@ -407,7 +433,7 @@ export default function FolioDetailPage() {
             {f.note && <p className="text-sm text-gray-700">{f.note}</p>}
             {f.reservationId && (
               <Link href={`/reservations/${f.reservationId}`} className="text-sm text-green-dark hover:underline">
-                → Réservation web liée #{f.reservationId}
+                → Réservation liée <span className="font-mono">{f.reservationReference ?? `#${f.reservationId}`}</span>
               </Link>
             )}
           </Section>

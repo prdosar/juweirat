@@ -41,10 +41,22 @@ public class ReservationsController(ReservationService reservationService) : Con
         return dto is null ? NotFound() : Ok(dto);
     }
 
-    [HttpPost("{id:long}/process-noshow")]
-    public async Task<IActionResult> ProcessNoShow(long id)
+    // Aperçu de la retenue No Show — permet au popup admin d'afficher le montant
+    // et de choisir le mode de paiement avant confirmation. Aucun effet de bord.
+    [HttpGet("{id:long}/noshow-preview")]
+    public async Task<IActionResult> PreviewNoShow(long id)
     {
-        var (dto, error) = await reservationService.ProcessNoShowAsync(id);
+        var (dto, error) = await reservationService.PreviewNoShowAsync(id);
+        if (error is not null) return BadRequest(new { error });
+        return dto is null ? NotFound() : Ok(dto);
+    }
+
+    public record ProcessNoShowRequest(string? PaymentMethod = null);
+
+    [HttpPost("{id:long}/process-noshow")]
+    public async Task<IActionResult> ProcessNoShow(long id, [FromBody] ProcessNoShowRequest? req)
+    {
+        var (dto, error) = await reservationService.ProcessNoShowAsync(id, req?.PaymentMethod);
         if (error is not null) return BadRequest(new { error });
         return dto is null ? NotFound() : Ok(dto);
     }
