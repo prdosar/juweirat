@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:juweiratapp/app/theme.dart';
 import 'package:juweiratapp/app/di.dart';
 import 'package:juweiratapp/core/formatters/formatters.dart';
@@ -8,16 +9,108 @@ import 'package:juweiratapp/shared/widgets/shared_widgets.dart';
 import 'package:juweiratapp/core/services/export_service.dart';
 import 'package:juweiratapp/shared/widgets/main_shell.dart';
 
+enum ComptaDatePreset {
+  today,
+  yesterday,
+  thisWeek,
+  thisMonth,
+  customDate,
+  customRange,
+  all,
+}
+
+class ComptaFilterState {
+  final ComptaDatePreset preset;
+  final DateTime? startDate;
+  final DateTime? endDate;
+  final String? customLabel;
+  final String? paymentMethod;
+
+  const ComptaFilterState({
+    this.preset = ComptaDatePreset.today,
+    this.startDate,
+    this.endDate,
+    this.customLabel,
+    this.paymentMethod,
+  });
+
+  ComptaFilterState copyWith({
+    ComptaDatePreset? preset,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? customLabel,
+    String? paymentMethod,
+    bool clearDates = false,
+  }) {
+    return ComptaFilterState(
+      preset: preset ?? this.preset,
+      startDate: clearDates ? null : (startDate ?? this.startDate),
+      endDate: clearDates ? null : (endDate ?? this.endDate),
+      customLabel: customLabel ?? this.customLabel,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+    );
+  }
+
+  String get displayLabel {
+    final fmt = DateFormat('dd/MM/yyyy');
+    switch (preset) {
+      case ComptaDatePreset.today:
+        final dateStr = startDate != null ? fmt.format(startDate!) : fmt.format(DateTime.now());
+        return 'Aujourd\'hui ($dateStr)';
+      case ComptaDatePreset.yesterday:
+        final dateStr = startDate != null ? fmt.format(startDate!) : '';
+        return 'Hier ($dateStr)';
+      case ComptaDatePreset.thisWeek:
+        if (startDate != null && endDate != null) {
+          return 'Cette semaine (${fmt.format(startDate!)} au ${fmt.format(endDate!)})';
+        }
+        return 'Cette semaine';
+      case ComptaDatePreset.thisMonth:
+        if (startDate != null) {
+          return 'Ce mois (${DateFormat('MMMM yyyy', 'fr_FR').format(startDate!)})';
+        }
+        return 'Ce mois';
+      case ComptaDatePreset.customDate:
+        if (startDate != null) {
+          return 'Date du ${fmt.format(startDate!)}';
+        }
+        return 'Date personnalisée';
+      case ComptaDatePreset.customRange:
+        if (startDate != null && endDate != null) {
+          return 'Du ${fmt.format(startDate!)} au ${fmt.format(endDate!)}';
+        }
+        return 'Période personnalisée';
+      case ComptaDatePreset.all:
+        return 'Tout l\'historique';
+    }
+  }
+}
+
+final comptaFilterProvider = StateProvider.autoDispose<ComptaFilterState>((ref) {
+  final now = DateTime.now();
+  final startToday = DateTime(now.year, now.month, now.day, 0, 0, 0);
+  final endToday = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+  return ComptaFilterState(
+    preset: ComptaDatePreset.today,
+    startDate: startToday,
+    endDate: endToday,
+  );
+});
+
 final comptaDataProvider = FutureProvider.autoDispose((ref) async {
   final comptaRepo = ref.watch(accountingRepositoryProvider);
   final sessionRepo = ref.watch(cashSessionRepositoryProvider);
+  final filter = ref.watch(comptaFilterProvider);
+
+  final from = filter.startDate;
+  final to = filter.endDate;
 
   final results = await Future.wait([
-    comptaRepo.getJournal(),
-    comptaRepo.getBalance(),
-    comptaRepo.getTvaReport(),
+    comptaRepo.getJournal(from: from, to: to, paymentMethod: filter.paymentMethod),
+    comptaRepo.getBalance(from: from, to: to),
+    comptaRepo.getTvaReport(from: from, to: to),
     sessionRepo.getCurrent(),
-    sessionRepo.getHistory(limit: 20),
+    sessionRepo.getHistory(limit: 30),
     comptaRepo.getCashRegisters(),
   ]);
 
@@ -28,6 +121,7 @@ final comptaDataProvider = FutureProvider.autoDispose((ref) async {
     'currentSession': results[3] as CashSessionDto?,
     'sessionsHistory': results[4] as List<CashSessionDto>,
     'cashRegisters': results[5] as List<CashRegisterDto>,
+    'filter': filter,
   };
 });
 
@@ -53,9 +147,251 @@ class _ComptabilitePageState extends ConsumerState<ComptabilitePage> with Single
     super.dispose();
   }
 
+  void _applyPreset(ComptaDatePreset preset) {
+    final now = DateTime.now();
+    DateTime? start;
+    DateTime? end;
+
+    switch (preset) {
+      case ComptaDatePreset.today:
+        start = DateTime(now.year, now.month, now.day, 0, 0, 0);
+        end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        break;
+      case ComptaDatePreset.yesterday:
+        final yest = now.subtract(const Duration(days: 1));
+        start = DateTime(yest.year, yest.month, yest.day, 0, 0, 0);
+        end = DateTime(yest.year, yest.month, yest.day, 23, 59, 59, 999);
+        break;
+      case ComptaDatePreset.thisWeek:
+        // Lundi de la semaine en cours
+        final monday = now.subtract(Duration(days: now.weekday - 1));
+        start = DateTime(monday.year, monday.month, monday.day, 0, 0, 0);
+        end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        break;
+      case ComptaDatePreset.thisMonth:
+        start = DateTime(now.year, now.month, 1, 0, 0, 0);
+        end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        break;
+      case ComptaDatePreset.all:
+        start = null;
+        end = null;
+        break;
+      default:
+        break;
+    }
+
+    ref.read(comptaFilterProvider.notifier).state = ComptaFilterState(
+      preset: preset,
+      startDate: start,
+      endDate: end,
+      paymentMethod: ref.read(comptaFilterProvider).paymentMethod,
+    );
+  }
+
+  Future<void> _pickSingleDate() async {
+    final current = ref.read(comptaFilterProvider).startDate ?? DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(2023),
+      lastDate: DateTime(2035),
+      helpText: 'Sélectionner une date comptable',
+      cancelText: 'Annuler',
+      confirmText: 'Valider',
+    );
+
+    if (picked != null) {
+      final start = DateTime(picked.year, picked.month, picked.day, 0, 0, 0);
+      final end = DateTime(picked.year, picked.month, picked.day, 23, 59, 59, 999);
+      ref.read(comptaFilterProvider.notifier).state = ComptaFilterState(
+        preset: ComptaDatePreset.customDate,
+        startDate: start,
+        endDate: end,
+        paymentMethod: ref.read(comptaFilterProvider).paymentMethod,
+      );
+    }
+  }
+
+  Future<void> _pickDateRange() async {
+    final now = DateTime.now();
+    final currentFilter = ref.read(comptaFilterProvider);
+    final initialRange = (currentFilter.startDate != null && currentFilter.endDate != null)
+        ? DateTimeRange(start: currentFilter.startDate!, end: currentFilter.endDate!)
+        : DateTimeRange(start: now.subtract(const Duration(days: 7)), end: now);
+
+    final pickedRange = await showDateRangePicker(
+      context: context,
+      initialDateRange: initialRange,
+      firstDate: DateTime(2023),
+      lastDate: DateTime(2035),
+      helpText: 'Sélectionner une plage de dates',
+      cancelText: 'Annuler',
+      confirmText: 'Valider',
+      saveText: 'Appliquer',
+    );
+
+    if (pickedRange != null) {
+      final start = DateTime(pickedRange.start.year, pickedRange.start.month, pickedRange.start.day, 0, 0, 0);
+      final end = DateTime(pickedRange.end.year, pickedRange.end.month, pickedRange.end.day, 23, 59, 59, 999);
+      ref.read(comptaFilterProvider.notifier).state = ComptaFilterState(
+        preset: ComptaDatePreset.customRange,
+        startDate: start,
+        endDate: end,
+        paymentMethod: ref.read(comptaFilterProvider).paymentMethod,
+      );
+    }
+  }
+
+  void _showFilterOptionsBottomSheet() {
+    final currentPreset = ref.read(comptaFilterProvider).preset;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Période Comptable',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: JuweiratColors.charcoal),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => Navigator.of(ctx).pop(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Sélectionnez une période prédéfinie ou choisissez des dates précises :',
+                  style: TextStyle(color: Color(0xFF6B7280), fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                _buildModalOptionTile(
+                  icon: Icons.today_rounded,
+                  title: 'Aujourd\'hui (Par défaut)',
+                  subtitle: 'Écritures & KPIs de la journée en cours',
+                  isSelected: currentPreset == ComptaDatePreset.today,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _applyPreset(ComptaDatePreset.today);
+                  },
+                ),
+                _buildModalOptionTile(
+                  icon: Icons.history_rounded,
+                  title: 'Hier',
+                  subtitle: 'Écritures de la journée précédente',
+                  isSelected: currentPreset == ComptaDatePreset.yesterday,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _applyPreset(ComptaDatePreset.yesterday);
+                  },
+                ),
+                _buildModalOptionTile(
+                  icon: Icons.date_range_rounded,
+                  title: 'Cette semaine',
+                  subtitle: 'Du lundi en cours jusqu\'à aujourd\'hui',
+                  isSelected: currentPreset == ComptaDatePreset.thisWeek,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _applyPreset(ComptaDatePreset.thisWeek);
+                  },
+                ),
+                _buildModalOptionTile(
+                  icon: Icons.calendar_month_rounded,
+                  title: 'Ce mois',
+                  subtitle: 'Du 1er du mois en cours jusqu\'à aujourd\'hui',
+                  isSelected: currentPreset == ComptaDatePreset.thisMonth,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _applyPreset(ComptaDatePreset.thisMonth);
+                  },
+                ),
+                const Divider(height: 20),
+                _buildModalOptionTile(
+                  icon: Icons.calendar_today_rounded,
+                  title: 'Choisir une date unique...',
+                  subtitle: 'Consulter la comptabilité d\'un jour spécifique',
+                  isSelected: currentPreset == ComptaDatePreset.customDate,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _pickSingleDate();
+                  },
+                ),
+                _buildModalOptionTile(
+                  icon: Icons.date_range_outlined,
+                  title: 'Choisir une plage de dates...',
+                  subtitle: 'Filtrer sur un intervalle personnalisé (Du ... Au ...)',
+                  isSelected: currentPreset == ComptaDatePreset.customRange,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _pickDateRange();
+                  },
+                ),
+                _buildModalOptionTile(
+                  icon: Icons.all_inclusive_rounded,
+                  title: 'Tout l\'historique',
+                  subtitle: 'Afficher toutes les écritures sans filtre de date',
+                  isSelected: currentPreset == ComptaDatePreset.all,
+                  onTap: () {
+                    Navigator.of(ctx).pop();
+                    _applyPreset(ComptaDatePreset.all);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildModalOptionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: isSelected ? JuweiratColors.green.withValues(alpha: 0.15) : const Color(0xFFF3F4F6),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(icon, color: isSelected ? JuweiratColors.greenDark : JuweiratColors.charcoal, size: 20),
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+          color: isSelected ? JuweiratColors.greenDark : JuweiratColors.charcoal,
+          fontSize: 14,
+        ),
+      ),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+      trailing: isSelected ? const Icon(Icons.check_circle_rounded, color: JuweiratColors.greenDark, size: 20) : null,
+      onTap: onTap,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final dataAsync = ref.watch(comptaDataProvider);
+    final filterState = ref.watch(comptaFilterProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -78,7 +414,13 @@ class _ComptabilitePageState extends ConsumerState<ComptabilitePage> with Single
         title: const Text('Comptabilité & Caisse'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.calendar_month_rounded),
+            tooltip: 'Filtrer par date / période',
+            onPressed: _showFilterOptionsBottomSheet,
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
+            tooltip: 'Actualiser',
             onPressed: () => ref.refresh(comptaDataProvider),
           ),
         ],
@@ -95,48 +437,238 @@ class _ComptabilitePageState extends ConsumerState<ComptabilitePage> with Single
           ],
         ),
       ),
-      body: dataAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Erreur: $err', style: const TextStyle(color: Colors.red)),
-              const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: () => ref.refresh(comptaDataProvider),
-                child: const Text('Réessayer'),
+      body: Column(
+        children: [
+          // ── Date Filter Bar & Quick Chips ───────────────────────────────
+          _buildFilterHeader(filterState),
+
+          // ── Tab Content ─────────────────────────────────────────────────
+          Expanded(
+            child: dataAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (err, _) => Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.error_outline_rounded, color: Colors.red, size: 48),
+                      const SizedBox(height: 12),
+                      Text('Erreur: $err', textAlign: TextAlign.center, style: const TextStyle(color: Colors.red)),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.refresh),
+                        onPressed: () => ref.refresh(comptaDataProvider),
+                        label: const Text('Réessayer'),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ],
+              data: (data) {
+                final journal = data['journal'] as JournalReportDto?;
+                final balance = data['balance'] as BalanceReportDto?;
+                final tva = data['tva'] as TvaReportDto?;
+                final currentSession = data['currentSession'] as CashSessionDto?;
+                final sessionsHistory = data['sessionsHistory'] as List<CashSessionDto>;
+                final registers = data['cashRegisters'] as List<CashRegisterDto>;
+
+                return TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildJournalTab(journal, filterState),
+                    _buildSessionsTab(currentSession, sessionsHistory, registers),
+                    _buildBalanceTvaTab(balance, tva, filterState),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Date Filter Header ───────────────────────────────────────────────────
+  Widget _buildFilterHeader(ComptaFilterState filterState) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: Colors.grey.shade200, width: 1),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Bandeau période sélectionnée
+          InkWell(
+            onTap: _showFilterOptionsBottomSheet,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: JuweiratColors.charcoal,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Icon(Icons.calendar_today_rounded, size: 14, color: JuweiratColors.goldLight),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'PÉRIODE ACTIVE',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF9CA3AF), letterSpacing: 0.5),
+                        ),
+                        Text(
+                          filterState.displayLabel,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: JuweiratColors.charcoal),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF3F4F6),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Modifier', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: JuweiratColors.charcoal)),
+                        SizedBox(width: 2),
+                        Icon(Icons.arrow_drop_down_rounded, size: 16, color: JuweiratColors.charcoal),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Horizontal quick chips
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Row(
+              children: [
+                _buildQuickChip('Aujourd\'hui', ComptaDatePreset.today, filterState.preset),
+                _buildQuickChip('Hier', ComptaDatePreset.yesterday, filterState.preset),
+                _buildQuickChip('Cette semaine', ComptaDatePreset.thisWeek, filterState.preset),
+                _buildQuickChip('Ce mois', ComptaDatePreset.thisMonth, filterState.preset),
+                _buildActionChip(
+                  label: 'Date...',
+                  icon: Icons.calendar_today_outlined,
+                  isSelected: filterState.preset == ComptaDatePreset.customDate,
+                  onTap: _pickSingleDate,
+                ),
+                _buildActionChip(
+                  label: 'Plage...',
+                  icon: Icons.date_range_outlined,
+                  isSelected: filterState.preset == ComptaDatePreset.customRange,
+                  onTap: _pickDateRange,
+                ),
+                _buildQuickChip('Tout', ComptaDatePreset.all, filterState.preset),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickChip(String label, ComptaDatePreset preset, ComptaDatePreset current) {
+    final isSelected = preset == current;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: FilterChip(
+        label: Text(label),
+        selected: isSelected,
+        labelStyle: TextStyle(
+          fontSize: 11,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+          color: isSelected ? Colors.white : const Color(0xFF4B5563),
+        ),
+        backgroundColor: const Color(0xFFF3F4F6),
+        selectedColor: JuweiratColors.green,
+        checkmarkColor: Colors.white,
+        showCheckmark: false,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: isSelected ? JuweiratColors.green : Colors.transparent,
           ),
         ),
-        data: (data) {
-          final journal = data['journal'] as JournalReportDto?;
-          final balance = data['balance'] as BalanceReportDto?;
-          final tva = data['tva'] as TvaReportDto?;
-          final currentSession = data['currentSession'] as CashSessionDto?;
-          final sessionsHistory = data['sessionsHistory'] as List<CashSessionDto>;
-          final registers = data['cashRegisters'] as List<CashRegisterDto>;
+        onSelected: (_) => _applyPreset(preset),
+      ),
+    );
+  }
 
-          return TabBarView(
-            controller: _tabController,
-            children: [
-              _buildJournalTab(journal),
-              _buildSessionsTab(currentSession, sessionsHistory, registers),
-              _buildBalanceTvaTab(balance, tva),
-            ],
-          );
-        },
+  Widget _buildActionChip({
+    required String label,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: ActionChip(
+        avatar: Icon(icon, size: 13, color: isSelected ? Colors.white : const Color(0xFF4B5563)),
+        label: Text(label),
+        labelStyle: TextStyle(
+          fontSize: 11,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+          color: isSelected ? Colors.white : const Color(0xFF4B5563),
+        ),
+        backgroundColor: isSelected ? JuweiratColors.green : const Color(0xFFF3F4F6),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: isSelected ? JuweiratColors.green : Colors.transparent,
+          ),
+        ),
+        onPressed: onTap,
       ),
     );
   }
 
   // ── Tab 1: Journal de Caisse ───────────────────────────────────────────────
-  Widget _buildJournalTab(JournalReportDto? journal) {
+  Widget _buildJournalTab(JournalReportDto? journal, ComptaFilterState filterState) {
     if (journal == null || journal.entries.isEmpty) {
-      return const EmptyState(
-        message: 'Aucune écriture enregistrée dans le journal de caisse',
-        icon: Icons.menu_book_rounded,
+      return RefreshIndicator(
+        onRefresh: () async => ref.refresh(comptaDataProvider),
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            _buildJournalSummaryCard(journal, filterState),
+            const SizedBox(height: 32),
+            EmptyState(
+              message: 'Aucune écriture enregistrée pour ${filterState.displayLabel.toLowerCase()}',
+              icon: Icons.menu_book_rounded,
+            ),
+            const SizedBox(height: 16),
+            if (filterState.preset != ComptaDatePreset.all)
+              Center(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.all_inclusive_rounded),
+                  label: const Text('Afficher tout l\'historique'),
+                  onPressed: () => _applyPreset(ComptaDatePreset.all),
+                ),
+              ),
+          ],
+        ),
       );
     }
 
@@ -146,79 +678,22 @@ class _ComptabilitePageState extends ConsumerState<ComptabilitePage> with Single
         padding: const EdgeInsets.all(16),
         children: [
           // Synthèse Journal
-          JuweiratCard(
-            color: JuweiratColors.charcoal,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'JOURNAL DES ENCAISSEMENTS',
-                      style: TextStyle(color: JuweiratColors.goldLight, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.share_outlined, color: JuweiratColors.goldLight, size: 18),
-                      tooltip: 'Exporter CSV',
-                      onPressed: () {
-                        ExportService.shareCsv(
-                          fileName: 'journal_caisse.csv',
-                          csvContent: 'Date,Libelle,HT,TVA,TTC,Encaisse,Decaisse,Mode\n${journal.entries.map((e) => '"${e.date}","${e.label}",${e.ht},${e.tva},${e.ttc},${e.encaisse},${e.decaisse},"${e.paymentMethod ?? ""}"').join('\n')}',
-                        );
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Total Encaissé', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 11)),
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            money(journal.totalEncaisse),
-                            style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900),
-                          ),
-                        ),
-                      ],
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        const Text('Total TTC Facturé', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 11)),
-                        FittedBox(
-                          fit: BoxFit.scaleDown,
-                          child: Text(
-                            money(journal.totalTtc),
-                            style: const TextStyle(color: JuweiratColors.goldLight, fontSize: 16, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                const Divider(height: 1, color: Color(0xFF374151)),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Total HT: ${money(journal.totalHt)}', style: const TextStyle(color: Color(0xFFD1D5DB), fontSize: 11)),
-                    Text('TVA Collectée: ${money(journal.totalTva)}', style: const TextStyle(color: Color(0xFFD1D5DB), fontSize: 11)),
-                    Text('Décaissé: ${money(journal.totalDecaisse)}', style: const TextStyle(color: Color(0xFFEF4444), fontSize: 11)),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          _buildJournalSummaryCard(journal, filterState),
           const SizedBox(height: 16),
 
-          const Text('Écritures Récentes', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Écritures (${journal.entries.length})',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: JuweiratColors.charcoal),
+              ),
+              Text(
+                filterState.preset == ComptaDatePreset.today ? 'Journée active' : filterState.displayLabel,
+                style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
 
           ...journal.entries.map((e) => Padding(
@@ -273,6 +748,91 @@ class _ComptabilitePageState extends ConsumerState<ComptabilitePage> with Single
                   ),
                 ),
               )),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildJournalSummaryCard(JournalReportDto? journal, ComptaFilterState filterState) {
+    final totalEncaisse = journal?.totalEncaisse ?? 0;
+    final totalTtc = journal?.totalTtc ?? 0;
+    final totalHt = journal?.totalHt ?? 0;
+    final totalTva = journal?.totalTva ?? 0;
+    final totalDecaisse = journal?.totalDecaisse ?? 0;
+
+    return JuweiratCard(
+      color: JuweiratColors.charcoal,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  'SYNTHÈSE DU JOURNAL · ${filterState.displayLabel.toUpperCase()}',
+                  style: const TextStyle(color: JuweiratColors.goldLight, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (journal != null && journal.entries.isNotEmpty)
+                IconButton(
+                  icon: const Icon(Icons.share_outlined, color: JuweiratColors.goldLight, size: 18),
+                  tooltip: 'Exporter CSV',
+                  onPressed: () {
+                    final dateTag = DateFormat('yyyyMMdd').format(filterState.startDate ?? DateTime.now());
+                    ExportService.shareCsv(
+                      fileName: 'journal_caisse_$dateTag.csv',
+                      csvContent: 'Date,Libelle,HT,TVA,TTC,Encaisse,Decaisse,Mode\n${journal.entries.map((e) => '"${e.date}","${e.label}",${e.ht},${e.tva},${e.ttc},${e.encaisse},${e.decaisse},"${e.paymentMethod ?? ""}"').join('\n')}',
+                    );
+                  },
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Total Encaissé', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 11)),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      money(totalEncaisse),
+                      style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text('Total TTC Facturé', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 11)),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      money(totalTtc),
+                      style: const TextStyle(color: JuweiratColors.goldLight, fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Divider(height: 1, color: Color(0xFF374151)),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('HT: ${money(totalHt)}', style: const TextStyle(color: Color(0xFFD1D5DB), fontSize: 11)),
+              Text('TVA: ${money(totalTva)}', style: const TextStyle(color: Color(0xFFD1D5DB), fontSize: 11)),
+              Text('Décaissé: ${money(totalDecaisse)}', style: const TextStyle(color: Color(0xFFEF4444), fontSize: 11)),
+            ],
+          ),
         ],
       ),
     );
@@ -434,7 +994,7 @@ class _ComptabilitePageState extends ConsumerState<ComptabilitePage> with Single
   }
 
   // ── Tab 3: Balance des Comptes & État TVA ──────────────────────────────────
-  Widget _buildBalanceTvaTab(BalanceReportDto? balance, TvaReportDto? tva) {
+  Widget _buildBalanceTvaTab(BalanceReportDto? balance, TvaReportDto? tva, ComptaFilterState filterState) {
     return RefreshIndicator(
       onRefresh: () async => ref.refresh(comptaDataProvider),
       child: ListView(
@@ -450,9 +1010,13 @@ class _ComptabilitePageState extends ConsumerState<ComptabilitePage> with Single
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'ÉTAT TVA COLLECTÉE',
-                        style: TextStyle(color: JuweiratColors.goldLight, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                      Expanded(
+                        child: Text(
+                          'ÉTAT TVA COLLECTÉE · ${filterState.displayLabel.toUpperCase()}',
+                          style: const TextStyle(color: JuweiratColors.goldLight, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       Text('Taux : ${(tva.tvaRate * 100).toInt()}%', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
                     ],
@@ -477,11 +1041,23 @@ class _ComptabilitePageState extends ConsumerState<ComptabilitePage> with Single
           ],
 
           // Balance des comptes
-          const Text('Balance des Comptes & Trésorerie', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Balance des Comptes & Trésorerie', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              Text(
+                filterState.displayLabel,
+                style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
 
           if (balance == null || balance.lines.isEmpty)
-            const EmptyState(message: 'Aucun compte comptable initialisé', icon: Icons.account_balance_rounded)
+            EmptyState(
+              message: 'Aucun mouvement comptable pour ${filterState.displayLabel.toLowerCase()}',
+              icon: Icons.account_balance_rounded,
+            )
           else
             ...balance.lines.map((b) => Padding(
                   padding: const EdgeInsets.only(bottom: 8),
@@ -496,6 +1072,8 @@ class _ComptabilitePageState extends ConsumerState<ComptabilitePage> with Single
                               Text(b.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                               const SizedBox(height: 2),
                               Text('Nature: ${b.kind}', style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+                              if (b.debit > 0 || b.credit > 0)
+                                Text('Débit: ${money(b.debit)} · Crédit: ${money(b.credit)}', style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF))),
                             ],
                           ),
                         ),
