@@ -19,10 +19,10 @@ public class ClotureService(AppDbContext db)
 
         var dateHotel = config.DateHotel;
 
-        // Self-heal : les résas annulées via le code antérieur n'ont pas propagé
-        // le statut sur leur folio ; on répare avant de lire la liste pour ne
-        // pas bloquer la clôture sur des lignes déjà traitées côté résa.
-        var staleCancelled = await db.Folios
+        // Self-heal : synchronise folio.ResaStatus quand la résa parente est
+        // Cancelled/NoShow mais que le folio n'a pas été mis à jour (code
+        // antérieur, ou chemin d'annulation qui n'a pas propagé).
+        var stale = await db.Folios
             .Include(f => f.Reservation)
             .Where(f =>
                 f.Arrival == dateHotel &&
@@ -30,11 +30,17 @@ public class ClotureService(AppDbContext db)
                 f.ResaStatus != FolioStatus.Annulee &&
                 f.ResaStatus != FolioStatus.NoShow &&
                 f.Reservation != null &&
-                f.Reservation.Status == ReservationStatus.Cancelled)
+                (f.Reservation.Status == ReservationStatus.Cancelled ||
+                 f.Reservation.Status == ReservationStatus.NoShow))
             .ToListAsync();
-        if (staleCancelled.Count > 0)
+        if (stale.Count > 0)
         {
-            foreach (var f in staleCancelled) f.ResaStatus = FolioStatus.Annulee;
+            foreach (var f in stale)
+            {
+                f.ResaStatus = f.Reservation!.Status == ReservationStatus.NoShow
+                    ? FolioStatus.NoShow
+                    : FolioStatus.Annulee;
+            }
             await db.SaveChangesAsync();
         }
 
@@ -44,7 +50,14 @@ public class ClotureService(AppDbContext db)
                 f.Arrival == dateHotel &&
                 !f.CheckedIn &&
                 f.ResaStatus != FolioStatus.Annulee &&
-                f.ResaStatus != FolioStatus.NoShow)
+                f.ResaStatus != FolioStatus.NoShow &&
+                // Garde-fou défensif : si folio.ResaStatus a drift, le vrai statut
+                // de la résa parente prime — un folio dont la résa est annulée ou
+                // no-show ne doit jamais apparaître dans la liste, même si son
+                // propre statut n'a pas été synchronisé.
+                (f.Reservation == null ||
+                 (f.Reservation.Status != ReservationStatus.Cancelled &&
+                  f.Reservation.Status != ReservationStatus.NoShow)))
             .Select(f => new FolioPendingItemDto(f.Id, f.Number, f.Guest, f.Unit.NameFr, f.Arrival, f.ReservationId))
             .ToListAsync();
 
@@ -86,12 +99,17 @@ public class ClotureService(AppDbContext db)
         if (await db.Clotures.AnyAsync(c => c.DateHotel == dateHotel))
             return (null, $"La date {dateHotel:yyyy-MM-dd} a déjà été clôturée");
 
-        // Block if pending arrivals/departures
+        // Block if pending arrivals/departures — mêmes garde-fous que le preview :
+        // on ignore les folios dont la résa parente est déjà Cancelled/NoShow,
+        // même si folio.ResaStatus n'a pas été synchronisé.
         var pendingArrivals = await db.Folios.CountAsync(f =>
             f.Arrival == dateHotel &&
             !f.CheckedIn &&
             f.ResaStatus != FolioStatus.Annulee &&
-            f.ResaStatus != FolioStatus.NoShow);
+            f.ResaStatus != FolioStatus.NoShow &&
+            (f.Reservation == null ||
+             (f.Reservation.Status != ReservationStatus.Cancelled &&
+              f.Reservation.Status != ReservationStatus.NoShow)));
 
         if (pendingArrivals > 0)
             return (null, $"{pendingArrivals} arrivée(s) non traitée(s). Effectuez le check-in ou marquez en no-show avant de clôturer.");
