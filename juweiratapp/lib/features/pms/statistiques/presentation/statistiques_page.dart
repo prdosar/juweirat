@@ -10,20 +10,44 @@ import 'package:juweiratapp/core/services/export_service.dart';
 import 'package:juweiratapp/shared/widgets/main_shell.dart';
 
 final statsDataProvider = FutureProvider.autoDispose((ref) async {
-  final repo = ref.watch(pmsRepositoryProvider);
-  final results = await Future.wait([
-    repo.getConfig(),
-    repo.getClotureHistory(),
-    repo.getDebiteurs(),
-    repo.getActiveFolios(),
-    repo.getUnits(),
-  ]);
+  final pmsRepo = ref.watch(pmsRepositoryProvider);
+  final resaRepo = ref.watch(reservationRepositoryProvider);
+
+  HotelConfigDto? config;
+  List<ClotureHistoryDto> history = [];
+  List<DebiteurDto> debiteurs = [];
+  List<FolioDto> folios = [];
+  List<UnitDto> units = [];
+  List<ReservationDto> reservations = [];
+
+  try { config = await pmsRepo.getConfig(); } catch (_) {}
+  try { history = await pmsRepo.getClotureHistory(); } catch (_) {}
+  try { debiteurs = await pmsRepo.getDebiteurs(); } catch (_) {}
+  try { folios = await pmsRepo.getActiveFolios(); } catch (_) {}
+  try { units = await pmsRepo.getUnits(); } catch (_) {}
+  try {
+    final paged = await resaRepo.getPaged(pageSize: 100, isDescending: false);
+    reservations = paged.items;
+  } catch (_) {}
+
   return {
-    'config': results[0] as HotelConfigDto,
-    'history': results[1] as List<ClotureHistoryDto>,
-    'debiteurs': results[2] as List<DebiteurDto>,
-    'folios': results[3] as List<FolioDto>,
-    'units': results[4] as List<UnitDto>,
+    'config': config ??
+        const HotelConfigDto(
+          id: 1,
+          buildingName: 'Résidence Juweirat',
+          ownerName: 'Saka Tidjani',
+          city: 'Cotonou',
+          currencyCode: 'XOF',
+          currencyDecimals: 0,
+          dateHotel: '',
+          resaSeq: 0,
+          factureSeq: 0,
+        ),
+    'history': history,
+    'debiteurs': debiteurs,
+    'folios': folios,
+    'units': units,
+    'reservations': reservations,
   };
 });
 
@@ -36,6 +60,7 @@ class StatistiquesPage extends ConsumerStatefulWidget {
 
 class _StatistiquesPageState extends ConsumerState<StatistiquesPage> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  int _forecastHorizon = 0; // 0: 30 Jours, 1: 3 Mois, 2: 12 Mois
 
   @override
   void initState() {
@@ -78,7 +103,7 @@ class _StatistiquesPageState extends ConsumerState<StatistiquesPage> with Single
           indicatorWeight: 3,
           tabs: const [
             Tab(text: 'Feuille de Journée'),
-            Tab(text: 'Prévisionnel 12M'),
+            Tab(text: 'Forecast & Prévisions'),
             Tab(text: 'Règlements & Créances'),
             Tab(text: 'Vue Mensuelle'),
           ],
@@ -105,12 +130,13 @@ class _StatistiquesPageState extends ConsumerState<StatistiquesPage> with Single
           final debiteurs = data['debiteurs'] as List<DebiteurDto>;
           final folios = data['folios'] as List<FolioDto>;
           final units = data['units'] as List<UnitDto>;
+          final reservations = data['reservations'] as List<ReservationDto>;
 
           return TabBarView(
             controller: _tabController,
             children: [
               _buildFeuilleJourneeTab(config, folios, units, history),
-              _buildPrevisionnelTab(config, units, folios, history),
+              _buildPrevisionnelTab(config, units, folios, history, reservations),
               _buildReglementsTab(debiteurs, folios),
               _buildVueMensuelleTab(history),
             ],
@@ -289,21 +315,24 @@ class _StatistiquesPageState extends ConsumerState<StatistiquesPage> with Single
     );
   }
 
-  // ── Tab 2: Prévisionnel 12 Mois ────────────────────────────────────────────
+  // ── Tab 2: Forecast & Prévisions Métier (Vue Directeur & Yield Management) ───
   Widget _buildPrevisionnelTab(
     HotelConfigDto config,
     List<UnitDto> units,
     List<FolioDto> folios,
     List<ClotureHistoryDto> history,
+    List<ReservationDto> reservations,
   ) {
-    final totalUnits = units.length;
+    final totalUnits = units.isNotEmpty ? units.length : 20;
+    final systemDate = DateTime.tryParse(config.dateHotel) ?? DateTime.now();
+
     const months = [
       'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
       'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
     ];
     const monthDays = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
-    // Prix de base calculé dynamiquement à partir des tarifs réels des unités / folios / historique
+    // Tarif moyen de référence par nuit calculé dynamiquement
     final avgUnitRate = units.isNotEmpty
         ? (units.fold<int>(0, (sum, u) => sum + (u.tarifNuit > 0 ? u.tarifNuit : 0)) / units.length).round()
         : 0;
@@ -316,14 +345,52 @@ class _StatistiquesPageState extends ConsumerState<StatistiquesPage> with Single
 
     final basePrice = avgUnitRate > 0
         ? avgUnitRate
-        : (avgFolioRate > 0 ? avgFolioRate : (avgHistoryRate > 0 ? avgHistoryRate : 0));
+        : (avgFolioRate > 0 ? avgFolioRate : (avgHistoryRate > 0 ? avgHistoryRate : 45000));
 
-    // Taux d'occupation de référence calculé dynamiquement
     final baselineOcc = history.isNotEmpty
         ? ((history.fold<double>(0, (sum, h) => sum + h.occupation) / history.length) / 100.0).clamp(0.1, 1.0)
         : 0.65;
 
-    // Calcul dynamique de chaque mois
+    // Réservations actives non annulées
+    final activeResas = reservations.where((r) => r.status.toLowerCase() != 'cancelled').toList();
+
+    // ── 1. Métriques Horizon 30 Jours ─────────────────────────────────────────
+    final end30d = systemDate.add(const Duration(days: 30));
+    final resas30d = activeResas.where((r) {
+      final cin = DateTime.tryParse(r.checkInDate);
+      final cout = DateTime.tryParse(r.checkOutDate);
+      if (cin == null || cout == null) return false;
+      return cin.isBefore(end30d) && cout.isAfter(systemDate);
+    }).toList();
+
+    final nuitsOtb30d = resas30d.fold<int>(0, (sum, r) => sum + r.nights);
+    final caOtb30d = resas30d.fold<int>(0, (sum, r) => sum + r.totalPrice);
+    final paidOtb30d = resas30d.fold<int>(0, (sum, r) => sum + r.amountPaid);
+    final dueOtb30d = resas30d.fold<int>(0, (sum, r) => sum + (r.amountDue > 0 ? r.amountDue : (r.totalPrice - r.amountPaid)));
+    final capacityNights30d = totalUnits * 30;
+    final toOtb30d = (nuitsOtb30d / (capacityNights30d > 0 ? capacityNights30d : 1)).clamp(0.0, 1.0);
+    final targetBudget30d = (capacityNights30d * baselineOcc * basePrice).round();
+    final adrOtb30d = nuitsOtb30d > 0 ? (caOtb30d / nuitsOtb30d).round() : basePrice;
+
+    // ── 2. Métriques Horizon 3 Mois (Trimestre) ──────────────────────────────
+    final end3m = systemDate.add(const Duration(days: 90));
+    final resas3m = activeResas.where((r) {
+      final cin = DateTime.tryParse(r.checkInDate);
+      final cout = DateTime.tryParse(r.checkOutDate);
+      if (cin == null || cout == null) return false;
+      return cin.isBefore(end3m) && cout.isAfter(systemDate);
+    }).toList();
+
+    final nuitsOtb3m = resas3m.fold<int>(0, (sum, r) => sum + r.nights);
+    final caOtb3m = resas3m.fold<int>(0, (sum, r) => sum + r.totalPrice);
+    final paidOtb3m = resas3m.fold<int>(0, (sum, r) => sum + r.amountPaid);
+    final dueOtb3m = resas3m.fold<int>(0, (sum, r) => sum + (r.amountDue > 0 ? r.amountDue : (r.totalPrice - r.amountPaid)));
+    final capacityNights3m = totalUnits * 90;
+    final toOtb3m = (nuitsOtb3m / (capacityNights3m > 0 ? capacityNights3m : 1)).clamp(0.0, 1.0);
+    final targetBudget3m = (capacityNights3m * baselineOcc * basePrice).round();
+    final adrOtb3m = nuitsOtb3m > 0 ? (caOtb3m / nuitsOtb3m).round() : basePrice;
+
+    // ── 3. Métriques Horizon 12 Mois (Annuel) ────────────────────────────────
     final monthlyData = List.generate(months.length, (index) {
       final isHighSeason = index == 0 || index == 1 || index == 6 || index == 7 || index == 10 || index == 11;
       final occRate = (isHighSeason ? baselineOcc * 1.15 : baselineOcc * 0.88).clamp(0.05, 0.98);
@@ -341,109 +408,667 @@ class _StatistiquesPageState extends ConsumerState<StatistiquesPage> with Single
         'ca': caMonth,
       };
     });
+    final totalCa12m = monthlyData.fold<int>(0, (sum, m) => sum + (m['ca'] as int));
 
-    // Total annuel exact = somme des 12 mois calculés
-    final totalCaPrevisionnel = monthlyData.fold<int>(0, (sum, m) => sum + (m['ca'] as int));
+    // Sélection des valeurs selon l'horizon actif
+    final currentResas = _forecastHorizon == 0 ? resas30d : (_forecastHorizon == 1 ? resas3m : activeResas);
+    final currentCaOtb = _forecastHorizon == 0 ? caOtb30d : (_forecastHorizon == 1 ? caOtb3m : caOtb3m);
+    final currentPaid = _forecastHorizon == 0 ? paidOtb30d : (_forecastHorizon == 1 ? paidOtb3m : 0);
+    final currentTargetBudget = _forecastHorizon == 0 ? targetBudget30d : (_forecastHorizon == 1 ? targetBudget3m : totalCa12m);
+    final currentDue = _forecastHorizon == 0 ? dueOtb30d : dueOtb3m;
+    final currentToOtb = _forecastHorizon == 0 ? toOtb30d : (_forecastHorizon == 1 ? toOtb3m : baselineOcc);
+    final currentAdr = _forecastHorizon == 0 ? adrOtb30d : (_forecastHorizon == 1 ? adrOtb3m : basePrice);
+    final currentNuits = _forecastHorizon == 0 ? nuitsOtb30d : (_forecastHorizon == 1 ? nuitsOtb3m : (totalUnits * 365 * baselineOcc).round());
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // Executive Banner 12M
-        JuweiratCard(
-          color: JuweiratColors.charcoal,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    // Mix de ventes (Courts vs Longs Séjours & Sources)
+    final longStays = currentResas.where((r) => r.nights >= 15).toList();
+    final shortStays = currentResas.where((r) => r.nights < 15).toList();
+    final longStaysCa = longStays.fold<int>(0, (sum, r) => sum + r.totalPrice);
+    final shortStaysCa = shortStays.fold<int>(0, (sum, r) => sum + r.totalPrice);
+
+    final webCount = currentResas.where((r) => (r.source ?? '').toLowerCase() == 'website').length;
+    final directCount = currentResas.where((r) => (r.source ?? '').toLowerCase() == 'direct' || (r.source ?? '').isEmpty).length;
+    final corporateCount = currentResas.where((r) => (r.source ?? '').toLowerCase() == 'corporate' || (r.source ?? '').toLowerCase() == 'societe').length;
+
+    final horizonLabel = _forecastHorizon == 0 ? '30 Jours' : (_forecastHorizon == 1 ? '3 Mois' : '12 Mois');
+    final progressPct = currentTargetBudget > 0 ? (currentCaOtb / currentTargetBudget).clamp(0.0, 1.0) : 0.0;
+
+    return RefreshIndicator(
+      onRefresh: () async => ref.refresh(statsDataProvider),
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // ── Horizon Selector Chips ────────────────────────────────────────
+          Row(
             children: [
-              const Text(
-                'BUDGET & PRÉVISIONNEL ANNUEL 12 MOIS',
-                style: TextStyle(color: JuweiratColors.goldLight, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.8),
-              ),
-              const SizedBox(height: 8),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  money(totalCaPrevisionnel),
-                  style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Capacité d\'accueil globale sur $totalUnits appartements · Tarif moyen réf : ${money(basePrice)}/nuit',
-                style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
-              ),
+              _buildHorizonChip(0, '30 Jours (Court Terme)', Icons.today_rounded),
+              const SizedBox(width: 8),
+              _buildHorizonChip(1, '3 Mois (Trimestre)', Icons.date_range_rounded),
+              const SizedBox(width: 8),
+              _buildHorizonChip(2, 'Budget 12 Mois', Icons.calendar_month_rounded),
             ],
           ),
-        ),
-        const SizedBox(height: 16),
+          const SizedBox(height: 16),
 
-        const Text('Détail Mensuel Prévisionnel', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-
-        JuweiratCard(
-          padding: EdgeInsets.zero,
-          child: ListView.separated(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: monthlyData.length,
-            separatorBuilder: (_, __) => const Divider(height: 1, color: JuweiratColors.cardBorder),
-            itemBuilder: (context, index) {
-              final m = monthlyData[index];
-              final isHigh = m['isHighSeason'] as bool;
-              final occRate = m['occRate'] as double;
-              final nuits = m['nuits'] as int;
-              final caMonth = m['ca'] as int;
-
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                child: Row(
+          // ── Executive Forecast & OTB Card ─────────────────────────────────
+          JuweiratCard(
+            color: JuweiratColors.charcoal,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    Text(
+                      'CARNET DE COMMANDES & FORECAST ($horizonLabel)',
+                      style: const TextStyle(
+                        color: JuweiratColors.goldLight,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
                     Container(
-                      width: 34,
-                      height: 34,
-                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: isHigh ? const Color(0xFFFEF3C7) : const Color(0xFFF3F4F6),
-                        borderRadius: BorderRadius.circular(8),
+                        color: progressPct >= 0.6 ? JuweiratColors.greenDark : const Color(0xFFD97706),
+                        borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
-                        '${index + 1}',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: isHigh ? const Color(0xFFB45309) : const Color(0xFF4B5563),
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(m['month'] as String, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: JuweiratColors.charcoal)),
-                          Text('TO est. ${(occRate * 100).toStringAsFixed(1)}% · $nuits nuits', style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
-                        ],
-                      ),
-                    ),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        money(caMonth),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 14,
-                          color: JuweiratColors.greenDark,
-                        ),
+                        '${(progressPct * 100).toStringAsFixed(0)}% sécurisé',
+                        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],
                 ),
-              );
-            },
+                const SizedBox(height: 10),
+
+                Text(
+                  _forecastHorizon == 2 ? money(totalCa12m) : money(currentCaOtb),
+                  style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _forecastHorizon == 2
+                      ? 'Objectif budgétaire annuel sur $totalUnits appartements'
+                      : 'CA Déjà Sécurisé (OTB) · Objectif Cible : ${money(currentTargetBudget)}',
+                  style: const TextStyle(color: Color(0xFFD1D5DB), fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+
+                // Barre de progression
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progressPct,
+                    minHeight: 6,
+                    backgroundColor: const Color(0xFF374151),
+                    valueColor: const AlwaysStoppedAnimation(JuweiratColors.goldLight),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Cash flow futur
+                if (_forecastHorizon != 2)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1F2937),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Acomptes déjà perçus :', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 10)),
+                            Text(money(currentPaid), style: const TextStyle(color: Color(0xFF34D399), fontWeight: FontWeight.bold, fontSize: 12)),
+                          ],
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            const Text('Soldes à encaisser aux check-ins :', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 10)),
+                            Text(money(currentDue), style: const TextStyle(color: JuweiratColors.goldLight, fontWeight: FontWeight.bold, fontSize: 12)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ── 4 KPIs Décisionnels pour le Directeur ──────────────────────────
+          Row(
+            children: [
+              Expanded(
+                child: StatCard(
+                  title: 'Remplissage OTB',
+                  value: percent(currentToOtb * 100),
+                  subtitle: '$currentNuits nuits vendues',
+                  icon: Icons.pie_chart_rounded,
+                  iconBg: const Color(0xFFDBEAFE),
+                  iconColor: const Color(0xFF1D4ED8),
+                  isVertical: true,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: StatCard(
+                  title: 'ADR Prévisionnel',
+                  value: money(currentAdr),
+                  subtitle: 'par nuit vendue',
+                  icon: Icons.trending_up_rounded,
+                  iconBg: const Color(0xFFDCFCE7),
+                  iconColor: JuweiratColors.greenDark,
+                  isVertical: true,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: StatCard(
+                  title: 'Dossiers Confirmés',
+                  value: '${currentResas.length}',
+                  subtitle: 'réservations actives',
+                  icon: Icons.book_online_rounded,
+                  iconBg: const Color(0xFFFEF3C7),
+                  iconColor: const Color(0xFFB45309),
+                  isVertical: true,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: StatCard(
+                  title: 'Longs Séjours',
+                  value: '${longStays.length}',
+                  subtitle: 'socle N15 / N30',
+                  icon: Icons.apartment_rounded,
+                  iconBg: const Color(0xFFFAF5FF),
+                  iconColor: const Color(0xFF7E22CE),
+                  isVertical: true,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // ── Yield Management & Recommandations Stratégiques ───────────────
+          _buildYieldRecommendationCard(currentToOtb, horizonLabel),
+          const SizedBox(height: 16),
+
+          // ── Mix de Ventes & Segments de Clientèle ─────────────────────────
+          _buildSalesMixCard(
+            shortStayCount: shortStays.length,
+            shortStayCa: shortStaysCa,
+            longStayCount: longStays.length,
+            longStayCa: longStaysCa,
+            totalCa: currentCaOtb > 0 ? currentCaOtb : 1,
+            webCount: webCount,
+            directCount: directCount,
+            corporateCount: corporateCount,
+          ),
+          const SizedBox(height: 16),
+
+          // ── Détail / Grille selon l'Horizon ────────────────────────────────
+          if (_forecastHorizon == 0) ...[
+            const Text('Découpage Hebdomadaire (30 Jours)', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            _buildWeeklyBreakdown(systemDate, totalUnits, resas30d, basePrice),
+          ] else if (_forecastHorizon == 1) ...[
+            const Text('Comparatif Trimestriel (M, M+1, M+2)', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            _buildQuarterlyBreakdown(systemDate, totalUnits, resas3m, basePrice, baselineOcc),
+          ] else ...[
+            const Text('Grille Budgétaire 12 Mois', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            _build12MonthGrid(monthlyData),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHorizonChip(int index, String label, IconData icon) {
+    final isSelected = _forecastHorizon == index;
+    return Expanded(
+      child: InkWell(
+        onTap: () => setState(() => _forecastHorizon = index),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: isSelected ? JuweiratColors.charcoal : Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: isSelected ? JuweiratColors.charcoal : const Color(0xFFE5E7EB)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 14, color: isSelected ? JuweiratColors.goldLight : const Color(0xFF6B7280)),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                    color: isSelected ? Colors.white : const Color(0xFF4B5563),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildYieldRecommendationCard(double currentOcc, String horizonLabel) {
+    final isHigh = currentOcc >= 0.75;
+    final isLow = currentOcc < 0.35;
+
+    final Color cardBg = isHigh
+        ? const Color(0xFFFEF2F2)
+        : (isLow ? const Color(0xFFFFFBEB) : const Color(0xFFF0FDF4));
+    final Color borderColor = isHigh
+        ? const Color(0xFFFCA5A5)
+        : (isLow ? const Color(0xFFFDE68A) : const Color(0xFFBBF7D0));
+    final Color iconColor = isHigh
+        ? const Color(0xFFDC2626)
+        : (isLow ? const Color(0xFFD97706) : JuweiratColors.greenDark);
+    final IconData icon = isHigh
+        ? Icons.trending_up_rounded
+        : (isLow ? Icons.campaign_rounded : Icons.check_circle_outline_rounded);
+
+    final String title = isHigh
+        ? 'YIELD : FORTE TENSION & DEMANDE ÉLEVÉE ($horizonLabel)'
+        : (isLow
+            ? 'YIELD : OPPORTUNITÉ COMMERCIALE ($horizonLabel)'
+            : 'YIELD : RYTHME DE REMPLISSAGE CONFORME ($horizonLabel)');
+
+    final String recommendation = isHigh
+        ? 'Le carnet de commandes est déjà rempli à ${(currentOcc * 100).toStringAsFixed(1)}%. Recommandation DG : Majorer les tarifs de 10% à 15% sur les derniers appartements disponibles et imposer un minimum de séjour de 2 nuitées.'
+        : (isLow
+            ? 'Le taux d\'occupation réservé est à ${(currentOcc * 100).toStringAsFixed(1)}%. Recommandation DG : Relancer les comptes sociétés partenaires (Corporate) et pousser une offre préférentielle long séjour sur le site web.'
+            : 'Le taux d\'occupation réservé est à ${(currentOcc * 100).toStringAsFixed(1)}%, parfaitement aligné avec la trajectoire budgétaire. Maintenir la politique tarifaire standard.');
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: iconColor, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                    color: iconColor,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  recommendation,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isHigh
+                        ? const Color(0xFF7F1D1D)
+                        : (isLow ? const Color(0xFF78350F) : const Color(0xFF14532D)),
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSalesMixCard({
+    required int shortStayCount,
+    required int shortStayCa,
+    required int longStayCount,
+    required int longStayCa,
+    required int totalCa,
+    required int webCount,
+    required int directCount,
+    required int corporateCount,
+  }) {
+    final shortStayPct = totalCa > 0 ? (shortStayCa / totalCa * 100).toStringAsFixed(0) : '0';
+    final longStayPct = totalCa > 0 ? (longStayCa / totalCa * 100).toStringAsFixed(0) : '0';
+
+    return JuweiratCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Mix de Ventes & Segments de Clientèle',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: JuweiratColors.charcoal),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildMixColumn(
+                  title: 'Courts Séjours (<15j)',
+                  count: shortStayCount,
+                  ca: shortStayCa,
+                  badge: '$shortStayPct% CA',
+                  badgeColor: const Color(0xFFDBEAFE),
+                  textColor: const Color(0xFF1D4ED8),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildMixColumn(
+                  title: 'Longs Séjours (≥15j/30j)',
+                  count: longStayCount,
+                  ca: longStayCa,
+                  badge: '$longStayPct% CA',
+                  badgeColor: const Color(0xFFDCFCE7),
+                  textColor: JuweiratColors.greenDark,
+                ),
+              ),
+            ],
+          ),
+          const Divider(height: 20, color: JuweiratColors.cardBorder),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildSourceTag('Site Web', webCount, Icons.language_rounded, const Color(0xFF1D4ED8)),
+              _buildSourceTag('Direct / Tél', directCount, Icons.phone_in_talk_rounded, JuweiratColors.greenDark),
+              _buildSourceTag('Corporate', corporateCount, Icons.business_rounded, const Color(0xFF7E22CE)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMixColumn({
+    required String title,
+    required int count,
+    required int ca,
+    required String badge,
+    required Color badgeColor,
+    required Color textColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(child: Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF374151)))),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(color: badgeColor, borderRadius: BorderRadius.circular(4)),
+                child: Text(badge, style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: textColor)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(money(ca), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: JuweiratColors.charcoal)),
+          Text('$count dossier${count > 1 ? "s" : ""}', style: const TextStyle(fontSize: 10, color: Color(0xFF6B7280))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSourceTag(String label, int count, IconData icon, Color color) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 4),
+        Text('$label : ', style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+        Text('$count', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: JuweiratColors.charcoal)),
       ],
+    );
+  }
+
+  // ── Grille 30 Jours par Semaines ──────────────────────────────────────────
+  Widget _buildWeeklyBreakdown(DateTime systemDate, int totalUnits, List<ReservationDto> resas, int basePrice) {
+    final weeks = List.generate(4, (w) {
+      final wStart = systemDate.add(Duration(days: w * 7));
+      final wEnd = systemDate.add(Duration(days: (w + 1) * 7));
+      final wResas = resas.where((r) {
+        final cin = DateTime.tryParse(r.checkInDate);
+        final cout = DateTime.tryParse(r.checkOutDate);
+        if (cin == null || cout == null) return false;
+        return cin.isBefore(wEnd) && cout.isAfter(wStart);
+      }).toList();
+
+      final nuits = wResas.fold<int>(0, (sum, r) => sum + r.nights);
+      final ca = wResas.fold<int>(0, (sum, r) => sum + r.totalPrice);
+      final capNights = totalUnits * 7;
+      final to = (nuits / (capNights > 0 ? capNights : 1)).clamp(0.0, 1.0);
+
+      return {
+        'week': 'Semaine ${w + 1}',
+        'dates': '${frDate(wStart.toIso8601String())} au ${frDate(wEnd.toIso8601String())}',
+        'nuits': nuits,
+        'ca': ca,
+        'to': to,
+      };
+    });
+
+    return JuweiratCard(
+      padding: EdgeInsets.zero,
+      child: ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: weeks.length,
+        separatorBuilder: (_, __) => const Divider(height: 1, color: JuweiratColors.cardBorder),
+        itemBuilder: (context, index) {
+          final w = weeks[index];
+          final to = w['to'] as double;
+          final isHigh = to >= 0.75;
+          final isLow = to < 0.35;
+
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: isHigh ? const Color(0xFFFEF2F2) : (isLow ? const Color(0xFFFFFBEB) : const Color(0xFFF0FDF4)),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text('S${index + 1}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: isHigh ? Colors.red : (isLow ? Colors.amber[800] : JuweiratColors.greenDark))),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(w['week'] as String, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: JuweiratColors.charcoal)),
+                      Text('${w['dates']} · TO: ${(to * 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+                    ],
+                  ),
+                ),
+                Text(money(w['ca'] as int), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: JuweiratColors.greenDark)),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ── Grille 3 Mois ─────────────────────────────────────────────────────────
+  Widget _buildQuarterlyBreakdown(DateTime systemDate, int totalUnits, List<ReservationDto> resas, int basePrice, double baselineOcc) {
+    const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+    final qMonths = List.generate(3, (mIdx) {
+      final mDate = DateTime(systemDate.year, systemDate.month + mIdx, 1);
+      final nextMDate = DateTime(mDate.year, mDate.month + 1, 1);
+      final daysInM = nextMDate.difference(mDate).inDays;
+
+      final mResas = resas.where((r) {
+        final cin = DateTime.tryParse(r.checkInDate);
+        final cout = DateTime.tryParse(r.checkOutDate);
+        if (cin == null || cout == null) return false;
+        return cin.isBefore(nextMDate) && cout.isAfter(mDate);
+      }).toList();
+
+      final nuits = mResas.fold<int>(0, (sum, r) => sum + r.nights);
+      final ca = mResas.fold<int>(0, (sum, r) => sum + r.totalPrice);
+      final capNights = totalUnits * daysInM;
+      final to = (nuits / (capNights > 0 ? capNights : 1)).clamp(0.0, 1.0);
+      final target = (capNights * baselineOcc * basePrice).round();
+
+      return {
+        'name': monthNames[mDate.month - 1],
+        'year': mDate.year,
+        'nuits': nuits,
+        'ca': ca,
+        'target': target,
+        'to': to,
+      };
+    });
+
+    return JuweiratCard(
+      padding: EdgeInsets.zero,
+      child: ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: qMonths.length,
+        separatorBuilder: (_, __) => const Divider(height: 1, color: JuweiratColors.cardBorder),
+        itemBuilder: (context, index) {
+          final m = qMonths[index];
+          final to = m['to'] as double;
+
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('${m['name']} ${m['year']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: JuweiratColors.charcoal)),
+                      const SizedBox(height: 2),
+                      Text('TO Acquis : ${(to * 100).toStringAsFixed(1)}% · ${m['nuits']} nuits', style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(money(m['ca'] as int), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: JuweiratColors.greenDark)),
+                    Text('Cible : ${money(m['target'] as int)}', style: const TextStyle(fontSize: 10, color: Color(0xFF9CA3AF))),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ── Grille 12 Mois ────────────────────────────────────────────────────────
+  Widget _build12MonthGrid(List<Map<String, dynamic>> monthlyData) {
+    return JuweiratCard(
+      padding: EdgeInsets.zero,
+      child: ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: monthlyData.length,
+        separatorBuilder: (_, __) => const Divider(height: 1, color: JuweiratColors.cardBorder),
+        itemBuilder: (context, index) {
+          final m = monthlyData[index];
+          final isHigh = m['isHighSeason'] as bool;
+          final occRate = m['occRate'] as double;
+          final nuits = m['nuits'] as int;
+          final caMonth = m['ca'] as int;
+
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: isHigh ? const Color(0xFFFEF3C7) : const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${index + 1}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isHigh ? const Color(0xFFB45309) : const Color(0xFF4B5563),
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(m['month'] as String, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: JuweiratColors.charcoal)),
+                      Text('TO est. ${(occRate * 100).toStringAsFixed(1)}% · $nuits nuits', style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))),
+                    ],
+                  ),
+                ),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    money(caMonth),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                      color: JuweiratColors.greenDark,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -451,10 +1076,8 @@ class _StatistiquesPageState extends ConsumerState<StatistiquesPage> with Single
   Widget _buildReglementsTab(List<DebiteurDto> debiteurs, List<FolioDto> folios) {
     final totalDebiteurs = debiteurs.fold<int>(0, (sum, d) => sum + d.solde);
     final totalFoliosSolde = folios.fold<int>(0, (sum, f) => sum + f.solde);
-    // Encaissé = paiements folios + paiements débiteurs NON rattachés à un folio actif (évite double comptage)
     final totalEncaisse = folios.fold<int>(0, (sum, f) => sum + f.paid)
         + debiteurs.where((d) => d.folioId == null).fold<int>(0, (sum, d) => sum + d.paid);
-    // Facturé = totalGeneral des folios + montant des débiteurs sans folio
     final totalFacture = folios.fold<int>(0, (sum, f) => sum + f.totalGeneral)
         + debiteurs.where((d) => d.folioId == null).fold<int>(0, (sum, d) => sum + d.amount);
 
