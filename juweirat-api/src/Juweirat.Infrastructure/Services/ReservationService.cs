@@ -314,6 +314,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             .Include(r => r.Category)
             .Include(r => r.Client)
             .Include(r => r.Payments)
+            .Include(r => r.Folio)
             .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
             .FirstOrDefaultAsync(r => r.Id == id);
 
@@ -339,6 +340,10 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             case ReservationStatus.Cancelled:
                 r.CancelledAt        = DateTime.UtcNow;
                 r.CancellationReason = req.CancellationReason;
+                // Propager sur le folio pour ne pas bloquer la clôture — l'arrivée
+                // reste sinon comptée comme « non traitée » côté ClotureService.
+                if (r.Folio is not null && r.Folio.ResaStatus != FolioStatus.Annulee)
+                    r.Folio.ResaStatus = FolioStatus.Annulee;
                 break;
         }
 
@@ -500,6 +505,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             .Include(r => r.Category)
             .Include(r => r.Client)
             .Include(r => r.Payments)
+            .Include(r => r.Folio)
             .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
             .FirstOrDefaultAsync(r => r.Id == id);
 
@@ -535,6 +541,10 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         r.Status             = ReservationStatus.Cancelled;
         r.CancelledAt        = DateTime.UtcNow;
         r.CancellationReason = reason;
+        // Propager sur le folio pour ne pas bloquer la clôture — l'arrivée
+        // reste sinon comptée comme « non traitée » côté ClotureService.
+        if (r.Folio is not null && r.Folio.ResaStatus != FolioStatus.Annulee)
+            r.Folio.ResaStatus = FolioStatus.Annulee;
 
         await db.SaveChangesAsync();
 

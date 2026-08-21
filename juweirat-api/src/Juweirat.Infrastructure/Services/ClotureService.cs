@@ -19,6 +19,25 @@ public class ClotureService(AppDbContext db)
 
         var dateHotel = config.DateHotel;
 
+        // Self-heal : les résas annulées via le code antérieur n'ont pas propagé
+        // le statut sur leur folio ; on répare avant de lire la liste pour ne
+        // pas bloquer la clôture sur des lignes déjà traitées côté résa.
+        var staleCancelled = await db.Folios
+            .Include(f => f.Reservation)
+            .Where(f =>
+                f.Arrival == dateHotel &&
+                !f.CheckedIn &&
+                f.ResaStatus != FolioStatus.Annulee &&
+                f.ResaStatus != FolioStatus.NoShow &&
+                f.Reservation != null &&
+                f.Reservation.Status == ReservationStatus.Cancelled)
+            .ToListAsync();
+        if (staleCancelled.Count > 0)
+        {
+            foreach (var f in staleCancelled) f.ResaStatus = FolioStatus.Annulee;
+            await db.SaveChangesAsync();
+        }
+
         var pendingArrivals = await db.Folios
             .Include(f => f.Unit)
             .Where(f =>

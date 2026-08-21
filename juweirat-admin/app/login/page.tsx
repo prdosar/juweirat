@@ -39,9 +39,10 @@ export default function LoginPage() {
       </div>
 
       <div className="w-full max-w-sm relative z-10">
-        {/* Logo */}
+        {/* Logo — encadré blanc pour rester visible sur fond charcoal
+            (le logo est en lettres blanches sur transparent). */}
         <div className="flex flex-col items-center mb-6 text-center">
-          <div className="relative h-14 w-48 flex items-center justify-center">
+          <div className="bg-white px-6 py-3.5 rounded-2xl shadow-xl border border-gray-100 flex items-center justify-center">
             <Image
               src="/img/logo.png"
               alt="Résidence Juweirat"
