@@ -736,35 +736,51 @@ class CompanyDto {
 
 class ContactMessageDto {
   final int id;
-  final String fullName;
+  final String name;
   final String email;
   final String? phone;
   final String subject;
   final String message;
-  final bool isRead;
-  final String createdAt;
+  final String status;
+  final String? replyMessage;
+  final DateTime? repliedAt;
+  final String? repliedBy;
+  final DateTime createdAt;
 
   const ContactMessageDto({
     required this.id,
-    required this.fullName,
+    required this.name,
     required this.email,
     this.phone,
     required this.subject,
     required this.message,
-    this.isRead = false,
+    required this.status,
+    this.replyMessage,
+    this.repliedAt,
+    this.repliedBy,
     required this.createdAt,
   });
 
+  String get fullName => name;
+  bool get isUnread => status.toLowerCase() == 'new';
+
   factory ContactMessageDto.fromJson(Map<String, dynamic> json) {
+    final rawName = (json['name'] ?? json['fullName']) as String? ?? '';
+    final rawStatus = (json['status'] ?? (json['isRead'] == true ? 'Read' : 'New')) as String? ?? 'New';
     return ContactMessageDto(
       id: _toInt(json['id']),
-      fullName: json['fullName'] as String? ?? '',
+      name: rawName,
       email: json['email'] as String? ?? '',
       phone: json['phone'] as String?,
       subject: json['subject'] as String? ?? '',
       message: json['message'] as String? ?? '',
-      isRead: json['isRead'] as bool? ?? false,
-      createdAt: json['createdAt'] as String? ?? '',
+      status: rawStatus,
+      replyMessage: json['replyMessage'] as String?,
+      repliedAt: json['repliedAt'] != null ? DateTime.tryParse(json['repliedAt'].toString()) : null,
+      repliedBy: json['repliedBy'] as String?,
+      createdAt: json['createdAt'] != null
+          ? (DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now())
+          : DateTime.now(),
     );
   }
 }
@@ -1420,12 +1436,12 @@ class NotificationSummaryDto {
 
   factory NotificationSummaryDto.fromJson(Map<String, dynamic> json) {
     return NotificationSummaryDto(
-      systemDate: json['systemDate'] as String? ?? '',
-      todayDate: json['todayDate'] as String? ?? '',
-      pendingReservationsCount: _toInt(json['pendingReservationsCount']),
-      websiteReservationsTodayCount: _toInt(json['websiteReservationsTodayCount']),
-      unreadMessagesCount: _toInt(json['unreadMessagesCount']),
-      daysNotClosedCount: _toInt(json['daysNotClosedCount']),
+      systemDate: (json['systemDate'] ?? json['SystemDate']) as String? ?? '',
+      todayDate: (json['todayDate'] ?? json['TodayDate']) as String? ?? '',
+      pendingReservationsCount: _toInt(json['pendingReservationsCount'] ?? json['PendingReservationsCount']),
+      websiteReservationsTodayCount: _toInt(json['websiteReservationsTodayCount'] ?? json['WebsiteReservationsTodayCount']),
+      unreadMessagesCount: _toInt(json['unreadMessagesCount'] ?? json['UnreadMessagesCount']),
+      daysNotClosedCount: _toInt(json['daysNotClosedCount'] ?? json['DaysNotClosedCount']),
     );
   }
 }
@@ -1773,6 +1789,9 @@ class BalanceLineDto {
     required this.totalCredit,
     required this.closingBalance,
   });
+
+  int get debit => totalDebit;
+  int get credit => totalCredit;
 
   factory BalanceLineDto.fromJson(Map<String, dynamic> json) {
     return BalanceLineDto(

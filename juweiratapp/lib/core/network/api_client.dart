@@ -6,6 +6,7 @@ import 'exceptions.dart';
 class ApiClient {
   late final Dio dio;
   void Function()? onUnauthorized;
+  static void Function()? globalOnUnauthorized;
 
   ApiClient({Dio? customDio, this.onUnauthorized}) {
     dio = customDio ??
@@ -31,6 +32,7 @@ class ApiClient {
           if (e.response?.statusCode == 401) {
             await TokenStorage.clear();
             onUnauthorized?.call();
+            globalOnUnauthorized?.call();
             handler.reject(
               DioException(
                 requestOptions: e.requestOptions,

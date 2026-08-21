@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/auth_repository.dart';
 import '../domain/login_response.dart';
 import 'package:juweiratapp/app/di.dart';
+import 'package:juweiratapp/core/network/api_client.dart';
 
 class AuthState {
   final bool isAuthenticated;
@@ -35,6 +36,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
   final AuthRepository _repository;
 
   AuthNotifier(this._repository) : super(const AuthState(isAuthenticated: false)) {
+    ApiClient.globalOnUnauthorized = () {
+      logout();
+    };
     checkStatus();
   }
 

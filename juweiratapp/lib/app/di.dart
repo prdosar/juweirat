@@ -5,11 +5,7 @@ import 'package:juweiratapp/core/services/repositories.dart';
 import 'package:juweiratapp/core/services/polling_service.dart';
 
 final apiClientProvider = Provider<ApiClient>((ref) {
-  return ApiClient(
-    onUnauthorized: () {
-      // Global 401 callback
-    },
-  );
+  return ApiClient();
 });
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {

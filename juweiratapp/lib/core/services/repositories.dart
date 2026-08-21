@@ -314,16 +314,20 @@ class NotificationsRepository {
   final ApiClient apiClient;
   NotificationsRepository(this.apiClient);
 
-  Future<List<NotificationItemDto>> getNotifications() async {
-    final res = await apiClient.get(Endpoints.mobileNotifications);
-    if (res is List) return res.map((e) => NotificationItemDto.fromJson(e as Map<String, dynamic>)).toList();
-    return [];
-  }
-
   Future<NotificationSummaryDto?> getSummary() async {
     final res = await apiClient.get(Endpoints.notificationSummary);
     if (res is Map<String, dynamic>) return NotificationSummaryDto.fromJson(res);
     return null;
+  }
+
+  Future<List<ContactMessageDto>> getContactMessages({String? status, String? search}) async {
+    final query = <String, dynamic>{};
+    if (status != null && status.isNotEmpty) query['status'] = status;
+    if (search != null && search.isNotEmpty) query['search'] = search;
+
+    final res = await apiClient.get(Endpoints.contactMessages, query: query.isNotEmpty ? query : null);
+    if (res is List) return res.map((e) => ContactMessageDto.fromJson(e as Map<String, dynamic>)).toList();
+    return [];
   }
 }
 
