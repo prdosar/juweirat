@@ -105,22 +105,44 @@ final comptaDataProvider = FutureProvider.autoDispose((ref) async {
   final from = filter.startDate;
   final to = filter.endDate;
 
-  final results = await Future.wait([
-    comptaRepo.getJournal(from: from, to: to, paymentMethod: filter.paymentMethod),
-    comptaRepo.getBalance(from: from, to: to),
-    comptaRepo.getTvaReport(from: from, to: to),
-    sessionRepo.getCurrent(),
-    sessionRepo.getHistory(limit: 30),
-    comptaRepo.getCashRegisters(),
-  ]);
+  JournalReportDto? journal;
+  BalanceReportDto? balance;
+  TvaReportDto? tva;
+  CashSessionDto? currentSession;
+  List<CashSessionDto> sessionsHistory = [];
+  List<CashRegisterDto> cashRegisters = [];
+
+  try {
+    journal = await comptaRepo.getJournal(from: from, to: to, paymentMethod: filter.paymentMethod);
+  } catch (_) {}
+
+  try {
+    balance = await comptaRepo.getBalance(from: from, to: to);
+  } catch (_) {}
+
+  try {
+    tva = await comptaRepo.getTvaReport(from: from, to: to);
+  } catch (_) {}
+
+  try {
+    currentSession = await sessionRepo.getCurrent();
+  } catch (_) {}
+
+  try {
+    sessionsHistory = await sessionRepo.getHistory(limit: 30);
+  } catch (_) {}
+
+  try {
+    cashRegisters = await comptaRepo.getCashRegisters();
+  } catch (_) {}
 
   return {
-    'journal': results[0] as JournalReportDto?,
-    'balance': results[1] as BalanceReportDto?,
-    'tva': results[2] as TvaReportDto?,
-    'currentSession': results[3] as CashSessionDto?,
-    'sessionsHistory': results[4] as List<CashSessionDto>,
-    'cashRegisters': results[5] as List<CashRegisterDto>,
+    'journal': journal,
+    'balance': balance,
+    'tva': tva,
+    'currentSession': currentSession,
+    'sessionsHistory': sessionsHistory,
+    'cashRegisters': cashRegisters,
     'filter': filter,
   };
 });

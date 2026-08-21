@@ -48,9 +48,15 @@ public class AccountingService(AppDbContext db, IHttpContextAccessor? httpContex
             .AsQueryable();
 
         if (filter.From is not null)
-            query = query.Where(m => m.Date >= filter.From.Value);
+        {
+            var fromUtc = EnsureUtc(filter.From.Value);
+            query = query.Where(m => m.Date >= fromUtc);
+        }
         if (filter.To is not null)
-            query = query.Where(m => m.Date <= filter.To.Value);
+        {
+            var toUtc = EnsureUtc(filter.To.Value);
+            query = query.Where(m => m.Date <= toUtc);
+        }
 
         if (filter.AccountId is not null)
             query = query.Where(m => m.FromAccountId == filter.AccountId || m.ToAccountId == filter.AccountId);
@@ -102,6 +108,14 @@ public class AccountingService(AppDbContext db, IHttpContextAccessor? httpContex
         }).ToList();
     }
 
+    private static DateTime EnsureUtc(DateTime dt) =>
+        dt.Kind switch
+        {
+            DateTimeKind.Utc => dt,
+            DateTimeKind.Local => dt.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(dt, DateTimeKind.Utc)
+        };
+
     // ── Grand livre / Balance / TVA / OD (paquet 3) ─────────────────
 
     // Grand livre : parcours chrono des mouvements d'un compte avec solde progressif.
@@ -112,6 +126,9 @@ public class AccountingService(AppDbContext db, IHttpContextAccessor? httpContex
         var account = await db.Accounts.FindAsync(accountId);
         if (account is null) return null;
 
+        var fromUtc = from.HasValue ? EnsureUtc(from.Value) : (DateTime?)null;
+        var toUtc   = to.HasValue   ? EnsureUtc(to.Value)   : (DateTime?)null;
+
         var all = await db.AccountMovements
             .Include(m => m.FromAccount)
             .Include(m => m.ToAccount)
@@ -121,15 +138,15 @@ public class AccountingService(AppDbContext db, IHttpContextAccessor? httpContex
 
         // Solde d'ouverture = solde à la date "from" (mouvements strictement antérieurs).
         decimal opening = 0m;
-        if (from.HasValue)
+        if (fromUtc.HasValue)
         {
-            opening = all.Where(m => m.Date < from.Value)
+            opening = all.Where(m => m.Date < fromUtc.Value)
                          .Sum(m => m.ToAccountId == accountId ? m.Amount : -m.Amount);
         }
 
         var window = all.AsEnumerable();
-        if (from.HasValue) window = window.Where(m => m.Date >= from.Value);
-        if (to.HasValue)   window = window.Where(m => m.Date <= to.Value);
+        if (fromUtc.HasValue) window = window.Where(m => m.Date >= fromUtc.Value);
+        if (toUtc.HasValue)   window = window.Where(m => m.Date <= toUtc.Value);
         var lines = window.ToList();
 
         decimal runningBalance = opening;
@@ -159,8 +176,8 @@ public class AccountingService(AppDbContext db, IHttpContextAccessor? httpContex
 
         return new LedgerReportDto(
             Account:        ToDto(account),
-            From:           from,
-            To:             to,
+            From:           fromUtc,
+            To:             toUtc,
             OpeningBalance: opening,
             TotalDebit:     debit,
             TotalCredit:    credit,
@@ -171,6 +188,9 @@ public class AccountingService(AppDbContext db, IHttpContextAccessor? httpContex
 
     public async Task<BalanceReportDto> GetBalanceAsync(DateTime? from, DateTime? to, string? kindFilter)
     {
+        var fromUtc = from.HasValue ? EnsureUtc(from.Value) : (DateTime?)null;
+        var toUtc   = to.HasValue   ? EnsureUtc(to.Value)   : (DateTime?)null;
+
         var accountsQuery = db.Accounts.AsQueryable();
         if (!string.IsNullOrWhiteSpace(kindFilter)
             && Enum.TryParse<AccountKind>(kindFilter, ignoreCase: true, out var k))
@@ -190,14 +210,14 @@ public class AccountingService(AppDbContext db, IHttpContextAccessor? httpContex
         foreach (var a in accounts)
         {
             decimal opening = 0;
-            if (from.HasValue)
+            if (fromUtc.HasValue)
             {
-                opening = mvts.Where(m => m.Date < from.Value)
+                opening = mvts.Where(m => m.Date < fromUtc.Value)
                               .Sum(m => (m.ToAccountId == a.Id ? m.Amount : 0m) - (m.FromAccountId == a.Id ? m.Amount : 0m));
             }
             var inPeriod = mvts.Where(m =>
-                (!from.HasValue || m.Date >= from.Value) &&
-                (!to.HasValue   || m.Date <= to.Value));
+                (!fromUtc.HasValue || m.Date >= fromUtc.Value) &&
+                (!toUtc.HasValue   || m.Date <= toUtc.Value));
             var debit  = inPeriod.Where(m => m.FromAccountId == a.Id).Sum(m => m.Amount);
             var credit = inPeriod.Where(m => m.ToAccountId   == a.Id).Sum(m => m.Amount);
             var closing = opening + credit - debit;
@@ -213,14 +233,17 @@ public class AccountingService(AppDbContext db, IHttpContextAccessor? httpContex
             totalCredit += credit;
         }
 
-        return new BalanceReportDto(from, to, kindFilter, lines, totalDebit, totalCredit);
+        return new BalanceReportDto(fromUtc, toUtc, kindFilter, lines, totalDebit, totalCredit);
     }
 
     public async Task<TvaReportDto> GetTvaReportAsync(DateTime? from, DateTime? to)
     {
+        var fromUtc = from.HasValue ? EnsureUtc(from.Value) : (DateTime?)null;
+        var toUtc   = to.HasValue   ? EnsureUtc(to.Value)   : (DateTime?)null;
+
         var query = db.AccountMovements.AsQueryable();
-        if (from.HasValue) query = query.Where(m => m.Date >= from.Value);
-        if (to.HasValue)   query = query.Where(m => m.Date <= to.Value);
+        if (fromUtc.HasValue) query = query.Where(m => m.Date >= fromUtc.Value);
+        if (toUtc.HasValue)   query = query.Where(m => m.Date <= toUtc.Value);
 
         var mvts = await query.ToListAsync();
 
@@ -245,7 +268,7 @@ public class AccountingService(AppDbContext db, IHttpContextAccessor? httpContex
         lines = lines.OrderByDescending(l => l.Date).ToList();
 
         return new TvaReportDto(
-            From: from, To: to,
+            From: fromUtc, To: toUtc,
             TotalHt:  lines.Sum(l => l.Ht),
             TotalTva: lines.Sum(l => l.Tva),
             TotalTtc: lines.Sum(l => l.Ttc),
@@ -336,13 +359,16 @@ public class AccountingService(AppDbContext db, IHttpContextAccessor? httpContex
     // HT/TVA/TTC/encaissé/décaissé.
     public async Task<JournalReportDto> GetJournalAsync(JournalFilterParams filter)
     {
+        var fromUtc = filter.From.HasValue ? EnsureUtc(filter.From.Value) : (DateTime?)null;
+        var toUtc   = filter.To.HasValue   ? EnsureUtc(filter.To.Value)   : (DateTime?)null;
+
         var query = db.AccountMovements
             .Include(m => m.FromAccount)
             .Include(m => m.ToAccount)
             .AsQueryable();
 
-        if (filter.From.HasValue) query = query.Where(m => m.Date >= filter.From.Value);
-        if (filter.To.HasValue)   query = query.Where(m => m.Date <= filter.To.Value);
+        if (fromUtc.HasValue) query = query.Where(m => m.Date >= fromUtc.Value);
+        if (toUtc.HasValue)   query = query.Where(m => m.Date <= toUtc.Value);
 
         var movements = await query.OrderBy(m => m.Date).ToListAsync();
 

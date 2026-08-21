@@ -337,8 +337,8 @@ class AccountingRepository {
 
   Future<JournalReportDto?> getJournal({DateTime? from, DateTime? to, String? paymentMethod}) async {
     final query = <String, dynamic>{};
-    if (from != null) query['from'] = from.toIso8601String();
-    if (to != null) query['to'] = to.toIso8601String();
+    if (from != null) query['from'] = from.toUtc().toIso8601String();
+    if (to != null) query['to'] = to.toUtc().toIso8601String();
     if (paymentMethod != null && paymentMethod.isNotEmpty) query['paymentMethod'] = paymentMethod;
 
     final res = await apiClient.get(Endpoints.comptaJournal, query: query.isNotEmpty ? query : null);
@@ -348,8 +348,8 @@ class AccountingRepository {
 
   Future<BalanceReportDto?> getBalance({DateTime? from, DateTime? to, String? kind}) async {
     final query = <String, dynamic>{};
-    if (from != null) query['from'] = from.toIso8601String();
-    if (to != null) query['to'] = to.toIso8601String();
+    if (from != null) query['from'] = from.toUtc().toIso8601String();
+    if (to != null) query['to'] = to.toUtc().toIso8601String();
     if (kind != null && kind.isNotEmpty) query['kind'] = kind;
 
     final res = await apiClient.get(Endpoints.comptaBalance, query: query.isNotEmpty ? query : null);
@@ -359,8 +359,8 @@ class AccountingRepository {
 
   Future<TvaReportDto?> getTvaReport({DateTime? from, DateTime? to}) async {
     final query = <String, dynamic>{};
-    if (from != null) query['from'] = from.toIso8601String();
-    if (to != null) query['to'] = to.toIso8601String();
+    if (from != null) query['from'] = from.toUtc().toIso8601String();
+    if (to != null) query['to'] = to.toUtc().toIso8601String();
 
     final res = await apiClient.get(Endpoints.comptaTva, query: query.isNotEmpty ? query : null);
     if (res is Map<String, dynamic>) return TvaReportDto.fromJson(res);
