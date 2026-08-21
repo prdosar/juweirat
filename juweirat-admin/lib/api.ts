@@ -278,6 +278,7 @@ export const reservations = {
     prestations: Array<{ prestationId: number; quantite: number; prixUnitaire?: number }> | null;
     acceptRefundImbalance: boolean;
     tvaExonere: boolean;
+    discount: number;
   }>) => request<import('./types').ReservationDto>(`/api/reservations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 };
 
