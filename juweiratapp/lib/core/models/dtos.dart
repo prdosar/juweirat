@@ -153,9 +153,11 @@ class ReservationDto {
     this.totalPrestations = 0,
     this.prestations = const [],
     this.tvaExonere = false,
+    this.discount = 0,
   });
 
   final bool tvaExonere;
+  final int discount;
 
   factory ReservationDto.fromJson(Map<String, dynamic> json) {
     final rawPres = json['prestations'] as List<dynamic>? ?? [];
@@ -199,6 +201,7 @@ class ReservationDto {
       totalHebergement: _toInt(json['totalHebergement']),
       totalPrestations: _toInt(json['totalPrestations']),
       tvaExonere: json['tvaExonere'] as bool? ?? false,
+      discount: _toInt(json['discount'] ?? json['discountPercent']),
       prestations: rawPres
           .map((e) => ReservationPrestationDto.fromJson(e as Map<String, dynamic>))
           .toList(),
