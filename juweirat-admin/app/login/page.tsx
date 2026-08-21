@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth } from '@/lib/api';
 import { saveAuth } from '@/lib/auth';
+import { LOGO_DATA_URI } from '@/lib/logoDataUri';
 import { LogIn, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
@@ -38,12 +39,10 @@ export default function LoginPage() {
       </div>
 
       <div className="w-full max-w-sm relative z-10">
-        {/* Logo rendu en background-image CSS : c'est le seul chemin de rendu
-            qui a marché sur cette page. next/image et <img> restent parfois
-            invisibles (interaction avec le build standalone / cache navigateur),
-            un background-image est immunisé contre ces cas. Dimensions figées
-            pour garantir un rendu visible même si les classes utilitaires
-            échouent. */}
+        {/* Logo embarqué en base64 dans le bundle JS — 3 tentatives précédentes
+            avec fichier public/ ont échoué en prod (next/image, <img> natif,
+            background-image URL). Le data URI est immunisé : les octets sont
+            dans le JS, aucune requête réseau, aucun cache 404 possible. */}
         <div className="flex flex-col items-center mb-6 text-center">
           <div
             className="bg-white rounded-2xl shadow-xl border border-gray-100"
@@ -51,7 +50,7 @@ export default function LoginPage() {
               width: 200,
               height: 72,
               padding: '10px 22px',
-              backgroundImage: "url('/img/logo.png')",
+              backgroundImage: `url("${LOGO_DATA_URI}")`,
               backgroundSize: 'contain',
               backgroundPosition: 'center',
               backgroundRepeat: 'no-repeat',

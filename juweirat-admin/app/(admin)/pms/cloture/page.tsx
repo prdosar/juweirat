@@ -32,6 +32,8 @@ export default function CloturePage() {
   const [noShowMethod, setNoShowMethod] = useState<string>('Cash');
   const [noShowError, setNoShowError]   = useState('');
   const [noShowSubmitting, setNoShowSubmitting] = useState(false);
+  // Confirmation de clôture — remplace le confirm() natif par une vraie modale.
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const load = useCallback(async () => {
     const [cfg, pv, hist] = await Promise.all([
@@ -73,12 +75,12 @@ export default function CloturePage() {
     } finally { setNoShowSubmitting(false); }
   }
 
-  async function execute() {
-    if (!confirm(`Clôturer la journée du ${config?.dateHotel} ? Cette opération est irréversible.`)) return;
+  async function executeConfirmed() {
     setBusy(true); setError('');
     try {
       const result = await pmsCloture.execute();
       setDone(result);
+      setConfirmOpen(false);
       await load();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erreur');
@@ -170,7 +172,7 @@ export default function CloturePage() {
                 )}
 
                 <button
-                  onClick={execute}
+                  onClick={() => { setError(''); setConfirmOpen(true); }}
                   disabled={busy || !preview.canClose}
                   className="flex items-center gap-2 bg-charcoal text-white font-semibold text-sm px-6 py-3 rounded-lg hover:opacity-90 disabled:opacity-40 transition-opacity"
                 >
@@ -220,6 +222,84 @@ export default function CloturePage() {
           </>
         )}
       </div>
+
+      {/* Confirmation de clôture — modale centrée, remplace le confirm() natif */}
+      {confirmOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-charcoal/40 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => !busy && setConfirmOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-6 space-y-5">
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 rounded-full bg-charcoal/10 flex items-center justify-center shrink-0">
+                  <Lock size={20} className="text-charcoal" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-base font-bold text-charcoal">Clôturer la journée</h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Date hôtel : <span className="font-mono font-semibold text-charcoal">{config?.dateHotel}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-surface border border-gray-100 rounded-xl p-4 space-y-2.5">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-xs text-gray-500">Folios actifs à valoriser</span>
+                  <span className="text-sm font-semibold text-charcoal">
+                    {preview?.estimatedActiveCount ?? 0}
+                  </span>
+                </div>
+                <div className="flex justify-between items-baseline pt-2 border-t border-gray-100">
+                  <span className="text-xs text-gray-500">Nouvelle date hôtel</span>
+                  <span className="text-sm font-semibold text-green-dark font-mono">
+                    {config?.dateHotel
+                      ? new Date(new Date(config.dateHotel).getTime() + 86400000).toISOString().slice(0, 10)
+                      : '—'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-lg px-3.5 py-2.5">
+                <AlertTriangle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800 leading-relaxed">
+                  Cette opération est <b>irréversible</b>. Elle génère les postings d'hébergement,
+                  fige les indicateurs du jour et avance la date hôtel de 24h.
+                </p>
+              </div>
+
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">
+                  {error}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 px-6 pb-6 pt-1">
+              <button
+                type="button"
+                onClick={() => setConfirmOpen(false)}
+                disabled={busy}
+                className="flex-1 py-2.5 rounded-lg border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={executeConfirmed}
+                disabled={busy}
+                className="flex-1 py-2.5 rounded-lg bg-charcoal text-white text-sm font-bold hover:opacity-90 disabled:opacity-50 transition-opacity flex items-center justify-center gap-2"
+              >
+                <Lock size={14} />
+                {busy ? 'Clôture…' : 'Clôturer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Popup No Show — montant calculé côté back + choix du mode de paiement */}
       {noShowModal && (
