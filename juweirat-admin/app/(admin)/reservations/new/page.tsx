@@ -235,7 +235,7 @@ function NewReservationPageInner() {
   // Mode 'new'      : on n'a pas encore de clientId, on passe la companyId
   // sélectionnée dans le formulaire pour que le waterfall applique quand même
   // le tarif compagnie.
-  const previewCompanyId = mode === 'new' ? newClient.companyId : 0;
+  const previewCompanyId = clientMode === 'new' ? newClient.companyId : 0;
   const [tarifPreview, setTarifPreview] = useState<TarifPreviewDto | null>(null);
   useEffect(() => {
     setTarifPreview(null);
