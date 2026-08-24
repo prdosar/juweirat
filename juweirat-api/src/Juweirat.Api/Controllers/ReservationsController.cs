@@ -80,10 +80,14 @@ public class ReservationsController(ReservationService reservationService) : Con
     }
 
     [HttpGet("tarif-preview")]
-    public async Task<IActionResult> GetTarifPreview([FromQuery] long clientId, [FromQuery] long categoryId, [FromQuery] int nights = 1)
+    public async Task<IActionResult> GetTarifPreview(
+        [FromQuery] long categoryId,
+        [FromQuery] long clientId = 0,
+        [FromQuery] long companyId = 0,
+        [FromQuery] int nights = 1)
     {
-        if (clientId <= 0 || categoryId <= 0) return BadRequest(new { error = "clientId and categoryId are required" });
-        var dto = await reservationService.GetTarifPreviewAsync(clientId, categoryId, nights);
+        if (categoryId <= 0) return BadRequest(new { error = "categoryId is required" });
+        var dto = await reservationService.GetTarifPreviewAsync(clientId, categoryId, nights, companyId);
         return dto is null ? NotFound(new { error = "Category not found" }) : Ok(dto);
     }
 }

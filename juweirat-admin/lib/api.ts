@@ -258,9 +258,11 @@ export const reservations = {
       `/api/reservations/${id}/process-noshow`,
       { method: 'POST', body: JSON.stringify({ paymentMethod: paymentMethod ?? null }) },
     ),
-  getTarifPreview: (clientId: number, categoryId: number, nights: number) =>
+  getTarifPreview: (clientId: number, categoryId: number, nights: number, companyId = 0) =>
     request<import('./types').TarifPreviewDto>(
-      `/api/reservations/tarif-preview?clientId=${clientId}&categoryId=${categoryId}&nights=${nights}`,
+      `/api/reservations/tarif-preview?categoryId=${categoryId}&nights=${nights}` +
+      (clientId > 0 ? `&clientId=${clientId}` : '') +
+      (companyId > 0 ? `&companyId=${companyId}` : ''),
     ),
   processCancellation: (id: number, reason?: string, paymentMethod?: string) =>
     request<import('./types').CancellationBillingResultDto>(

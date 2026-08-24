@@ -619,16 +619,30 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
     /// selon le waterfall : tarif compagnie > tarif catégorie.
     /// (Les prix sur Room ont été supprimés — tout passe par la Category.)
     /// </summary>
-    public async Task<TarifPreviewDto?> GetTarifPreviewAsync(long clientId, long categoryId, int nights)
+    public async Task<TarifPreviewDto?> GetTarifPreviewAsync(long clientId, long categoryId, int nights, long companyId = 0)
     {
         if (nights <= 0) nights = 1;
 
         var category = await db.RoomCategories.FindAsync(categoryId);
         if (category is null) return null;
 
-        var client = await db.Clients
-            .Include(c => c.Company)
-            .FirstOrDefaultAsync(c => c.Id == clientId);
+        Client? client = null;
+        if (clientId > 0)
+        {
+            client = await db.Clients
+                .Include(c => c.Company)
+                .FirstOrDefaultAsync(c => c.Id == clientId);
+        }
+        // Preview pour un client pas encore créé (wizard mode "Créer un client")
+        // : on synthétise un Client éphémère avec la compagnie choisie.
+        if (client is null && companyId > 0)
+        {
+            var company = await db.Companies.FirstOrDefaultAsync(c => c.Id == companyId);
+            if (company is not null)
+            {
+                client = new Client { CompanyId = company.Id, Company = company };
+            }
+        }
 
         var resolved = await ResolveTarifAsync(client, category, room: null);
         var tarifResult = TarifEngine.ForStay(resolved.TarifNuit, resolved.TarifN15, resolved.TarifN30, nights);

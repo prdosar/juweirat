@@ -230,16 +230,23 @@ function NewReservationPageInner() {
   const selectedCat = categoryList.find(c => c.id === categoryId) ?? null;
 
   // ── Tarif preview effectif (compagnie / catégorie / défaut) ──
+  // Mode 'existing' : on prend le client déjà en base (sa compagnie éventuelle
+  // pilote le waterfall).
+  // Mode 'new'      : on n'a pas encore de clientId, on passe la companyId
+  // sélectionnée dans le formulaire pour que le waterfall applique quand même
+  // le tarif compagnie.
+  const previewCompanyId = mode === 'new' ? newClient.companyId : 0;
   const [tarifPreview, setTarifPreview] = useState<TarifPreviewDto | null>(null);
   useEffect(() => {
     setTarifPreview(null);
-    if (!clientId || !categoryId || nights <= 0) return;
+    if (!categoryId || nights <= 0) return;
+    if (!clientId && !previewCompanyId) return;
     let cancelled = false;
-    reservations.getTarifPreview(clientId, categoryId, nights)
+    reservations.getTarifPreview(clientId, categoryId, nights, previewCompanyId)
       .then(res => { if (!cancelled) setTarifPreview(res); })
       .catch(() => { if (!cancelled) setTarifPreview(null); });
     return () => { cancelled = true; };
-  }, [clientId, categoryId, nights]);
+  }, [clientId, categoryId, nights, previewCompanyId]);
 
   // ── Disponibilité catégories pour la période choisie ──
   // On récupère la liste des catégories qui ont AU MOINS une chambre libre
