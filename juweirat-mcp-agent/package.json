@@ -1,0 +1,30 @@
+{
+  "name": "juweirat-mcp-agent",
+  "version": "0.1.0",
+  "description": "Agent orchestrateur Haiku 4.5 pour Juweirat — brancHe le serveur MCP juweirat-mcp et expose un endpoint HTTP SSE consommé par le widget admin et (Sprint 4) WhatsApp.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "express": "^4.21.2",
+    "jose": "^5.9.6",
+    "openai": "^4.104.0",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.5",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
