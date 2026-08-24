@@ -282,39 +282,68 @@ export default function ReservationDetailPage() {
             </div>
             <div>
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Financier</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Prix/nuit</span>
-                  <span>{r.pricePerNightSnapshot.toLocaleString('fr')} {r.currency}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Hébergement</span>
-                  <span className="font-medium text-charcoal">{r.totalHebergement.toLocaleString('fr')} {r.currency}</span>
-                </div>
-                {r.prestations.map(p => {
-                  const label = p.nameFr.length > 17 ? `${p.nameFr.slice(0, 17)}…` : p.nameFr;
-                  return (
-                    <div key={p.id} className="flex justify-between">
-                      <span className="text-gray-500" title={p.nameFr}>{label}</span>
-                      <span className="font-medium text-gold">+{p.totalLigne.toLocaleString('fr')} {r.currency}</span>
+              {(() => {
+                // Convention (cohérente avec le wizard d'édition) :
+                //   totalPrice stocké = sous-total HT (hébergement + prestations − remise).
+                //   TVA calculée à 18% par-dessus, sauf si tvaExonere.
+                //   Le montant payé s'impute sur le TTC.
+                const discount = r.discount ?? 0;
+                const ht  = r.totalPrice;
+                const tva = r.tvaExonere ? 0 : Math.round(ht * 0.18);
+                const ttc = ht + tva;
+                const restantTtc = ttc - r.amountPaid;
+                return (
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Prix/nuit</span>
+                      <span>{r.pricePerNightSnapshot.toLocaleString('fr')} {r.currency}</span>
                     </div>
-                  );
-                })}
-                <div className="flex justify-between border-t border-gray-100 pt-1.5">
-                  <span className="text-gray-500">Total</span>
-                  <span className="font-bold text-charcoal">{r.totalPrice.toLocaleString('fr')} {r.currency}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Payé</span>
-                  <span className="text-green-600 font-medium">{r.amountPaid.toLocaleString('fr')}</span>
-                </div>
-                <div className="flex justify-between border-t border-gray-100 pt-2">
-                  <span className="font-medium">Restant dû</span>
-                  <span className={`font-bold ${r.amountDue > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                    {r.amountDue.toLocaleString('fr')} {r.currency}
-                  </span>
-                </div>
-              </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Hébergement</span>
+                      <span className="font-medium text-charcoal">{r.totalHebergement.toLocaleString('fr')} {r.currency}</span>
+                    </div>
+                    {r.prestations.map(p => {
+                      const label = p.nameFr.length > 17 ? `${p.nameFr.slice(0, 17)}…` : p.nameFr;
+                      return (
+                        <div key={p.id} className="flex justify-between">
+                          <span className="text-gray-500" title={p.nameFr}>{label}</span>
+                          <span className="font-medium text-gold">+{p.totalLigne.toLocaleString('fr')} {r.currency}</span>
+                        </div>
+                      );
+                    })}
+                    {discount > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Remise</span>
+                        <span className="font-medium text-charcoal">− {discount.toLocaleString('fr')} {r.currency}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between border-t border-gray-100 pt-1.5">
+                      <span className="text-gray-500">Sous-total HT</span>
+                      <span className="font-medium text-charcoal">{ht.toLocaleString('fr')} {r.currency}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">TVA (18%)</span>
+                      {r.tvaExonere
+                        ? <span className="text-gray-500 italic">Exonérée</span>
+                        : <span className="font-medium text-charcoal">+ {tva.toLocaleString('fr')} {r.currency}</span>}
+                    </div>
+                    <div className="flex justify-between border-t border-gray-100 pt-1.5">
+                      <span className="font-medium">Total {r.tvaExonere ? '' : 'TTC'}</span>
+                      <span className="font-bold text-charcoal">{ttc.toLocaleString('fr')} {r.currency}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Payé</span>
+                      <span className="text-green-600 font-medium">− {r.amountPaid.toLocaleString('fr')} {r.currency}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-gray-100 pt-2">
+                      <span className="font-medium">Restant dû</span>
+                      <span className={`font-bold ${restantTtc > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        {restantTtc.toLocaleString('fr')} {r.currency}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
