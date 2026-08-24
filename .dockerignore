@@ -1,0 +1,48 @@
+# .dockerignore racine — s'applique aux builds dont le context est la racine
+# du monorepo (aujourd'hui : juweirat-mcp-agent uniquement). Les autres
+# services (api / web / admin) utilisent leur propre sous-dossier comme
+# context et ne sont pas affectés par ce fichier.
+
+# Node
+**/node_modules
+**/dist
+**/.next
+**/npm-debug.log*
+
+# Dotnet
+**/bin
+**/obj
+
+# VCS / IDE
+.git
+.gitignore
+.vs
+.vscode
+.idea
+
+# Secrets locaux
+.env
+.env.local
+**/.env.local
+docker-compose.override.yml
+
+# Autres services (pas nécessaires au build de l'agent MCP)
+juweirat-api/
+juweirat-web/
+juweirat-admin/
+nginx/
+app-gestion/
+juweirat/
+juweiratapp/
+scripts/
+
+# Assets lourds
+photos/
+uploads/
+*.zip
+*.docx
+*.pdf
+
+# Divers
+*.log
+README.md

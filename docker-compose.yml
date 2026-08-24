@@ -64,10 +64,47 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ""
+        NEXT_PUBLIC_AGENT_URL: /agent
     container_name: juweirat-admin
     restart: unless-stopped
     environment:
       NODE_ENV: production
+    networks:
+      - juweirat-net
+
+  # ─── Agent conversationnel MCP (Node/TS) ────────────────────────────────────
+  # Bundle juweirat-mcp + juweirat-mcp-agent dans une seule image.
+  # L'agent spawn le mcp en subprocess stdio (voir Dockerfile).
+  juweirat-mcp-agent:
+    build:
+      context: .
+      dockerfile: juweirat-mcp-agent/Dockerfile
+    container_name: juweirat-mcp-agent
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3010
+      # Agent : lecture/écriture des tables ChatSessions / ChatMessages / McpAuditLog
+      # via le user Postgres principal (owner de ces tables).
+      AGENT_PG_HOST:     postgres
+      AGENT_PG_PORT:     5432
+      AGENT_PG_DATABASE: juweirat
+      AGENT_PG_USER:     juweirat
+      AGENT_PG_PASSWORD: ${POSTGRES_PASSWORD:-juweirat_dev_2026}
+      # Subprocess MCP : user Postgres READ-ONLY dédié (scripts/create_mcp_ro_user.sql).
+      MCP_PG_HOST:       postgres
+      MCP_PG_PORT:       5432
+      MCP_PG_DATABASE:   juweirat
+      MCP_PG_USER:       ${MCP_PG_USER:-juweirat_mcp_ro}
+      MCP_PG_PASSWORD:   ${MCP_PG_PASSWORD:-juweirat_mcp_ro_dev_2026}
+      # OpenAI + JWT (partagés avec juweirat-api pour la vérif du token admin).
+      OPENAI_API_KEY:    ${OPENAI_API_KEY}
+      JWT_SECRET:        ${JWT_SECRET:-CHANGE_ME_USE_A_LONG_RANDOM_SECRET_KEY_AT_LEAST_32_CHARS}
+      JWT_ISSUER:        juweirat-api
+      JWT_AUDIENCE:      juweirat-clients
     networks:
       - juweirat-net
 
@@ -85,6 +122,7 @@ services:
       - juweirat-api
       - juweirat-web
       - juweirat-admin
+      - juweirat-mcp-agent
     networks:
       - juweirat-net
 
