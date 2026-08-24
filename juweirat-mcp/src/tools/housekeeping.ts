@@ -9,53 +9,105 @@ export const roomsInputSchema = z.object({});
 export const roomsDefinition = {
   name: "list_rooms_by_status",
   description:
-    "État des chambres PMS : compte par (status × statutMenage × horsService) + liste détaillée. Permet de savoir combien de chambres sont à nettoyer, hors service, occupées, etc.",
+    "État temps réel des chambres PMS. Pour chaque chambre : type/gamme, statut ménage, hors service, ET occupation courante (client actuellement dans la chambre, via folio actif où arrival ≤ aujourd'hui < departure). Utilise ce tool pour répondre à \"qui occupe la chambre X\", \"quelles chambres sont libres/occupées\", \"chambres à nettoyer\".",
   inputSchema: roomsInputSchema,
 } as const;
 
 export async function roomsHandler(): Promise<string> {
-  const summary = await query(
-    `
-    SELECT
-      status,
-      "statutMenage",
-      "horsService",
-      COUNT(*)::int AS count
-    FROM rooms
-    WHERE "pmsRoomNo" IS NOT NULL
-    GROUP BY status, "statutMenage", "horsService"
-    ORDER BY status, "statutMenage", "horsService"
-    `,
-  );
-
+  // Folio actif = englobe aujourd'hui et pas encore clôturé. Une chambre peut
+  // techniquement avoir plusieurs folios sur la même date (overlap accidentel) ;
+  // on prend le plus récent par id pour rester déterministe.
   const rooms = await query(
     `
+    WITH active_folio AS (
+      SELECT DISTINCT ON (f."unitId")
+        f."unitId",
+        f.id                                              AS "folioId",
+        f.number                                          AS "folioNumber",
+        f."checkedIn",
+        to_char(f.arrival, 'YYYY-MM-DD')                  AS "arrival",
+        to_char(f.departure, 'YYYY-MM-DD')                AS "departure",
+        NULLIF(
+          TRIM(COALESCE(f.prenom, '') || ' ' || COALESCE(f.nom, '')),
+          ''
+        )                                                 AS "namePrenomNom",
+        f.guest,
+        f.societe
+      FROM folios f
+      WHERE f.arrival <= CURRENT_DATE
+        AND f.departure > CURRENT_DATE
+        AND NOT f.closed
+      ORDER BY f."unitId", f.id DESC
+    )
     SELECT
-      id, "pmsRoomNo", "roomNumber", floor,
-      "pmsType", "pmsGamme",
-      status, "statutMenage", "horsService",
-      to_char("lastCleaned", 'YYYY-MM-DD') AS "lastCleaned"
-    FROM rooms
-    WHERE "pmsRoomNo" IS NOT NULL
-    ORDER BY "pmsRoomNo"::int
+      r.id, r."pmsRoomNo", r."roomNumber", r.floor,
+      r."pmsType", r."pmsGamme",
+      r."statutMenage", r."horsService",
+      to_char(r."lastCleaned", 'YYYY-MM-DD') AS "lastCleaned",
+      CASE WHEN af."folioId" IS NOT NULL THEN 'Occupied' ELSE 'Free' END AS "occupancyState",
+      COALESCE(af."namePrenomNom", af.guest, af.societe) AS "currentGuest",
+      af.societe                          AS "currentCompany",
+      af."folioNumber"                    AS "currentFolioNumber",
+      af."folioId"                        AS "currentFolioId",
+      af."checkedIn"                      AS "currentCheckedIn",
+      af."arrival"                        AS "currentArrival",
+      af."departure"                      AS "currentDeparture"
+    FROM rooms r
+    LEFT JOIN active_folio af ON af."unitId" = r.id
+    WHERE r."pmsRoomNo" IS NOT NULL
+    ORDER BY r."pmsRoomNo"::int
     LIMIT $1
     `,
     [config.maxRows],
   );
 
-  const [totals] = await query<{ total: number; sale: number; horsService: number; occupied: number }>(
+  const [totals] = await query<{
+    total: number;
+    occupiedNow: number;
+    checkedInNow: number;
+    availableNow: number;
+    horsService: number;
+    toClean: number;
+  }>(
     `
+    WITH active_folio AS (
+      SELECT DISTINCT ON (f."unitId")
+        f."unitId", f."checkedIn"
+      FROM folios f
+      WHERE f.arrival <= CURRENT_DATE
+        AND f.departure > CURRENT_DATE
+        AND NOT f.closed
+      ORDER BY f."unitId", f.id DESC
+    )
     SELECT
-      COUNT(*)::int AS total,
-      COUNT(*) FILTER (WHERE "statutMenage" = 'Sale')::int AS sale,
-      COUNT(*) FILTER (WHERE "horsService")::int AS "horsService",
-      COUNT(*) FILTER (WHERE status = 'Occupied')::int AS occupied
-    FROM rooms
-    WHERE "pmsRoomNo" IS NOT NULL
+      COUNT(*)::int                                                        AS total,
+      COUNT(af."unitId")::int                                              AS "occupiedNow",
+      COUNT(*) FILTER (WHERE af."checkedIn")::int                          AS "checkedInNow",
+      (COUNT(*) - COUNT(af."unitId"))::int                                 AS "availableNow",
+      COUNT(*) FILTER (WHERE r."horsService")::int                         AS "horsService",
+      COUNT(*) FILTER (WHERE r."statutMenage" = 'Sale')::int               AS "toClean"
+    FROM rooms r
+    LEFT JOIN active_folio af ON af."unitId" = r.id
+    WHERE r."pmsRoomNo" IS NOT NULL
     `,
   );
 
-  return JSON.stringify({ totals, summary, rooms }, null, 2);
+  // Répartition ménage pour garder l'info sans polluer la réponse racine.
+  const housekeepingBreakdown = await query(
+    `
+    SELECT "statutMenage", "horsService", COUNT(*)::int AS count
+    FROM rooms
+    WHERE "pmsRoomNo" IS NOT NULL
+    GROUP BY "statutMenage", "horsService"
+    ORDER BY "statutMenage", "horsService"
+    `,
+  );
+
+  return JSON.stringify(
+    { totals, housekeepingBreakdown, rooms },
+    null,
+    2,
+  );
 }
 
 // ─── list_maintenance_incidents ──────────────────────────────────────────────
