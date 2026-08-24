@@ -3,3 +3,6 @@ dist/
 .env
 .env.local
 *.log
+
+# JWT de test généré localement (contient un token admin valide 1h)
+.test-jwt.txt
