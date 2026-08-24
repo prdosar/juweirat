@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+
+# Dumps de données prod téléchargés en local pour tests (jamais versionnés).
+scripts/prod-dump.sql
+scripts/*-dump.sql

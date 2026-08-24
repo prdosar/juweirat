@@ -10,6 +10,10 @@ juweirat/
 .env.local
 *.env
 
+# Overrides Docker Compose locaux (dev, expositions ports…)
+docker-compose.override.yml
+docker-compose.override.yaml
+
 # Dependencies
 **/node_modules/
 **/.next/
