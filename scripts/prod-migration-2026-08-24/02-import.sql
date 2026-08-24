@@ -55,7 +55,7 @@ BEGIN
   INSERT INTO tmp_import VALUES
     ( 1, '21', NULL,       'Yasfir',     '',                    '2026-08-20', '2026-12-31',        0, true,  'N30Nuits', 'HS gouvernance — gratuit'),
     ( 2, '23', 'BESSAC',   'Michaël',    'Loïc Franck',         '2026-02-25', '2027-02-24', 10920000, false, 'N30Nuits', NULL),
-    ( 3, '24', 'BESSAC',   'Jean',       'Christophe Rassel',   '2025-11-10', '2026-11-09', 10950000, false, 'N30Nuits', NULL),
+    ( 3, '24', 'BESSAC',   'Jean',       'Christophe Rassel',   '2025-11-10', '2026-11-09', 10920000, false, 'N30Nuits', NULL),
     ( 4, '25', 'CICR',     'Condo',      'Ndoli Said',          '2026-04-07', '2027-04-06',  7886667, false, 'N30Nuits', NULL),
     ( 5, '42', 'YAS',      'Salah',      'Hazem',               '2026-06-15', '2027-06-14',  7280000, true,  'N30Nuits', 'Tarif incluant électricité'),
     ( 6, '43', 'YAS',      'HAIDERASIF', '',                    '2026-06-15', '2027-06-14', 10920000, true,  'N30Nuits', 'Tarif incluant électricité'),
@@ -125,18 +125,18 @@ BEGIN
       RAISE EXCEPTION 'Prix catalogue absent pour room % (category %) — waterfall vide', r.pms_room, v_cat_id;
     END IF;
 
-    v_cat_total := v_cat_per_night * v_nights;
-    v_per_night := v_cat_per_night;
-
-    -- Calcul discount pour matcher le prix négocié
+    -- ── PricePerNightSnapshot cohérent avec TotalPrice ──────────────
+    -- Snapshot = MAX(catalogue, négocié/nuits) pour que snapshot × nights ≥ negociated
+    -- (garantit que Discount ≥ 0 et que l'affichage catalogue/remise/net reste sain).
     IF r.negociated_ht = 0 THEN
-      -- HS gouvernance : gratuit → discount = tout
-      v_discount := v_cat_total;
-    ELSIF r.negociated_ht < v_cat_total THEN
-      v_discount := v_cat_total - r.negociated_ht;
+      -- HS gouvernance : snapshot = catalogue, discount = 100%
+      v_per_night := v_cat_per_night;
+      v_cat_total := v_cat_per_night * v_nights;
+      v_discount  := v_cat_total;
     ELSE
-      -- Prix négocié ≥ catalogue → pas de discount (le catalogue est déjà le tarif)
-      v_discount := 0;
+      v_per_night := GREATEST(v_cat_per_night, (r.negociated_ht + v_nights - 1) / v_nights);
+      v_cat_total := v_per_night * v_nights;
+      v_discount  := GREATEST(0, v_cat_total - r.negociated_ht);
     END IF;
 
     -- ── Insert client ─────────────────────────────────────────────────
