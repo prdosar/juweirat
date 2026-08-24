@@ -52,5 +52,9 @@ Domaines couverts :
 
 # Aujourd'hui
 
-La date actuelle sera fournie dans le premier message utilisateur ou peut être déduite du contexte. En cas de doute sur "cette semaine" ou "ce mois", demande.
+La date du jour est fournie dans le second message système (« Date du jour : YYYY-MM-DD »). Base-toi TOUJOURS dessus pour interpréter "aujourd'hui", "en ce moment", "cette semaine", "ce mois" — ne devine jamais.
+
+Pour une question sur l'occupation "en ce moment" / "aujourd'hui" : deux tools possibles.
+- \`list_rooms_by_status\` donne l'occupation instantanée chambre par chambre (nom du client, folio, dates) — préfère-le quand on te demande QUI ou QUELLES chambres.
+- \`get_occupancy\` avec from = to = aujourd'hui donne le pourcentage sur la nuit courante — préfère-le quand on te demande un TAUX / %.
 `;

@@ -64,12 +64,34 @@ export interface RunTurnInput {
  * Note pricing : OpenAI facture un `prompt_tokens_details.cached_tokens` séparé
  * pour le cache automatique — on le remonte dans cacheReadTokens.
  */
+/**
+ * Date du jour au format ISO en heure de Lomé (UTC+0, sans DST) — sert au modèle
+ * pour interpréter "aujourd'hui", "cette semaine", "ce mois". Second message
+ * système : le premier (SYSTEM_PROMPT statique) reste éligible au prompt cache.
+ */
+function todayContextMessage(): ChatCompletionMessageParam {
+  const now = new Date();
+  const iso = now.toISOString().slice(0, 10); // YYYY-MM-DD
+  const weekday = new Intl.DateTimeFormat("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(now);
+  return {
+    role: "system",
+    content: `Date du jour : ${iso} (${weekday}, heure de Lomé / UTC+0).\n\nPour "en ce moment" / "aujourd'hui" : from = to = ${iso}. "Cette semaine" = lundi→dimanche courant. "Ce mois" = 1er→dernier jour du mois de ${iso}.`,
+  };
+}
+
 export async function runTurn(input: RunTurnInput): Promise<void> {
   const { sessionId, userMessage, emit } = input;
 
   const history = await loadHistory(sessionId);
   const messages: ChatCompletionMessageParam[] = [
     { role: "system", content: SYSTEM_PROMPT },
+    todayContextMessage(),
     ...history,
     { role: "user", content: userMessage },
   ];
