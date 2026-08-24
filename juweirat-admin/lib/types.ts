@@ -1,3 +1,35 @@
+// ─── Agent MCP (Sprint 2/3) ─────────────────────────────────────────────────
+export interface ChatSession {
+  id: number;
+  canal: 'web' | 'whatsapp';
+  userId: number | null;
+  phoneNumber: string | null;
+  title: string;
+  createdAt: string;
+  lastActivityAt: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  sessionId: number;
+  role: 'user' | 'assistant';
+  content: string;
+  toolCalls: Array<{ tool: string; args: unknown; sizeChars: number; isError?: boolean }>;
+  tokensIn: number;
+  tokensOut: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  createdAt: string;
+}
+
+/** Événements diffusés par le serveur agent via SSE pendant un tour. */
+export type AgentEvent =
+  | { type: 'text'; delta: string }
+  | { type: 'tool_use'; tool: string; args: unknown }
+  | { type: 'tool_result'; tool: string; sizeChars: number; isError: boolean }
+  | { type: 'done'; tokensIn: number; tokensOut: number; cacheReadTokens: number; cacheWriteTokens: number }
+  | { type: 'error'; message: string };
+
 export interface LoginResponse {
   token: string;
   email: string;

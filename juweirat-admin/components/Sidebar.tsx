@@ -8,7 +8,7 @@ import {
   CreditCard, LogOut, CalendarDays, Building2, ClipboardList, Wrench,
   Receipt, Settings, BarChart2, Printer, Mail, ShoppingCart, Package,
   Briefcase, ShieldCheck, BookOpen, Wallet, BookText, Scale, Percent,
-  FilePlus, Hotel, ClipboardCheck, ChevronDown,
+  FilePlus, Hotel, ClipboardCheck, ChevronDown, Sparkles,
 } from 'lucide-react';
 import { clearAuth, getUser } from '@/lib/auth';
 import { useEffect, useMemo, useState } from 'react';
@@ -52,6 +52,7 @@ const CORE: Item[] = [
     { href: '/pms/edition',      label: 'Édition',      icon: Printer       },
   ]},
   { href: '/messages', label: 'Messages', icon: Mail },
+  { href: '/chat',     label: 'Agent',    icon: Sparkles },
 ];
 
 const ACCOUNTING: Group = {
