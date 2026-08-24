@@ -35,6 +35,24 @@ function intFromEnv(name: string, fallback: number): number {
   return n;
 }
 
+function parseIdList(name: string): number[] {
+  const raw = process.env[name];
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map((s) => {
+      const n = Number.parseInt(s, 10);
+      if (Number.isNaN(n)) throw new Error(`${name} : "${s}" n'est pas un entier`);
+      return n;
+    });
+}
+
+// Telegram est optionnel : si le token n'est pas fourni, le webhook n'est pas monté.
+const telegramToken = process.env.TELEGRAM_BOT_TOKEN?.trim() || null;
+const telegramEnabled = telegramToken !== null;
+
 export const config = {
   port: intFromEnv("PORT", 3010),
 
@@ -70,5 +88,22 @@ export const config = {
       MCP_PG_USER: required("MCP_PG_USER"),
       MCP_PG_PASSWORD: required("MCP_PG_PASSWORD"),
     },
+  },
+
+  telegram: {
+    enabled: telegramEnabled,
+    // Nullables quand disabled — les consommateurs doivent gate sur `enabled`.
+    botToken: telegramToken,
+    // Secret vérifié dans l'entête X-Telegram-Bot-Api-Secret-Token sur chaque
+    // POST /telegram/webhook — protège contre l'appel non-Telegram.
+    webhookSecret: telegramEnabled ? required("TELEGRAM_WEBHOOK_SECRET") : null,
+    // Bootstrap : IDs Telegram qui deviennent auto-admin au premier /start,
+    // sans qu'un opérateur les insère à la main dans TelegramUsers.
+    // Format env : TELEGRAM_ADMIN_IDS=123456,789012
+    adminIds: parseIdList("TELEGRAM_ADMIN_IDS"),
+    // Base URL Telegram Bot API — override pour tests / self-hosted API server.
+    apiBaseUrl: process.env.TELEGRAM_API_BASE_URL ?? "https://api.telegram.org",
+    // Endpoint quickchart.io pour rendu graphes → PNG.
+    quickchartUrl: process.env.QUICKCHART_URL ?? "https://quickchart.io/chart",
   },
 } as const;

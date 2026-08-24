@@ -105,6 +105,10 @@ services:
       JWT_SECRET:        ${JWT_SECRET:-CHANGE_ME_USE_A_LONG_RANDOM_SECRET_KEY_AT_LEAST_32_CHARS}
       JWT_ISSUER:        juweirat-api
       JWT_AUDIENCE:      juweirat-clients
+      # Telegram (optionnel — si TELEGRAM_BOT_TOKEN vide, le webhook n'est pas monté).
+      TELEGRAM_BOT_TOKEN:      ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      TELEGRAM_ADMIN_IDS:      ${TELEGRAM_ADMIN_IDS:-}
     networks:
       - juweirat-net
 

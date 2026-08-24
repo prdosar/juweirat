@@ -1,10 +1,13 @@
 import { query, queryOne } from "./db.js";
 
+export type Canal = "web" | "whatsapp" | "telegram";
+
 export interface ChatSession {
   id: number;
-  canal: "web" | "whatsapp";
+  canal: Canal;
   userId: number | null;
   phoneNumber: string | null;
+  telegramUserId: number | null;
   title: string;
   createdAt: string;
   lastActivityAt: string;
@@ -24,16 +27,24 @@ export interface ChatMessage {
 }
 
 export async function createSession(input: {
-  canal: "web" | "whatsapp";
+  canal: Canal;
   userId?: number | null;
   phoneNumber?: string | null;
+  telegramUserId?: number | null;
   title?: string;
 }): Promise<ChatSession> {
   const row = await queryOne<ChatSession>(
-    `INSERT INTO "ChatSessions" (canal, "userId", "phoneNumber", title)
-     VALUES ($1, $2, $3, COALESCE($4, 'Nouvelle conversation'))
-     RETURNING id, canal, "userId", "phoneNumber", title, "createdAt", "lastActivityAt"`,
-    [input.canal, input.userId ?? null, input.phoneNumber ?? null, input.title ?? null],
+    `INSERT INTO "ChatSessions" (canal, "userId", "phoneNumber", "telegramUserId", title)
+     VALUES ($1, $2, $3, $4, COALESCE($5, 'Nouvelle conversation'))
+     RETURNING id, canal, "userId", "phoneNumber", "telegramUserId",
+               title, "createdAt", "lastActivityAt"`,
+    [
+      input.canal,
+      input.userId ?? null,
+      input.phoneNumber ?? null,
+      input.telegramUserId ?? null,
+      input.title ?? null,
+    ],
   );
   if (!row) throw new Error("Échec création session");
   return row;
@@ -41,7 +52,8 @@ export async function createSession(input: {
 
 export async function listSessionsForUser(userId: number, limit = 50): Promise<ChatSession[]> {
   return query<ChatSession>(
-    `SELECT id, canal, "userId", "phoneNumber", title, "createdAt", "lastActivityAt"
+    `SELECT id, canal, "userId", "phoneNumber", "telegramUserId",
+            title, "createdAt", "lastActivityAt"
      FROM "ChatSessions"
      WHERE "userId" = $1
      ORDER BY "lastActivityAt" DESC
@@ -52,9 +64,29 @@ export async function listSessionsForUser(userId: number, limit = 50): Promise<C
 
 export async function getSession(id: number): Promise<ChatSession | null> {
   return queryOne<ChatSession>(
-    `SELECT id, canal, "userId", "phoneNumber", title, "createdAt", "lastActivityAt"
+    `SELECT id, canal, "userId", "phoneNumber", "telegramUserId",
+            title, "createdAt", "lastActivityAt"
      FROM "ChatSessions" WHERE id = $1`,
     [id],
+  );
+}
+
+/**
+ * Récupère la session Telegram active (la plus récente) d'un utilisateur, ou
+ * null si aucune. Sert au routage : un `telegramId` = une conversation
+ * persistante (le user tape, on ne recrée pas de session à chaque message).
+ */
+export async function getLatestTelegramSession(
+  telegramUserId: number,
+): Promise<ChatSession | null> {
+  return queryOne<ChatSession>(
+    `SELECT id, canal, "userId", "phoneNumber", "telegramUserId",
+            title, "createdAt", "lastActivityAt"
+     FROM "ChatSessions"
+     WHERE canal = 'telegram' AND "telegramUserId" = $1
+     ORDER BY "lastActivityAt" DESC
+     LIMIT 1`,
+    [telegramUserId],
   );
 }
 

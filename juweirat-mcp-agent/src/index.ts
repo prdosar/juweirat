@@ -4,6 +4,7 @@ import { config } from "./config.js";
 import { startMcpClient, stopMcpClient, getTools } from "./mcp-client.js";
 import { closePool } from "./db.js";
 import chatRouter from "./routes/chat.js";
+import telegramRouter from "./telegram/webhook.js";
 
 async function main(): Promise<void> {
   await startMcpClient();
@@ -18,10 +19,18 @@ async function main(): Promise<void> {
       status: "ok",
       model: config.openai.model,
       toolsCount: getTools().length,
+      telegram: config.telegram.enabled,
     });
   });
 
   app.use("/api/chat", chatRouter);
+
+  if (config.telegram.enabled) {
+    app.use("/telegram", telegramRouter);
+    console.log(`[agent] Webhook Telegram monté sur /telegram/webhook (${config.telegram.adminIds.length} admin(s) whitelistés au bootstrap)`);
+  } else {
+    console.log("[agent] Telegram désactivé (TELEGRAM_BOT_TOKEN absent)");
+  }
 
   const server = app.listen(config.port, () => {
     console.log(`[agent] Serveur HTTP en écoute sur http://127.0.0.1:${config.port}`);
