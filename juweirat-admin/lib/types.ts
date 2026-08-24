@@ -410,6 +410,16 @@ export interface ReservationDto {
   prestations: ReservationPrestationDto[];
   tvaExonere?: boolean;
   discount?: number;
+  changeLogs?: ReservationChangeLogDto[] | null;
+}
+
+export interface ReservationChangeLogDto {
+  id: number;
+  changedAt: string;
+  changedByUserId: number | null;
+  reason: string;
+  /** JSON stringifié { fieldName: { from, to } } — parser côté vue si besoin d'afficher le diff. */
+  diffJson: string;
 }
 
 export interface PaymentDto {

@@ -164,6 +164,9 @@ function EditReservationPageInner() {
   const [discount, setDiscount] = useState('0');
   const [acceptRefund, setAcceptRefund] = useState(false);
 
+  // Motif de modification — obligatoire côté API (toute modif crée une entrée changelog).
+  const [reason, setReason] = useState('');
+
   // Submit state — déclaré tôt pour rester lisible même si les handlers sont plus bas.
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
@@ -384,6 +387,9 @@ function EditReservationPageInner() {
       if (overpaid && !acceptRefund) {
         return `Le nouveau total (${fcfa(total)}) est inférieur au déjà encaissé (${fcfa(paid)}). Cochez « Créer un avoir » pour continuer.`;
       }
+      if (reason.trim().length < 3) {
+        return 'Le motif de la modification est obligatoire (min. 3 caractères).';
+      }
     }
     return '';
   }
@@ -430,6 +436,7 @@ function EditReservationPageInner() {
       });
 
       await reservations.update(resa.id, {
+        reason: reason.trim(),
         source,
         specialRequests,
         internalNotes,
@@ -1080,6 +1087,32 @@ function EditReservationPageInner() {
                   </span>
                 </label>
               )}
+
+              {/* Motif obligatoire — enregistré dans l'historique de la réservation.
+                  Le back rejette la requête si vide. Message d'aide contextuel selon
+                  ce qui a changé pour aider l'opérateur à formuler. */}
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 22 }}>
+                <span style={fieldLabel}>
+                  Motif de la modification *
+                </span>
+                <textarea
+                  rows={2}
+                  value={reason}
+                  onChange={e => setReason(e.target.value)}
+                  placeholder={
+                    categoryId !== resa.categoryId
+                      ? 'Ex : Client demande un surclassement / catégorie initiale indisponible…'
+                      : (checkIn !== resa.checkInDate || checkOut !== resa.checkOutDate)
+                        ? 'Ex : Prolongation du séjour à la demande du client'
+                        : 'Ex : Correction erreur de saisie, mise à jour infos garantie…'
+                  }
+                  style={{ ...fieldInput, resize: 'vertical' }}
+                />
+                <span style={{ fontSize: 11, color: C.ink4 }}>
+                  Ce motif est conservé dans l'historique de la réservation aux côtés du diff
+                  automatique des champs modifiés.
+                </span>
+              </label>
             </section>
           )}
 

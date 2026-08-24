@@ -103,6 +103,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             .Include(r => r.Client)
             .Include(r => r.Payments)
             .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
+            .Include(r => r.ChangeLogs)
             .FirstOrDefaultAsync(r => r.Id == id);
         return r is null ? null : ToDto(r);
     }
@@ -222,6 +223,12 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             Adults                = req.Adults,
             Children              = req.Children,
             PricePerNightSnapshot = tarifResult.PerNight,
+            // Snapshots des 3 paliers négociés — permet de recalculer le palier applicable
+            // en cas de changement de dates ultérieur, sans refaire le waterfall Company > Category
+            // (le tarif reste celui négocié au moment de la création).
+            TarifNuitSnapshot     = resolved.TarifNuit,
+            TarifN15Snapshot      = resolved.TarifN15,
+            TarifN30Snapshot      = resolved.TarifN30,
             TotalPrice            = total,
             Discount              = discount,
             Currency              = req.Currency,
@@ -684,18 +691,35 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
 
     public async Task<(ReservationDto? dto, string? error)> UpdateAsync(long id, UpdateReservationRequest req)
     {
+        // Motif obligatoire : sert de trace dans reservationChangeLogs. Toute modif doit être justifiée.
+        if (string.IsNullOrWhiteSpace(req.Reason))
+            return (null, "Le motif de modification est obligatoire.");
+
         var r = await db.Reservations
             .Include(r => r.Room)
             .Include(r => r.Category)
             .Include(r => r.Client).ThenInclude(c => c!.Company)
             .Include(r => r.Payments)
             .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
+            .Include(r => r.ChangeLogs)
             .FirstOrDefaultAsync(r => r.Id == id);
 
         if (r is null) return (null, "Réservation introuvable");
         if (r.Status is ReservationStatus.Cancelled or ReservationStatus.CheckedIn
                        or ReservationStatus.CheckedOut or ReservationStatus.NoShow)
             return (null, "Cette réservation ne peut plus être modifiée (annulée, en cours ou terminée). Utilisez le PMS pour intervenir sur un séjour en cours.");
+
+        // Snapshot AVANT modification — servira à construire le diff pour l'entrée changelog.
+        var before = new
+        {
+            r.CategoryId, r.RoomId,
+            r.CheckInDate, r.CheckOutDate, r.Nights,
+            r.Adults, r.Children,
+            r.PricePerNightSnapshot, r.TotalPrice, r.Discount,
+            r.GarantieType, r.TvaExonere, r.Source,
+            r.SpecialRequests, r.InternalNotes,
+            r.TarifNuitSnapshot, r.TarifN15Snapshot, r.TarifN30Snapshot,
+        };
 
         // Champs simples (aucun impact tarifaire)
         if (req.Source is not null)               r.Source              = req.Source;
@@ -711,15 +735,15 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         if (req.TvaExonere.HasValue)              r.TvaExonere          = req.TvaExonere.Value;
 
         // ── Champs impactant le tarif : dates, catégorie, chambre ──────────────
-        var newCheckIn   = req.CheckInDate  ?? r.CheckInDate;
-        var newCheckOut  = req.CheckOutDate ?? r.CheckOutDate;
-        var newCategoryId = req.CategoryId  ?? r.CategoryId;
-        var newRoomId     = req.RoomId      ?? r.RoomId;
+        var newCheckIn    = req.CheckInDate  ?? r.CheckInDate;
+        var newCheckOut   = req.CheckOutDate ?? r.CheckOutDate;
+        var newCategoryId = req.CategoryId   ?? r.CategoryId;
+        var newRoomId     = req.RoomId       ?? r.RoomId;
 
-        var stayChanged = newCheckIn   != r.CheckInDate
-                       || newCheckOut  != r.CheckOutDate
-                       || newCategoryId != r.CategoryId
-                       || newRoomId     != r.RoomId;
+        var categoryChanged = newCategoryId != r.CategoryId;
+        var datesChanged    = newCheckIn != r.CheckInDate || newCheckOut != r.CheckOutDate;
+        var roomChanged     = newRoomId != r.RoomId;
+        var stayChanged     = categoryChanged || datesChanged || roomChanged;
 
         var prestationsChanged = req.Prestations is not null;
 
@@ -728,7 +752,9 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             if (newCheckOut <= newCheckIn)
                 return (null, "La date de départ doit être postérieure à la date d'arrivée.");
 
-            var category = await db.RoomCategories.FindAsync(newCategoryId);
+            var category = categoryChanged
+                ? await db.RoomCategories.FindAsync(newCategoryId)
+                : r.Category;
             if (category is null) return (null, "Catégorie introuvable.");
 
             Room? room = null;
@@ -748,19 +774,40 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
                 if (overlap) return (null, "Cette chambre est déjà réservée pour la nouvelle période.");
             }
 
-            var isWebBooking = string.Equals(r.Source, "website", StringComparison.OrdinalIgnoreCase);
-            var resolved = await ResolveTarifAsync(r.Client, category, room, applyCompanyTarif: !isWebBooking);
-            var nights   = newCheckOut.DayNumber - newCheckIn.DayNumber;
-            var tarif    = TarifEngine.ForStay(resolved.TarifNuit, resolved.TarifN15, resolved.TarifN30, nights);
+            var nights = newCheckOut.DayNumber - newCheckIn.DayNumber;
 
-            r.CheckInDate           = newCheckIn;
-            r.CheckOutDate          = newCheckOut;
-            r.Nights                = nights;
-            r.CategoryId            = category.Id;
-            r.RoomId                = room?.Id;
-            r.PricePerNightSnapshot = tarif.PerNight;
-            r.Category              = category;
-            r.Room                  = room;
+            // Logique tarif : dépend de si la catégorie change.
+            //  - Catégorie change → waterfall complet (Company > Category) + repeuple les 3 snapshots.
+            //    Un nouveau logement peut avoir un tarif compagnie différent (ou aucun).
+            //  - Catégorie identique → on garde les 3 snapshots figés à la création (tarif négocié
+            //    intangible) et on ne recalcule QUE le palier applicable selon le nouveau nb de nuits.
+            //    Si les dates ne changent pas non plus (juste roomId), snapshot inchangé.
+            if (categoryChanged)
+            {
+                var isWebBooking = string.Equals(r.Source, "website", StringComparison.OrdinalIgnoreCase);
+                var resolved = await ResolveTarifAsync(r.Client, category, room, applyCompanyTarif: !isWebBooking);
+                var tarif    = TarifEngine.ForStay(resolved.TarifNuit, resolved.TarifN15, resolved.TarifN30, nights);
+
+                r.TarifNuitSnapshot     = resolved.TarifNuit;
+                r.TarifN15Snapshot      = resolved.TarifN15;
+                r.TarifN30Snapshot      = resolved.TarifN30;
+                r.PricePerNightSnapshot = tarif.PerNight;
+            }
+            else if (datesChanged)
+            {
+                // Même catégorie : palier recalculé sur les tarifs snapshot d'origine.
+                var tarif = TarifEngine.ForStay(r.TarifNuitSnapshot, r.TarifN15Snapshot, r.TarifN30Snapshot, nights);
+                r.PricePerNightSnapshot = tarif.PerNight;
+            }
+            // else (seul le roomId change) → snapshot inchangé.
+
+            r.CheckInDate  = newCheckIn;
+            r.CheckOutDate = newCheckOut;
+            r.Nights       = nights;
+            r.CategoryId   = category.Id;
+            r.RoomId       = room?.Id;
+            r.Category     = category;
+            r.Room         = room;
         }
 
         // ── Prestations : delete-then-add si liste envoyée ────────────────────
@@ -832,6 +879,51 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             r.TotalPrice = newTotal;
         }
 
+        // ── Journal des modifications ────────────────────────────────────────
+        // Construction du diff en comparant chaque champ tracé à sa valeur AVANT.
+        // Une entrée est toujours créée (même si aucun champ suivi n'a changé) pour
+        // conserver la trace du motif — un chgmt de note interne uniquement compte aussi.
+        var diff = new Dictionary<string, object>();
+        void Track<T>(string field, T oldValue, T newValue) where T : IEquatable<T>
+        {
+            if (!EqualityComparer<T>.Default.Equals(oldValue, newValue))
+                diff[field] = new { from = oldValue, to = newValue };
+        }
+        void TrackObj(string field, object? oldValue, object? newValue)
+        {
+            if (!Equals(oldValue, newValue))
+                diff[field] = new { from = oldValue, to = newValue };
+        }
+        Track("categoryId",             before.CategoryId,             r.CategoryId);
+        TrackObj("roomId",              before.RoomId,                 r.RoomId);
+        Track("checkInDate",            before.CheckInDate,            r.CheckInDate);
+        Track("checkOutDate",           before.CheckOutDate,           r.CheckOutDate);
+        Track("nights",                 before.Nights,                 r.Nights);
+        Track("adults",                 before.Adults,                 r.Adults);
+        Track("children",               before.Children,               r.Children);
+        Track("pricePerNightSnapshot",  before.PricePerNightSnapshot,  r.PricePerNightSnapshot);
+        Track("totalPrice",             before.TotalPrice,             r.TotalPrice);
+        Track("discount",               before.Discount,               r.Discount);
+        TrackObj("garantieType",        before.GarantieType,           r.GarantieType);
+        Track("tvaExonere",             before.TvaExonere,             r.TvaExonere);
+        TrackObj("source",              before.Source,                 r.Source);
+        TrackObj("specialRequests",     before.SpecialRequests,        r.SpecialRequests);
+        TrackObj("internalNotes",       before.InternalNotes,          r.InternalNotes);
+        Track("tarifNuitSnapshot",      before.TarifNuitSnapshot,      r.TarifNuitSnapshot);
+        Track("tarifN15Snapshot",       before.TarifN15Snapshot,       r.TarifN15Snapshot);
+        Track("tarifN30Snapshot",       before.TarifN30Snapshot,       r.TarifN30Snapshot);
+        // Prestations : trace juste "changed" (le détail est dans la table reservationPrestations).
+        if (prestationsChanged) diff["prestations"] = new { changed = true };
+
+        db.ReservationChangeLogs.Add(new ReservationChangeLog
+        {
+            ReservationId   = r.Id,
+            ChangedAt       = DateTime.UtcNow,
+            ChangedByUserId = null, // TODO: passer le user courant quand l'auth admin sera branchée sur ce service
+            Reason          = req.Reason.Trim(),
+            DiffJson        = System.Text.Json.JsonSerializer.Serialize(diff),
+        });
+
         await db.SaveChangesAsync();
 
         // Re-fetch pour récupérer les nouvelles prestations avec leurs Ids et le mapping DTO complet.
@@ -841,6 +933,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             .Include(x => x.Client)
             .Include(x => x.Payments)
             .Include(x => x.Prestations).ThenInclude(p => p.Prestation)
+            .Include(x => x.ChangeLogs)
             .FirstAsync(x => x.Id == r.Id);
 
         return (ToDto(updated), null);
@@ -938,7 +1031,12 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             r.GarantieType, r.GarantieMontantCash, r.CarteNom, r.CarteSuffix, r.CarteExpiration,
             totalHeb, totalPrestations, prestationsDto,
             r.TvaExonere,
-            r.Discount
+            r.Discount,
+            // Historique : trié plus récent d'abord pour un affichage direct côté front.
+            r.ChangeLogs
+                .OrderByDescending(cl => cl.ChangedAt)
+                .Select(cl => new ReservationChangeLogDto(cl.Id, cl.ChangedAt, cl.ChangedByUserId, cl.Reason, cl.DiffJson))
+                .ToList()
         );
     }
 }

@@ -44,7 +44,18 @@ public record ReservationDto(
     decimal TotalPrestations,
     List<ReservationPrestationDto> Prestations,
     bool TvaExonere = false,
-    int Discount = 0
+    int Discount = 0,
+    // Historique des modifications (append-only). Vide pour une résa jamais éditée.
+    List<ReservationChangeLogDto>? ChangeLogs = null
+);
+
+public record ReservationChangeLogDto(
+    long Id,
+    DateTime ChangedAt,
+    long? ChangedByUserId,
+    string Reason,
+    // Diff structuré { field: { from, to } } — string JSON brut, à parser côté front.
+    string DiffJson
 );
 
 public record CreateReservationRequest(
@@ -146,5 +157,8 @@ public record UpdateReservationRequest(
     // Exonération TVA (bool? = pas de modification si null).
     bool? TvaExonere              = null,
     // Remise en FCFA — null pas de modification. 0 pour retirer la remise.
-    int? Discount                 = null
+    int? Discount                 = null,
+    // Motif obligatoire de la modification — sera enregistré dans reservationChangeLogs.
+    [Required(AllowEmptyStrings = false)]
+    string Reason                 = ""
 );

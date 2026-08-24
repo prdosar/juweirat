@@ -15,6 +15,13 @@ public class Reservation
     public int Adults { get; set; } = 1;
     public int Children { get; set; } = 0;
     public decimal PricePerNightSnapshot { get; set; }
+    // Snapshots des 3 paliers tarifaires résolus au moment de la création (waterfall Company > Category).
+    // Permet de recalculer le palier applicable si les dates changent sans refaire le waterfall
+    // (comportement voulu : "garder le tarif négocié initial même si les dates changent, tant que
+    // la catégorie ne change pas").
+    public int TarifNuitSnapshot { get; set; }
+    public int TarifN15Snapshot  { get; set; }
+    public int TarifN30Snapshot  { get; set; }
     public decimal TotalPrice { get; set; }
     // Remise appliquée à la résa en FCFA — déduite de TotalPrice. 0 par défaut.
     // Visible sur le contrat de bail et l'estimatif comptable.
@@ -49,6 +56,9 @@ public class Reservation
 
     // Folio PMS créé lorsque la réservation est prise en charge par la réception.
     public Folio? Folio { get; set; }
+
+    // Historique des modifications (append-only). Chaque modif via UpdateAsync ajoute une ligne.
+    public ICollection<ReservationChangeLog> ChangeLogs { get; set; } = [];
 
     public decimal AmountPaid => Payments
         .Where(p => p.Status == PaymentStatus.Completed)

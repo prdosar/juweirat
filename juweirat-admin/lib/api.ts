@@ -281,7 +281,8 @@ export const reservations = {
     acceptRefundImbalance: boolean;
     tvaExonere: boolean;
     discount: number;
-  }>) => request<import('./types').ReservationDto>(`/api/reservations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  }> & { reason: string }) =>
+    request<import('./types').ReservationDto>(`/api/reservations/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 };
 
 // ── Room Images ───────────────────────────────────────────────────────────────

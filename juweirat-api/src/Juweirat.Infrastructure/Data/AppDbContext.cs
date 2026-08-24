@@ -14,6 +14,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Amenity>      Amenities      { get; set; }
     public DbSet<Client>       Clients        { get; set; }
     public DbSet<Reservation>  Reservations   { get; set; }
+    public DbSet<ReservationChangeLog> ReservationChangeLogs { get; set; }
     public DbSet<Payment>      Payments       { get; set; }
     public DbSet<RoomBlock>    RoomBlocks     { get; set; }
 
@@ -164,6 +165,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
             e.ToTable(t => t.HasCheckConstraint("ck_checkOutAfterCheckIn",
                 "\"checkOutDate\" > \"checkInDate\""));
+        });
+
+        // ── reservationChangeLogs ────────────────────────────────
+        modelBuilder.Entity<ReservationChangeLog>(e =>
+        {
+            e.HasOne(cl => cl.Reservation)
+             .WithMany(r => r.ChangeLogs)
+             .HasForeignKey(cl => cl.ReservationId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.Property(cl => cl.DiffJson).HasColumnType("jsonb").HasDefaultValue("{}");
+            e.Property(cl => cl.Reason).IsRequired();
+            e.HasIndex(cl => new { cl.ReservationId, cl.ChangedAt });
         });
 
         // ── prestationsAnnexes ────────────────────────────────────
