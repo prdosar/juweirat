@@ -1,4 +1,5 @@
 using Juweirat.Application.DTOs.Pms;
+using Juweirat.Application.Notifications;
 using Juweirat.Domain.Entities;
 using Juweirat.Domain.Enums;
 using Juweirat.Infrastructure.Data;
@@ -6,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Infrastructure.Services;
 
-public class MaintenanceService(AppDbContext db)
+public class MaintenanceService(AppDbContext db, INotificationPublisher notifications)
 {
     public async Task<List<MaintenanceTicketDto>> GetAllAsync(string? status = null, string? priority = null, long? unitId = null)
     {
@@ -56,7 +57,20 @@ public class MaintenanceService(AppDbContext db)
         await db.SaveChangesAsync();
 
         var created = await db.MaintenanceTickets.Include(t => t.Unit).Include(t => t.Staff).FirstAsync(t => t.Id == ticket.Id);
-        return (ToDto(created), null);
+        var dto = ToDto(created);
+
+        await notifications.MaintenanceReportedAsync(new MaintenanceReportedEvent(
+            TicketId:    dto.Id,
+            Zone:        dto.Zone,
+            UnitLabel:   dto.UnitLabel,
+            Category:    dto.Category,
+            Priority:    dto.Priority,
+            Title:       dto.Title,
+            Description: dto.Description,
+            Tech:        dto.Tech,
+            OccurredAt:  DateTime.UtcNow));
+
+        return (dto, null);
     }
 
     public async Task<(MaintenanceTicketDto? dto, string? error)> UpdateAsync(long id, UpdateMaintenanceRequest req)

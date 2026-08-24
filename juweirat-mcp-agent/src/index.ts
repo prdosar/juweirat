@@ -5,6 +5,7 @@ import { startMcpClient, stopMcpClient, getTools } from "./mcp-client.js";
 import { closePool } from "./db.js";
 import chatRouter from "./routes/chat.js";
 import telegramRouter from "./telegram/webhook.js";
+import { startSignalRClient, stopSignalRClient } from "./notifications/signalr-client.js";
 
 async function main(): Promise<void> {
   await startMcpClient();
@@ -28,8 +29,12 @@ async function main(): Promise<void> {
   if (config.telegram.enabled) {
     app.use("/telegram", telegramRouter);
     console.log(`[agent] Webhook Telegram monté sur /telegram/webhook (${config.telegram.adminIds.length} admin(s) whitelistés au bootstrap)`);
+
+    // Angèle proactive : écoute le Hub SignalR .NET et broadcast aux staff Telegram.
+    // Gated derrière telegram.enabled pour éviter les logs bruyants en dev sans bot.
+    await startSignalRClient();
   } else {
-    console.log("[agent] Telegram désactivé (TELEGRAM_BOT_TOKEN absent)");
+    console.log("[agent] Telegram désactivé (TELEGRAM_BOT_TOKEN absent) — notifications SignalR non branchées");
   }
 
   const server = app.listen(config.port, () => {
@@ -39,6 +44,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     console.log(`[agent] Signal ${signal} reçu, arrêt propre…`);
     server.close();
+    await stopSignalRClient();
     await stopMcpClient();
     await closePool();
     process.exit(0);

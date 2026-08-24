@@ -1,5 +1,8 @@
 using System.IO;
 using System.Text;
+using Juweirat.Api.Hubs;
+using Juweirat.Api.Notifications;
+using Juweirat.Application.Notifications;
 using Juweirat.Infrastructure.Data;
 using Juweirat.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -72,9 +75,29 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience            = jwtSection["Audience"],
             IssuerSigningKey         = new SymmetricSecurityKey(jwtKey),
         };
+        // Le protocole WebSocket ne permet pas de custom header avant l'upgrade :
+        // les clients SignalR passent le JWT via ?access_token=… sur /hubs/*.
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                {
+                    context.Token = accessToken;
+                }
+                return Task.CompletedTask;
+            }
+        };
     });
 
 builder.Services.AddAuthorization();
+
+// ─── SignalR ────────────────────────────────────────────────────────────────
+// Push serveur → clients (agent Node → Telegram). Hub unique NotificationsHub.
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<INotificationPublisher, SignalRNotificationPublisher>();
 
 // ─── CORS ────────────────────────────────────────────────────────────────────
 builder.Services.AddCors(options =>
@@ -153,6 +176,7 @@ app.UseStaticFiles(new StaticFileOptions
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<NotificationsHub>("/hubs/notifications");
 
 // Auto-apply pending migrations on startup, then seed PMS + Accounting data
 using (var scope = app.Services.CreateScope())

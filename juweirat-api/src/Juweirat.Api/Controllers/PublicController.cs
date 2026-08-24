@@ -1,5 +1,6 @@
 using Juweirat.Application.DTOs.Clients;
 using Juweirat.Application.DTOs.Reservations;
+using Juweirat.Application.Notifications;
 using Juweirat.Infrastructure.Data;
 using Juweirat.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -17,7 +18,8 @@ public class PublicController(
     ReservationService reservationService,
     RoomCategoryService categorySvc,
     EmailService emailService,
-    ContactMessageService contactMessageService
+    ContactMessageService contactMessageService,
+    INotificationPublisher notifications
 ) : ControllerBase
 {
     public record PublicBookingRequest(
@@ -106,6 +108,20 @@ public class PublicController(
 
         var category = await categorySvc.GetByIdAsync(res!.CategoryId);
         string categoryName = category?.NameFr ?? res.RoomNameFr ?? "Appartement Résidence Juweirat";
+
+        // Notif Angèle (SignalR → agent Node → Telegram broadcast). Fire-and-forget
+        // logué en interne — n'échoue jamais le POST /booking en cas de panne SignalR.
+        await notifications.NewOnlineReservationAsync(new NewOnlineReservationEvent(
+            ReservationId:   res.Id,
+            Reference:       res.Reference,
+            ClientFullName:  res.ClientFullName,
+            CategoryNameFr:  categoryName,
+            CheckInDate:     res.CheckInDate,
+            CheckOutDate:    res.CheckOutDate,
+            Nights:          res.Nights,
+            TotalPrice:      res.TotalPrice,
+            Currency:        res.Currency,
+            OccurredAt:      DateTime.UtcNow));
 
         // 1. Send luxury notification to admin
         string adminSubject = $"[RÉSERVATION WEB] {req.FirstName} {req.LastName} — {res.RoomNameFr ?? categoryName}";

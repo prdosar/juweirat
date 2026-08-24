@@ -106,4 +106,13 @@ export const config = {
     // Endpoint quickchart.io pour rendu graphes → PNG.
     quickchartUrl: process.env.QUICKCHART_URL ?? "https://quickchart.io/chart",
   },
+
+  signalr: {
+    // URL du Hub SignalR exposé par juweirat-api. En Docker :
+    // http://juweirat-api:8080/hubs/notifications
+    // En dev local : http://localhost:8080/hubs/notifications
+    hubUrl: process.env.SIGNALR_HUB_URL ?? "http://juweirat-api:8080/hubs/notifications",
+    // Sujet du JWT service auto-généré à chaque connexion (TTL court, renouvelé).
+    serviceSubject: process.env.SIGNALR_SERVICE_SUBJECT ?? "juweirat-mcp-agent",
+  },
 } as const;

@@ -1,4 +1,5 @@
 using Juweirat.Application.DTOs.Pms;
+using Juweirat.Application.Notifications;
 using Juweirat.Domain.Entities;
 using Juweirat.Domain.Enums;
 using Juweirat.Infrastructure.Data;
@@ -7,7 +8,7 @@ using FolioStatus = Juweirat.Domain.Enums.FolioResaStatus;
 
 namespace Juweirat.Infrastructure.Services;
 
-public class PmsService(AppDbContext db, AccountingService accountingService)
+public class PmsService(AppDbContext db, AccountingService accountingService, INotificationPublisher notifications)
 {
     // Mappe le PayMode texte (ex. "Espèces", "Mobile Money (TMoney) [TX-9021]")
     // vers l'enum PaymentMethod. Le libellé complet est conservé dans Notes.
@@ -498,7 +499,18 @@ public class PmsService(AppDbContext db, AccountingService accountingService)
         folio.Unit.StatutMenage = MenageStatus.Sale;
 
         await db.SaveChangesAsync();
-        return (ToFolioDto(folio), null);
+
+        var dto = ToFolioDto(folio);
+        await notifications.ClientCheckoutAsync(new ClientCheckoutEvent(
+            FolioId:      dto.Id,
+            FolioNumber:  dto.Number,
+            UnitLabel:    dto.UnitLabel,
+            Guest:        dto.Guest,
+            CheckoutDate: dto.CheckoutDate,
+            TotalGeneral: dto.TotalGeneral,
+            OccurredAt:   DateTime.UtcNow));
+
+        return (dto, null);
     }
 
     // ── Encaisser ────────────────────────────────────────────────────────────
