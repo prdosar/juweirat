@@ -541,6 +541,17 @@ function EditReservationPageInner() {
       }}>
         {/* Main column */}
         <main style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 22 }}>
+          {resa.status === 'CheckedIn' && (
+            <div style={{
+              padding: '13px 16px',
+              background: C.warnSoft, border: `1px solid ${C.warnBorder}`,
+              borderRadius: 10, fontSize: 13, color: '#7a4f00', lineHeight: 1.55,
+            }}>
+              ⚠ <b>Séjour en cours (CheckedIn)</b> — un folio PMS est probablement lié. Les modifications
+              de dates, catégorie ou tarif ici <b>ne mettront pas à jour le folio automatiquement</b>.
+              Si un folio existe, ajuster manuellement arrivée/départ/tarif côté PMS après validation.
+            </div>
+          )}
           <div>
             <h1 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 600, letterSpacing: '-.01em' }}>
               Modifier la réservation{' '}

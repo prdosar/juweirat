@@ -705,9 +705,13 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             .FirstOrDefaultAsync(r => r.Id == id);
 
         if (r is null) return (null, "Réservation introuvable");
-        if (r.Status is ReservationStatus.Cancelled or ReservationStatus.CheckedIn
-                       or ReservationStatus.CheckedOut or ReservationStatus.NoShow)
-            return (null, "Cette réservation ne peut plus être modifiée (annulée, en cours ou terminée). Utilisez le PMS pour intervenir sur un séjour en cours.");
+        // CheckedIn est autorisé : cas réel = client prolonge son séjour, change de chambre,
+        // ajoute une prestation. En revanche annulée / partie / NoShow restent bloqués
+        // (statuts terminaux, folio potentiellement facturé).
+        if (r.Status is ReservationStatus.Cancelled
+                       or ReservationStatus.CheckedOut
+                       or ReservationStatus.NoShow)
+            return (null, "Cette réservation ne peut plus être modifiée (annulée ou terminée). Utilisez le PMS pour intervenir sur un séjour clos.");
 
         // Snapshot AVANT modification — servira à construire le diff pour l'entrée changelog.
         var before = new

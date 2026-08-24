@@ -253,7 +253,7 @@ export default function ReservationsPage() {
                       const s = STATUS_CONFIG[r.status] ?? { label: r.status, cls: 'bg-gray-100 text-gray-600' };
                       // Aligne l'éligibilité éditable sur ce que UpdateAsync accepte
                       // côté back (Pending / Confirmed uniquement).
-                      const isEditable   = r.status === 'Pending' || r.status === 'Confirmed';
+                      const isEditable   = r.status === 'Pending' || r.status === 'Confirmed' || r.status === 'CheckedIn';
                       const isCancelable = r.status === 'Pending' || r.status === 'Confirmed';
                       const showNoShow   = (r.status === 'Pending' || r.status === 'Confirmed') && r.checkInDate < today;
                       return (
