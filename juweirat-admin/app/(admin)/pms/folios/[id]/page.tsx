@@ -407,7 +407,21 @@ export default function FolioDetailPage() {
 
         {/* Financier */}
         <Section title="Financier">
-          <Row label={`Hébergement (${TIER_LABELS[f.tarifTier] ?? f.tarifTier})`} value={`${f.totalHeb.toLocaleString('fr')} FCFA HT`} />
+          {f.discount > 0 ? (
+            <>
+              <Row label={`Hébergement catalogue (${TIER_LABELS[f.tarifTier] ?? f.tarifTier})`}
+                   value={`${f.totalHebGross.toLocaleString('fr')} FCFA HT`} />
+              <Row label="Remise contractuelle"
+                   value={`− ${f.discount.toLocaleString('fr')} FCFA`}
+                   cls="text-amber-700" />
+              <Row label="Hébergement net"
+                   value={`${f.totalHeb.toLocaleString('fr')} FCFA HT`}
+                   cls="font-medium" />
+            </>
+          ) : (
+            <Row label={`Hébergement (${TIER_LABELS[f.tarifTier] ?? f.tarifTier})`}
+                 value={`${f.totalHeb.toLocaleString('fr')} FCFA HT`} />
+          )}
           {f.totalPdj > 0    && <Row label="Petit-déjeuner"  value={`${f.totalPdj.toLocaleString('fr')} FCFA HT`} />}
           {f.totalDependances > 0 && <Row label="Dépendances" value={`${f.totalDependances.toLocaleString('fr')} FCFA HT`} />}
           {f.totalDebiteur > 0   && <Row label="Débiteur divers" value={`${f.totalDebiteur.toLocaleString('fr')} FCFA HT`} />}

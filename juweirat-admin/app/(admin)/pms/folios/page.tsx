@@ -226,7 +226,9 @@ export default function FoliosPage() {
                       <th className="px-5 py-3.5 text-left font-medium">Arrivée</th>
                       <th className="px-5 py-3.5 text-left font-medium">Départ</th>
                       <th className="px-5 py-3.5 text-left font-medium">Statut</th>
-                      <th className="px-5 py-3.5 text-right font-medium">Total Facturé</th>
+                      <th className="px-5 py-3.5 text-right font-medium">Total HT</th>
+                      <th className="px-5 py-3.5 text-right font-medium">TVA</th>
+                      <th className="px-5 py-3.5 text-right font-medium">Total TTC</th>
                       <th className="px-5 py-3.5 text-right font-medium">Solde Restant</th>
                     </tr>
                   </thead>
@@ -259,8 +261,14 @@ export default function FoliosPage() {
                               {STATUS_FR[f.resaStatus] ?? f.resaStatus}
                             </span>
                           </td>
-                          <td className="px-5 py-3.5 text-right font-semibold text-charcoal">
+                          <td className="px-5 py-3.5 text-right font-medium text-charcoal">
                             {fmt(f.totalGeneral)}
+                          </td>
+                          <td className="px-5 py-3.5 text-right text-gray-500">
+                            {f.tvaExonere ? '—' : fmt(f.tva)}
+                          </td>
+                          <td className="px-5 py-3.5 text-right font-semibold text-charcoal">
+                            {fmt(f.totalTtc)}
                           </td>
                           <td className={`px-5 py-3.5 text-right font-bold ${f.solde > 0 ? 'text-amber-600' : 'text-green-dark'}`}>
                             {f.solde > 0 ? fmt(f.solde) : 'Soldé ✓'}
@@ -271,7 +279,7 @@ export default function FoliosPage() {
 
                     {paged.items.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="py-16 text-center text-gray-400 text-sm">
+                        <td colSpan={10} className="py-16 text-center text-gray-400 text-sm">
                           Aucun folio ne correspond à ces critères.
                         </td>
                       </tr>

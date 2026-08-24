@@ -44,7 +44,7 @@ public class FactureService(AppDbContext db, AccountingService accountingService
     {
         var folio = await db.Folios
             .Include(f => f.Unit)
-            .Include(f => f.Reservation)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
             .FirstOrDefaultAsync(f => f.Id == folioId);
         if (folio is null) return (null, null);
 
@@ -170,14 +170,15 @@ public class FactureService(AppDbContext db, AccountingService accountingService
     private static FactureSnapshot BuildSnapshot(Folio folio)
     {
         var nights         = folio.Departure.DayNumber - folio.Arrival.DayNumber;
-        var totalHeb       = TarifEngine.ComputeHeb(folio.Rate, folio.Heb, nights);
+        // Source unique de vérité prix : Reservation liée si elle existe.
+        var (hebGross, discount, hebNet, _) = PmsService.ResolveHeb(folio, nights);
         var totalPdj       = folio.PdjParJour * folio.PdjPrix * nights;
         var totalDep       = folio.Dependances;
         var totalDeb       = folio.Debiteur;
-        var total          = totalHeb + totalPdj + totalDep + totalDeb;
+        var total          = hebNet + totalPdj + totalDep + totalDeb;
 
-        // Décomposition HT/TVA/TTC — les prix stockés dans le folio (Rate, PdjPrix,
-        // Dépendances, Débiteur) sont HT ; la TVA est calculée en AJOUTANT le taux.
+        // Décomposition HT/TVA/TTC — les prix stockés (heb net, PdjPrix, Dép, Déb)
+        // sont HT ; la TVA est ajoutée sur le total.
         int totalHt  = total;
         int tva      = folio.TvaExonere ? 0 : (int)Math.Round(totalHt * TVA_RATE, 0);
         int totalTtc = totalHt + tva;
@@ -196,10 +197,12 @@ public class FactureService(AppDbContext db, AccountingService accountingService
             {
                 Label   = $"Hébergement {folio.Unit?.PmsType} {folio.Unit?.PmsGamme}" +
                           $" — {tierLabel} × {nights} nuit(s){elecMention}",
-                Montant = totalHeb,
+                Montant = hebGross,
             },
         };
 
+        if (discount > 0)
+            lines.Add(new() { Label = "Remise contractuelle", Montant = -discount });
         if (totalPdj > 0)
             lines.Add(new() { Label = $"Petit-déjeuner × {nights} j (× {folio.PdjParJour}/j)", Montant = totalPdj });
         if (totalDep > 0)

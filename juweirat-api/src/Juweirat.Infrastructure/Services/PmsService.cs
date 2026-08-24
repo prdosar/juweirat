@@ -179,7 +179,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService)
 
     public async Task<Juweirat.Application.Common.Pagination.PagedResult<FolioDto>> GetPagedFoliosAsync(FolioFilterParams filter)
     {
-        var query = db.Folios.Include(f => f.Unit).Include(f => f.Reservation).AsQueryable();
+        var query = db.Folios.Include(f => f.Unit).Include(f => f.Reservation).ThenInclude(r => r!.Prestations).AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {
@@ -250,7 +250,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService)
 
     public async Task<List<FolioDto>> GetFoliosAsync(bool? closed = null, long? unitId = null, string? resaStatus = null)
     {
-        var query = db.Folios.Include(f => f.Unit).Include(f => f.Reservation).AsQueryable();
+        var query = db.Folios.Include(f => f.Unit).Include(f => f.Reservation).ThenInclude(r => r!.Prestations).AsQueryable();
 
         if (closed.HasValue)    query = query.Where(f => f.Closed == closed.Value);
         if (unitId.HasValue)    query = query.Where(f => f.UnitId == unitId.Value);
@@ -265,7 +265,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService)
     {
         var folio = await db.Folios
             .Include(f => f.Unit)
-            .Include(f => f.Reservation)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
             .FirstOrDefaultAsync(f => f.Id == id);
         return folio is null ? null : ToFolioDto(folio);
     }
@@ -275,6 +275,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService)
         var folio = await db.Folios
             .Include(f => f.Unit)
             .Include(f => f.Reservation).ThenInclude(r => r!.Client)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
             .FirstOrDefaultAsync(f => f.Id == folioId);
         if (folio is null) return null;
 
@@ -386,7 +387,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService)
 
         var created = await db.Folios
             .Include(f => f.Unit)
-            .Include(f => f.Reservation)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
             .FirstAsync(f => f.Id == folio.Id);
         return (ToFolioDto(created), null);
     }
@@ -395,7 +396,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService)
     {
         var folio = await db.Folios
             .Include(f => f.Unit).ThenInclude(u => u!.Category)
-            .Include(f => f.Reservation)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
             .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (folio.Closed) return (null, "Folio is closed");
@@ -455,7 +456,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService)
     {
         var folio = await db.Folios
             .Include(f => f.Unit)
-            .Include(f => f.Reservation)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
             .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (folio.CheckedIn) return (null, "Already checked in");
@@ -477,7 +478,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService)
     {
         var folio = await db.Folios
             .Include(f => f.Unit)
-            .Include(f => f.Reservation)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
             .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (!folio.CheckedIn) return (null, "Not checked in");
@@ -506,7 +507,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService)
     {
         var folio = await db.Folios
             .Include(f => f.Unit)
-            .Include(f => f.Reservation)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
             .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (folio.Closed) return (null, "Folio is closed");
@@ -567,7 +568,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService)
     {
         var folio = await db.Folios
             .Include(f => f.Unit)
-            .Include(f => f.Reservation)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
             .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (folio.Closed) return (null, "Folio is closed");
@@ -600,15 +601,38 @@ public class PmsService(AppDbContext db, AccountingService accountingService)
 
     // ── Internal helpers ─────────────────────────────────────────────────────
 
-    // Returns (totalHeb, totalPdj, solde)
+    // Résout l'hébergement d'un folio : priorité à la Reservation liée
+    // (source unique de vérité prix), fallback sur Rate/Heb pour folios
+    // standalone (créés directement au PMS sans web resa).
+    // Retourne (gross, discount, net, prestationsResa) — tous en HT.
+    internal static (int Gross, int Discount, int Net, int PrestationsResa)
+        ResolveHeb(Folio f, int nights)
+    {
+        if (f.Reservation is not null)
+        {
+            var prestationsResa = f.Reservation.Prestations
+                .Sum(p => (int)Math.Round(p.TotalLigne));
+            var totalPrice = (int)Math.Round(f.Reservation.TotalPrice);
+            var discount   = f.Reservation.Discount;
+            // Invariant ReservationService : TotalPrice = gross + prestations − discount
+            // ⇒ net = TotalPrice − prestations ; gross = net + discount
+            var net   = totalPrice - prestationsResa;
+            var gross = net + discount;
+            return (gross, discount, net, prestationsResa);
+        }
+        var heb = TarifEngine.ComputeHeb(f.Rate, f.Heb, nights);
+        return (heb, 0, heb, 0);
+    }
+
+    // Returns (totalHeb, totalPdj, solde) — totalHeb est NET (après remise résa)
     private static (int TotalHeb, int TotalPdj, int Solde) ComputeFinancials(Folio f)
     {
         var nights          = f.Departure.DayNumber - f.Arrival.DayNumber;
-        var totalHeb        = TarifEngine.ComputeHeb(f.Rate, f.Heb, nights);
+        var (_, _, totalHebNet, _) = ResolveHeb(f, nights);
         var totalPdj        = f.PdjParJour * f.PdjPrix * nights;
         // Solde en TTC : client paie TTC, prix stockés HT → ComputeSolde ajoute la TVA.
-        var solde           = TarifEngine.ComputeSolde(totalHeb, totalPdj, f.Debiteur, f.Dependances, f.Paid, f.Arrhes, f.TvaExonere);
-        return (totalHeb, totalPdj, solde);
+        var solde           = TarifEngine.ComputeSolde(totalHebNet, totalPdj, f.Debiteur, f.Dependances, f.Paid, f.Arrhes, f.TvaExonere);
+        return (totalHebNet, totalPdj, solde);
     }
 
     // Called within a SaveChangesAsync so config and folio are saved together
@@ -652,7 +676,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService)
     internal static FolioDto ToFolioDto(Folio f)
     {
         var nights          = f.Departure.DayNumber - f.Arrival.DayNumber;
-        var totalHeb        = TarifEngine.ComputeHeb(f.Rate, f.Heb, nights);
+        var (gross, discount, totalHeb, _) = ResolveHeb(f, nights);
         var totalPdj        = f.PdjParJour * f.PdjPrix * nights;
         var totalDebiteur   = f.Debiteur;
         var totalDependances = f.Dependances;
@@ -676,7 +700,8 @@ public class PmsService(AppDbContext db, AccountingService accountingService)
             f.ReservationId, f.Reservation?.Reference, f.FactureId,
             f.CreatedAt, f.UpdatedAt,
             totalHeb, totalPdj, totalDebiteur, totalDependances, totalGeneral, solde,
-            f.TvaExonere, tva, totalTtc
+            f.TvaExonere, tva, totalTtc,
+            gross, discount
         );
     }
 }

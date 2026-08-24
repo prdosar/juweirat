@@ -115,7 +115,12 @@ public record FolioDto(
     int Solde,
     bool TvaExonere = false,
     int Tva = 0,
-    int TotalTtc = 0
+    int TotalTtc = 0,
+    // Décomposition catalogue → remise → net, remontée depuis la Reservation
+    // liée quand elle existe (source unique de vérité prix). Pour un folio direct
+    // PMS sans résa liée, TotalHebGross = TotalHeb et Discount = 0.
+    int TotalHebGross = 0,
+    int Discount = 0
 );
 
 public record CreateFolioRequest(

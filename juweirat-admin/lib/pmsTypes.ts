@@ -71,7 +71,7 @@ export interface FolioDto {
   factureId: number | null;
   createdAt: string;
   updatedAt: string;
-  totalHeb: number;
+  totalHeb: number;       // NET (après remise résa) HT.
   totalPdj: number;
   totalDebiteur: number;
   totalDependances: number;
@@ -80,6 +80,10 @@ export interface FolioDto {
   tvaExonere: boolean;
   tva: number;
   totalTtc: number;
+  // Décomposition catalogue → remise → net (source : Reservation liée).
+  // Pour un folio direct PMS sans résa, totalHebGross = totalHeb et discount = 0.
+  totalHebGross: number;
+  discount: number;
 }
 
 export interface CloturePreviewDto {
