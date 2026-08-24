@@ -1,6 +1,7 @@
 import { z, type ZodTypeAny } from "zod";
 import * as occupancy from "./occupancy.js";
 import * as revenue from "./revenue.js";
+import * as revpar from "./revpar.js";
 import * as comparePeriods from "./compare-periods.js";
 import * as reservations from "./reservations.js";
 import * as folios from "./folios.js";
@@ -19,6 +20,7 @@ export const tools: McpTool[] = [
   // ── Occupation & revenus ──
   { ...occupancy.definition, handler: occupancy.handler as AnyHandler },
   { ...revenue.definition, handler: revenue.handler as AnyHandler },
+  { ...revpar.definition, handler: revpar.handler as AnyHandler },
   { ...comparePeriods.definition, handler: comparePeriods.handler as AnyHandler },
 
   // ── Réservations ──
