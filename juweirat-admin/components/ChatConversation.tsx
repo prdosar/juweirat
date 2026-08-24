@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Send, Wrench, Loader2, AlertCircle } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { chatApi } from '@/lib/chat-api';
 import type { AgentEvent, ChatMessage, ChatSession } from '@/lib/types';
+import AgentChart from './AgentChart';
 
 interface Props {
   sessionId: number;
@@ -209,18 +212,78 @@ function MessageBubble({ message }: { message: DisplayMessage }) {
           </div>
         )}
         {(message.content || message.isStreaming) && (
-          <div className="px-3 py-2 bg-gray-100 text-charcoal rounded-2xl rounded-bl-sm text-sm whitespace-pre-wrap">
-            {message.content}
-            {message.isStreaming && !message.content && (
+          <div className="px-3 py-2 bg-gray-100 text-charcoal rounded-2xl rounded-bl-sm text-sm">
+            {message.isStreaming && !message.content ? (
               <Loader2 size={12} className="animate-spin inline-block" />
-            )}
-            {message.isStreaming && message.content && (
-              <span className="inline-block w-1.5 h-4 bg-gray-400 ml-0.5 align-middle animate-pulse" />
+            ) : (
+              <>
+                <AssistantMarkdown content={message.content} />
+                {message.isStreaming && (
+                  <span className="inline-block w-1.5 h-4 bg-gray-400 ml-0.5 align-middle animate-pulse" />
+                )}
+              </>
             )}
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Rendu markdown des réponses assistant :
+ *  - tables GFM (via remark-gfm)
+ *  - fenced ```chart intercepté et rendu via AgentChart (recharts)
+ *  - listes, paragraphes, strong/em, code inline
+ *
+ * Styles explicites via `components` (pas de dépendance à @tailwindcss/typography).
+ */
+function AssistantMarkdown({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        p: ({ children }) => <p className="my-1 leading-relaxed">{children}</p>,
+        strong: ({ children }) => <strong className="font-semibold text-charcoal">{children}</strong>,
+        em: ({ children }) => <em className="italic">{children}</em>,
+        ul: ({ children }) => <ul className="my-1 pl-5 list-disc space-y-0.5">{children}</ul>,
+        ol: ({ children }) => <ol className="my-1 pl-5 list-decimal space-y-0.5">{children}</ol>,
+        li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+        h1: ({ children }) => <h1 className="text-base font-semibold mt-2 mb-1">{children}</h1>,
+        h2: ({ children }) => <h2 className="text-sm font-semibold mt-2 mb-1">{children}</h2>,
+        h3: ({ children }) => <h3 className="text-sm font-semibold mt-2 mb-1">{children}</h3>,
+        table: ({ children }) => (
+          <div className="my-2 overflow-x-auto -mx-1">
+            <table className="min-w-full border-collapse text-xs">{children}</table>
+          </div>
+        ),
+        thead: ({ children }) => <thead className="bg-gray-50">{children}</thead>,
+        th: ({ children }) => (
+          <th className="border border-gray-200 px-2 py-1 text-left font-semibold text-gray-700">{children}</th>
+        ),
+        td: ({ children }) => (
+          <td className="border border-gray-200 px-2 py-1 align-top">{children}</td>
+        ),
+        code({ className, children, ...props }) {
+          const raw = String(children ?? '').replace(/\n$/, '');
+          if (className === 'language-chart') return <AgentChart raw={raw} />;
+          if (className) {
+            return (
+              <pre className="my-2 p-2 bg-gray-800 text-gray-100 rounded-lg overflow-x-auto text-xs">
+                <code>{raw}</code>
+              </pre>
+            );
+          }
+          return (
+            <code className="px-1 py-0.5 bg-gray-200 rounded text-xs font-mono" {...props}>
+              {children}
+            </code>
+          );
+        },
+      }}
+    >
+      {content}
+    </ReactMarkdown>
   );
 }
 
