@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { MessageCircle, Plus, Loader2, ChevronRight } from 'lucide-react';
 import Header from '@/components/Header';
@@ -43,7 +43,11 @@ export default function ChatPage() {
     }
   }
 
-  function onSessionUpdated(updated: ChatSession) {
+  // useCallback impératif ici : cette fonction est passée à ChatConversation
+  // qui la met dans ses deps d'effet. Sans useCallback, chaque render du
+  // parent crée une nouvelle référence → l'effet enfant refetch la session →
+  // appelle onSessionUpdated → setSessions → re-render → boucle infinie.
+  const onSessionUpdated = useCallback((updated: ChatSession) => {
     setSessions(prev => {
       const idx = prev.findIndex(s => s.id === updated.id);
       if (idx === -1) return [updated, ...prev];
@@ -53,7 +57,7 @@ export default function ChatPage() {
       copy.sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
       return copy;
     });
-  }
+  }, []);
 
   return (
     <>
