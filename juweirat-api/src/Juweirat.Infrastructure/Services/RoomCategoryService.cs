@@ -139,14 +139,20 @@ public class RoomCategoryService(AppDbContext db)
             .Select(b => b.RoomId)
             .ToListAsync();
 
+        // Voir RoomService.GetAvailableAsync : quand une résa est liée au folio,
+        // elle EST la source de vérité pour chambre/dates. Cf. [[project-architecture]].
         var folioOccupiedIds = await db.Folios
             .Where(f =>
                 f.ResaStatus != FolioResaStatus.Annulee &&
                 f.ResaStatus != FolioResaStatus.NoShow &&
                 !f.Closed &&
-                f.Arrival  < checkOut &&
-                f.Departure > checkIn)
-            .Select(f => f.UnitId)
+                (f.Reservation != null
+                    ? f.Reservation.CheckInDate  < checkOut && f.Reservation.CheckOutDate > checkIn
+                    : f.Arrival < checkOut && f.Departure > checkIn))
+            .Select(f =>
+                f.Reservation != null && f.Reservation.RoomId != null
+                    ? f.Reservation.RoomId.Value
+                    : f.UnitId)
             .ToListAsync();
 
         return occupiedRoomIds.Union(blockedRoomIds).Union(folioOccupiedIds).ToHashSet();

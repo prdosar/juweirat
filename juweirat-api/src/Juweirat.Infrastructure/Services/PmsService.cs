@@ -56,15 +56,30 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
             .ToListAsync();
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var activeByUnit = await db.Folios
+        // La gouvernante voit l'unité effective : quand une résa est liée, la chambre
+        // qui est réellement occupée est r.RoomId (source de vérité), pas f.UnitId
+        // qui peut avoir drifted. Cf. [[project-architecture]].
+        var activeFoliosToday = await db.Folios
             .Where(f =>
                 !f.Closed &&
                 f.ResaStatus != FolioStatus.Annulee &&
                 f.ResaStatus != FolioStatus.NoShow &&
-                f.Arrival <= today && f.Departure > today)
-            .GroupBy(f => f.UnitId)
-            .Select(g => new { UnitId = g.Key, Number = g.OrderByDescending(x => x.CreatedAt).First().Number })
-            .ToDictionaryAsync(x => x.UnitId, x => x.Number);
+                (f.Reservation != null
+                    ? f.Reservation.CheckInDate <= today && f.Reservation.CheckOutDate > today
+                    : f.Arrival <= today && f.Departure > today))
+            .Select(f => new
+            {
+                EffectiveUnitId = f.Reservation != null && f.Reservation.RoomId != null
+                    ? f.Reservation.RoomId.Value
+                    : f.UnitId,
+                f.Number,
+                f.CreatedAt,
+            })
+            .ToListAsync();
+
+        var activeByUnit = activeFoliosToday
+            .GroupBy(x => x.EffectiveUnitId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CreatedAt).First().Number);
 
         return rooms.Select(r => ToUnitDto(r, activeByUnit.GetValueOrDefault(r.Id))).ToList();
     }
@@ -75,12 +90,19 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
         if (room is null) return null;
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        // Cherche l'unité effective (résa liée fait autorité). Un folio drifté sur
+        // une autre chambre ne doit pas apparaître ici, et un folio dont la résa
+        // pointe sur `id` doit apparaître même si f.UnitId a drifté.
         var activeFolio = await db.Folios
             .Where(f =>
-                f.UnitId == id && !f.Closed &&
+                !f.Closed &&
                 f.ResaStatus != FolioStatus.Annulee &&
                 f.ResaStatus != FolioStatus.NoShow &&
-                f.Arrival <= today && f.Departure > today)
+                (f.Reservation != null && f.Reservation.RoomId != null
+                    ? f.Reservation.RoomId.Value == id &&
+                      f.Reservation.CheckInDate <= today && f.Reservation.CheckOutDate > today
+                    : f.UnitId == id &&
+                      f.Arrival <= today && f.Departure > today))
             .OrderByDescending(f => f.CreatedAt)
             .Select(f => f.Number)
             .FirstOrDefaultAsync();
