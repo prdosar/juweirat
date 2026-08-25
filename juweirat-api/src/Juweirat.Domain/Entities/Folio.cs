@@ -54,6 +54,11 @@ public class Folio
     // Cycle de vie
     public FolioResaStatus ResaStatus { get; set; } = FolioResaStatus.Confirmee;
     public bool CheckedIn { get; set; }
+    // Horodatage du premier passage en CheckedIn = true. Null pour les folios importés
+    // (batch launch) qui n'ont jamais transité par le bouton check-in. Permet de répondre
+    // à "qui a fait check-in aujourd'hui" sans ambiguïté (arrival est une date planifiée,
+    // pas l'événement).
+    public DateTime? CheckedInAt { get; set; }
     public bool Closed { get; set; }
     public DateOnly? CheckoutDate { get; set; }
     public string? Note { get; set; }

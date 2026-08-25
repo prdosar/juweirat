@@ -467,7 +467,13 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
         if (folio.Unit.HorsService)                           return (null, "Unit is hors service");
         if (folio.Unit.StatutMenage == MenageStatus.Sale) return (null, "Unit must be propre before check-in");
 
-        folio.CheckedIn = true;
+        // Enregistre l'horodatage uniquement à la vraie transition (folio pas encore
+        // check-in). Un second appel accidentel ne réécrit pas l'événement d'origine.
+        if (!folio.CheckedIn)
+        {
+            folio.CheckedIn   = true;
+            folio.CheckedInAt = DateTime.UtcNow;
+        }
 
         await db.SaveChangesAsync();
         return (ToFolioDto(folio), null);

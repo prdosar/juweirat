@@ -257,3 +257,74 @@ export async function tvaHandler(input: z.infer<typeof tvaInputSchema>): Promise
     2,
   );
 }
+
+// ─── list_checkins_on ────────────────────────────────────────────────────────
+
+export const checkinsOnInputSchema = z.object({
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Format attendu : YYYY-MM-DD")
+    .optional()
+    .describe("Date au format YYYY-MM-DD. Si omis, utilise la date du jour côté serveur (UTC)."),
+});
+
+export const checkinsOnDefinition = {
+  name: "list_checkins_on",
+  description:
+    "Liste les VRAIS check-ins effectués un jour donné (par défaut aujourd'hui) : filtre sur folios.checkedInAt (horodatage de l'événement, posé au moment où le staff appuie sur \"check-in\"). Utilise ce tool pour \"qui vient de faire un check-in\", \"combien de check-ins aujourd'hui\", \"check-ins du 25 août\". ⚠️ Différent de \"arrivées prévues\" (date planifiée) : Arrival est une date théorique, checkedInAt est l'événement réel. Les folios importés en batch au launch (checkedInAt null) N'apparaissent PAS ici.",
+  inputSchema: checkinsOnInputSchema,
+} as const;
+
+export async function checkinsOnHandler(
+  input: z.infer<typeof checkinsOnInputSchema>,
+): Promise<string> {
+  const dateParam = input.date ?? null;
+
+  const [countRow] = await query<{ total: number }>(
+    `
+    SELECT COUNT(*)::int AS "total"
+    FROM folios f
+    WHERE f."checkedInAt" IS NOT NULL
+      AND f."checkedInAt"::date = COALESCE($1::date, CURRENT_DATE)
+    `,
+    [dateParam],
+  );
+
+  const checkins = await query(
+    `
+    SELECT
+      f.id                                                    AS "folioId",
+      f.number                                                AS "folioNumber",
+      to_char(f."checkedInAt", 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "checkedInAt",
+      to_char(f.arrival,   'YYYY-MM-DD')                     AS "arrival",
+      to_char(f.departure, 'YYYY-MM-DD')                     AS "departure",
+      f.pax,
+      NULLIF(TRIM(COALESCE(f.prenom, '') || ' ' || COALESCE(f.nom, '')), '') AS "namePrenomNom",
+      f.guest,
+      f.societe,
+      f."reservationId",
+      r.reference                                             AS "reservationRef",
+      f."unitId"                                              AS "roomId",
+      u."pmsRoomNo",
+      u."roomNumber",
+      u."pmsType"
+    FROM folios f
+    LEFT JOIN reservations r ON r.id = f."reservationId"
+    LEFT JOIN rooms u        ON u.id = f."unitId"
+    WHERE f."checkedInAt" IS NOT NULL
+      AND f."checkedInAt"::date = COALESCE($1::date, CURRENT_DATE)
+    ORDER BY f."checkedInAt" ASC
+    `,
+    [dateParam],
+  );
+
+  return JSON.stringify(
+    {
+      date: dateParam ?? "CURRENT_DATE (UTC serveur)",
+      count: countRow.total,
+      checkins,
+    },
+    null,
+    2,
+  );
+}
