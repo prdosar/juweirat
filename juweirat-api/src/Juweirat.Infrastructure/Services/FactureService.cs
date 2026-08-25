@@ -45,6 +45,7 @@ public class FactureService(AppDbContext db, AccountingService accountingService
         var folio = await db.Folios
             .Include(f => f.Unit)
             .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Room)
             .FirstOrDefaultAsync(f => f.Id == folioId);
         if (folio is null) return (null, null);
 
@@ -169,8 +170,11 @@ public class FactureService(AppDbContext db, AccountingService accountingService
 
     private static FactureSnapshot BuildSnapshot(Folio folio)
     {
-        var nights         = folio.Departure.DayNumber - folio.Arrival.DayNumber;
-        // Source unique de vérité prix : Reservation liée si elle existe.
+        // Source unique de vérité : Reservation liée si elle existe (chambre, dates,
+        // pax, tarif, TVA). Sinon (walk-in), on lit sur le folio.
+        var v              = PmsService.EffectiveView(folio);
+        var contractUnit   = folio.Reservation?.Room ?? folio.Unit;
+        var nights         = v.Departure.DayNumber - v.Arrival.DayNumber;
         var (hebGross, discount, hebNet, _) = PmsService.ResolveHeb(folio, nights);
         var totalPdj       = folio.PdjParJour * folio.PdjPrix * nights;
         var totalDep       = folio.Dependances;
@@ -180,7 +184,7 @@ public class FactureService(AppDbContext db, AccountingService accountingService
         // Décomposition HT/TVA/TTC — les prix stockés (heb net, PdjPrix, Dép, Déb)
         // sont HT ; la TVA est ajoutée sur le total.
         int totalHt  = total;
-        int tva      = folio.TvaExonere ? 0 : (int)Math.Round(totalHt * TVA_RATE, 0);
+        int tva      = v.TvaExonere ? 0 : (int)Math.Round(totalHt * TVA_RATE, 0);
         int totalTtc = totalHt + tva;
 
         var elecMention = folio.ElecIncluded ? "" : " (hors électricité)";
@@ -195,7 +199,7 @@ public class FactureService(AppDbContext db, AccountingService accountingService
         {
             new()
             {
-                Label   = $"Hébergement {folio.Unit?.PmsType} {folio.Unit?.PmsGamme}" +
+                Label   = $"Hébergement {contractUnit?.PmsType} {contractUnit?.PmsGamme}" +
                           $" — {tierLabel} × {nights} nuit(s){elecMention}",
                 Montant = hebGross,
             },
@@ -221,16 +225,16 @@ public class FactureService(AppDbContext db, AccountingService accountingService
             Client       = folio.Guest,
             Societe      = folio.Societe,
             Reservataire = folio.Reservataire,
-            UnitLabel    = folio.Unit?.NameFr ?? folio.UnitId.ToString(),
-            Arrival      = folio.Arrival,
-            Departure    = folio.Departure,
+            UnitLabel    = v.UnitName,
+            Arrival      = v.Arrival,
+            Departure    = v.Departure,
             Nights       = nights,
-            Pax          = folio.Pax,
-            TvaExonere   = folio.TvaExonere,
+            Pax          = v.Pax,
+            TvaExonere   = v.TvaExonere,
             TotalHt      = totalHt,
             Tva          = tva,
             TotalTtc     = totalTtc,
-            TvaRate      = folio.TvaExonere ? null : TVA_RATE,
+            TvaRate      = v.TvaExonere ? null : TVA_RATE,
         };
     }
 

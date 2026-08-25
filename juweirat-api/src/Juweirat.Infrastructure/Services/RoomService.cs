@@ -255,15 +255,22 @@ public class RoomService(AppDbContext db)
             .Select(b => b.RoomId)
             .ToListAsync();
 
-        // Folios PMS actifs sur le même créneau — source de vérité côté réception
+        // Folios PMS actifs sur le même créneau — quand une résa est liée, elle EST
+        // la source de vérité (chambre, dates). Sinon (folio walk-in), on lit sur les
+        // colonnes propres au folio. Cette projection rend le check tolérant à toute
+        // drift historique entre folio et résa. Cf. [[project-architecture]].
         var folioOccupiedIds = await db.Folios
             .Where(f =>
                 f.ResaStatus != FolioStatus.Annulee &&
                 f.ResaStatus != FolioStatus.NoShow &&
                 !f.Closed &&
-                f.Arrival  < checkOut &&
-                f.Departure > checkIn)
-            .Select(f => f.UnitId)
+                (f.Reservation != null
+                    ? f.Reservation.CheckInDate  < checkOut && f.Reservation.CheckOutDate > checkIn
+                    : f.Arrival < checkOut && f.Departure > checkIn))
+            .Select(f =>
+                f.Reservation != null && f.Reservation.RoomId != null
+                    ? f.Reservation.RoomId.Value
+                    : f.UnitId)
             .ToListAsync();
 
         var unavailable = occupiedRoomIds

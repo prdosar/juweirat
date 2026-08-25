@@ -180,7 +180,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
 
     public async Task<Juweirat.Application.Common.Pagination.PagedResult<FolioDto>> GetPagedFoliosAsync(FolioFilterParams filter)
     {
-        var query = db.Folios.Include(f => f.Unit).Include(f => f.Reservation).ThenInclude(r => r!.Prestations).AsQueryable();
+        var query = db.Folios.Include(f => f.Unit).Include(f => f.Reservation).ThenInclude(r => r!.Prestations).Include(f => f.Reservation).ThenInclude(r => r!.Room).AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(filter.Search))
         {
@@ -251,10 +251,15 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
 
     public async Task<List<FolioDto>> GetFoliosAsync(bool? closed = null, long? unitId = null, string? resaStatus = null)
     {
-        var query = db.Folios.Include(f => f.Unit).Include(f => f.Reservation).ThenInclude(r => r!.Prestations).AsQueryable();
+        var query = db.Folios.Include(f => f.Unit).Include(f => f.Reservation).ThenInclude(r => r!.Prestations).Include(f => f.Reservation).ThenInclude(r => r!.Room).AsQueryable();
 
         if (closed.HasValue)    query = query.Where(f => f.Closed == closed.Value);
-        if (unitId.HasValue)    query = query.Where(f => f.UnitId == unitId.Value);
+        if (unitId.HasValue)
+            // Filtre sur l'unité EFFECTIVE (résa liée fait autorité, sinon folio propre).
+            query = query.Where(f =>
+                (f.Reservation != null && f.Reservation.RoomId != null
+                    ? f.Reservation.RoomId.Value
+                    : f.UnitId) == unitId.Value);
         if (resaStatus is not null && Enum.TryParse<FolioStatus>(resaStatus, true, out var s))
             query = query.Where(f => f.ResaStatus == s);
 
@@ -266,7 +271,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
     {
         var folio = await db.Folios
             .Include(f => f.Unit)
-            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations).Include(f => f.Reservation).ThenInclude(r => r!.Room)
             .FirstOrDefaultAsync(f => f.Id == id);
         return folio is null ? null : ToFolioDto(folio);
     }
@@ -276,7 +281,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
         var folio = await db.Folios
             .Include(f => f.Unit)
             .Include(f => f.Reservation).ThenInclude(r => r!.Client)
-            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations).Include(f => f.Reservation).ThenInclude(r => r!.Room)
             .FirstOrDefaultAsync(f => f.Id == folioId);
         if (folio is null) return null;
 
@@ -293,7 +298,12 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
 
         var adresse = string.Join(", ", new[] { client?.City, client?.Country }.Where(x => x is not null));
 
-        var nights = folio.Departure.DayNumber - folio.Arrival.DayNumber;
+        // Contrat = document juridique : les valeurs viennent de la RÉSA quand elle
+        // est liée (source de vérité). Le logement est celui de la résa aussi, pour
+        // que le contrat imprimé cite la chambre correctement même en cas de drift.
+        var v = EffectiveView(folio);
+        var contractUnit = folio.Reservation?.Room ?? folio.Unit;
+        var nights = v.Departure.DayNumber - v.Arrival.DayNumber;
 
         return new ContractDataDto(
             PrenomNom:            prenomNom,
@@ -301,14 +311,14 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
             PieceIdentite:        pieceId,
             Adresse:              string.IsNullOrEmpty(adresse) ? null : adresse,
             Societe:              folio.Societe,
-            AptNo:                folio.Unit.PmsRoomNo ?? folio.Unit.RoomNumber,
-            Floor:                folio.Unit.Floor,
-            PmsType:              folio.Unit.PmsType,
-            Arrival:              folio.Arrival.ToString("yyyy-MM-dd"),
-            Departure:            folio.Departure.ToString("yyyy-MM-dd"),
+            AptNo:                contractUnit?.PmsRoomNo ?? contractUnit?.RoomNumber,
+            Floor:                contractUnit?.Floor ?? 0,
+            PmsType:              contractUnit?.PmsType,
+            Arrival:              v.Arrival.ToString("yyyy-MM-dd"),
+            Departure:            v.Departure.ToString("yyyy-MM-dd"),
             Nights:               nights,
-            Rate:                 folio.Rate,
-            MonthlyLoyer:         folio.Rate * 30,
+            Rate:                 v.Rate,
+            MonthlyLoyer:         v.Rate * 30,
             ElecIncluded:         folio.ElecIncluded,
             TarifTier:            folio.TarifTier.ToString(),
             FolioNumber:          folio.Number,
@@ -388,7 +398,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
 
         var created = await db.Folios
             .Include(f => f.Unit)
-            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations).Include(f => f.Reservation).ThenInclude(r => r!.Room)
             .FirstAsync(f => f.Id == folio.Id);
         return (ToFolioDto(created), null);
     }
@@ -397,7 +407,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
     {
         var folio = await db.Folios
             .Include(f => f.Unit).ThenInclude(u => u!.Category)
-            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations).Include(f => f.Reservation).ThenInclude(r => r!.Room)
             .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (folio.Closed) return (null, "Folio is closed");
@@ -457,7 +467,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
     {
         var folio = await db.Folios
             .Include(f => f.Unit)
-            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations).Include(f => f.Reservation).ThenInclude(r => r!.Room)
             .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (folio.CheckedIn) return (null, "Already checked in");
@@ -485,7 +495,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
     {
         var folio = await db.Folios
             .Include(f => f.Unit)
-            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations).Include(f => f.Reservation).ThenInclude(r => r!.Room)
             .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (!folio.CheckedIn) return (null, "Not checked in");
@@ -525,7 +535,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
     {
         var folio = await db.Folios
             .Include(f => f.Unit)
-            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations).Include(f => f.Reservation).ThenInclude(r => r!.Room)
             .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (folio.Closed) return (null, "Folio is closed");
@@ -586,7 +596,7 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
     {
         var folio = await db.Folios
             .Include(f => f.Unit)
-            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations)
+            .Include(f => f.Reservation).ThenInclude(r => r!.Prestations).Include(f => f.Reservation).ThenInclude(r => r!.Room)
             .FirstOrDefaultAsync(f => f.Id == id);
         if (folio is null) return (null, null);
         if (folio.Closed) return (null, "Folio is closed");
@@ -645,11 +655,12 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
     // Returns (totalHeb, totalPdj, solde) — totalHeb est NET (après remise résa)
     private static (int TotalHeb, int TotalPdj, int Solde) ComputeFinancials(Folio f)
     {
-        var nights          = f.Departure.DayNumber - f.Arrival.DayNumber;
+        var v               = EffectiveView(f);
+        var nights          = v.Departure.DayNumber - v.Arrival.DayNumber;
         var (_, _, totalHebNet, _) = ResolveHeb(f, nights);
         var totalPdj        = f.PdjParJour * f.PdjPrix * nights;
         // Solde en TTC : client paie TTC, prix stockés HT → ComputeSolde ajoute la TVA.
-        var solde           = TarifEngine.ComputeSolde(totalHebNet, totalPdj, f.Debiteur, f.Dependances, f.Paid, f.Arrhes, f.TvaExonere);
+        var solde           = TarifEngine.ComputeSolde(totalHebNet, totalPdj, f.Debiteur, f.Dependances, f.Paid, f.Arrhes, v.TvaExonere);
         return (totalHebNet, totalPdj, solde);
     }
 
@@ -693,33 +704,76 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
 
     internal static FolioDto ToFolioDto(Folio f)
     {
-        var nights          = f.Departure.DayNumber - f.Arrival.DayNumber;
+        var v = EffectiveView(f);
+        var nights          = v.Departure.DayNumber - v.Arrival.DayNumber;
         var (gross, discount, totalHeb, _) = ResolveHeb(f, nights);
         var totalPdj        = f.PdjParJour * f.PdjPrix * nights;
         var totalDebiteur   = f.Debiteur;
         var totalDependances = f.Dependances;
         // TotalGeneral = HT (les composants sont HT). Le TTC est calculé côté client.
         var totalGeneral    = totalHeb + totalPdj + totalDebiteur + totalDependances;
-        var solde           = TarifEngine.ComputeSolde(totalHeb, totalPdj, totalDebiteur, totalDependances, f.Paid, f.Arrhes, f.TvaExonere);
-        var tva             = f.TvaExonere ? 0 : (int)Math.Round(totalGeneral * TarifEngine.TVA_RATE);
+        var solde           = TarifEngine.ComputeSolde(totalHeb, totalPdj, totalDebiteur, totalDependances, f.Paid, f.Arrhes, v.TvaExonere);
+        var tva             = v.TvaExonere ? 0 : (int)Math.Round(totalGeneral * TarifEngine.TVA_RATE);
         var totalTtc        = totalGeneral + tva;
 
         return new FolioDto(
             f.Id, f.Number,
-            f.UnitId, f.Unit?.NameFr ?? f.UnitId.ToString(),
+            v.UnitId, v.UnitName,
             f.Guest, f.Nom, f.Prenom, f.Societe, f.Reservataire,
             f.CardNumber, f.CardExpiry, f.CardHolder,
-            f.Segment.ToString(), f.Pax,
-            f.Arrival, f.Departure, nights,
-            f.Rate, f.Heb, f.TarifTier.ToString(), f.ElecIncluded,
+            f.Segment.ToString(), v.Pax,
+            v.Arrival, v.Departure, nights,
+            v.Rate, f.Heb, f.TarifTier.ToString(), f.ElecIncluded,
             f.PdjParJour, f.PdjPrix, f.Debiteur, f.Dependances,
             f.Arrhes, f.Paid, f.PayMode, f.FactRecipient,
             f.ResaStatus.ToString(), f.CheckedIn, f.Closed, f.CheckoutDate, f.Note,
             f.ReservationId, f.Reservation?.Reference, f.FactureId,
             f.CreatedAt, f.UpdatedAt,
             totalHeb, totalPdj, totalDebiteur, totalDependances, totalGeneral, solde,
-            f.TvaExonere, tva, totalTtc,
+            v.TvaExonere, tva, totalTtc,
             gross, discount
         );
+    }
+
+    // Vue "effective" du folio : quand une réservation est liée, elle EST la
+    // source de vérité pour chambre/dates/pax/rate/tva. Le folio a peut-être
+    // drifté (bug historique avant la cascade) — cette projection fait autorité
+    // en lecture. Les folios walk-in (Reservation null) utilisent leurs propres
+    // colonnes. Cf. [[project-architecture]].
+    internal readonly record struct FolioEffectiveView(
+        long UnitId,
+        string UnitName,
+        DateOnly Arrival,
+        DateOnly Departure,
+        int Pax,
+        int Rate,
+        bool TvaExonere);
+
+    internal static FolioEffectiveView EffectiveView(Folio f)
+    {
+        var r = f.Reservation;
+        if (r is null)
+        {
+            return new FolioEffectiveView(
+                f.UnitId,
+                f.Unit?.NameFr ?? f.UnitId.ToString(),
+                f.Arrival, f.Departure,
+                f.Pax, f.Rate, f.TvaExonere);
+        }
+
+        var effectiveUnitId = r.RoomId ?? f.UnitId;
+        // Nom de l'unité : préfère la Room chargée depuis la résa (source vraie),
+        // sinon f.Unit si son Id matche l'effective (pas de drift), sinon ID brut.
+        var unitName = r.Room?.NameFr
+                       ?? (f.Unit is not null && f.Unit.Id == effectiveUnitId ? f.Unit.NameFr : null)
+                       ?? effectiveUnitId.ToString();
+
+        return new FolioEffectiveView(
+            effectiveUnitId,
+            unitName,
+            r.CheckInDate, r.CheckOutDate,
+            r.Adults + r.Children,
+            (int)Math.Round(r.PricePerNightSnapshot),
+            r.TvaExonere);
     }
 }
