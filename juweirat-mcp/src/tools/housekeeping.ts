@@ -182,6 +182,72 @@ export async function cleaningHistoryHandler(
   return JSON.stringify({ room, count: logs.length, logs }, null, 2);
 }
 
+// ─── list_cleanings_on ───────────────────────────────────────────────────────
+
+export const cleaningsOnInputSchema = z.object({
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Format attendu : YYYY-MM-DD")
+    .optional()
+    .describe("Date au format YYYY-MM-DD. Si omis, utilise la date du jour côté serveur (UTC)."),
+});
+
+export const cleaningsOnDefinition = {
+  name: "list_cleanings_on",
+  description:
+    "Liste TOUS les nettoyages effectués un jour donné (par défaut aujourd'hui), directement depuis housekeepingLogs. Chaque ligne = 1 passage : chambre, staff, horaire précis, notes. Utilise ce tool pour \"quelles chambres ont été nettoyées aujourd'hui / hier / le 25 août\", \"combien de nettoyages sur telle date\", \"qui a nettoyé aujourd'hui\". Si zéro nettoyage sur la date, retourne count=0 explicitement — ne confonds pas avec un manque de données.",
+  inputSchema: cleaningsOnInputSchema,
+} as const;
+
+export async function cleaningsOnHandler(
+  input: z.infer<typeof cleaningsOnInputSchema>,
+): Promise<string> {
+  const dateParam = input.date ?? null;
+
+  const [countRow] = await query<{ total: number; distinctRooms: number }>(
+    `
+    SELECT COUNT(*)::int                                  AS "total",
+           COUNT(DISTINCT h."roomId")::int                AS "distinctRooms"
+    FROM "housekeepingLogs" h
+    WHERE h."cleanedAt"::date = COALESCE($1::date, CURRENT_DATE)
+    `,
+    [dateParam],
+  );
+
+  const cleanings = await query(
+    `
+    SELECT
+      h.id,
+      to_char(h."cleanedAt", 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "cleanedAt",
+      r.id                                                  AS "roomId",
+      r."pmsRoomNo",
+      r."roomNumber",
+      r."pmsType",
+      h."staffId",
+      NULLIF(TRIM(COALESCE(s."firstName", '') || ' ' || COALESCE(s."lastName", '')), '') AS "staffName",
+      s.phone                                               AS "staffPhone",
+      h.notes
+    FROM "housekeepingLogs" h
+    LEFT JOIN rooms r ON r.id = h."roomId"
+    LEFT JOIN "maintenanceStaff" s ON s.id = h."staffId"
+    WHERE h."cleanedAt"::date = COALESCE($1::date, CURRENT_DATE)
+    ORDER BY h."cleanedAt" ASC
+    `,
+    [dateParam],
+  );
+
+  return JSON.stringify(
+    {
+      date: dateParam ?? "CURRENT_DATE (UTC serveur)",
+      count: countRow.total,
+      distinctRooms: countRow.distinctRooms,
+      cleanings,
+    },
+    null,
+    2,
+  );
+}
+
 // ─── list_maintenance_incidents ──────────────────────────────────────────────
 
 const TICKET_STATUSES = ["Ouvert", "EnCours", "Resolu", "Annule"] as const;
