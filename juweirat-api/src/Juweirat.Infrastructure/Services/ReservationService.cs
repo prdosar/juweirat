@@ -121,7 +121,15 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             if (room.Status != RoomStatus.Available) return (null, "Room is not available");
 
             var overlap = await CheckOverlapAsync(req.RoomId.Value, req.CheckInDate, req.CheckOutDate);
-            if (overlap) return (null, "Room is already reserved for these dates");
+            if (overlap)
+            {
+                // Signal fort : le client (front, MCP, tiers) a envoyé une chambre
+                // déjà prise. Signe d'un picker/filter cassé quelque part.
+                logger.LogWarning(
+                    "[RESA-OVERLAP] Refus création : roomId={RoomId} déjà occupé sur {CheckIn}..{CheckOut} (source={Source}, clientId={ClientId})",
+                    req.RoomId.Value, req.CheckInDate, req.CheckOutDate, req.Source, req.ClientId);
+                return (null, "Room is already reserved for these dates");
+            }
         }
 
         var category = (req.CategoryId > 0 ? await db.RoomCategories.FindAsync(req.CategoryId) : null)
@@ -768,14 +776,15 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
                                      .FirstOrDefaultAsync(rm => rm.Id == newRoomId.Value);
                 if (room is null) return (null, "Chambre introuvable.");
 
-                var overlap = await db.Reservations.AnyAsync(x =>
-                    x.Id != r.Id &&
-                    x.RoomId == room.Id &&
-                    x.Status != ReservationStatus.Cancelled &&
-                    x.Status != ReservationStatus.NoShow &&
-                    x.CheckInDate  < newCheckOut &&
-                    x.CheckOutDate > newCheckIn);
-                if (overlap) return (null, "Cette chambre est déjà réservée pour la nouvelle période.");
+                // Check unifié via CheckOverlapAsync (résas + blocks + folios),
+                // en s'excluant soi-même pour permettre l'édition inplace.
+                if (await CheckOverlapAsync(room.Id, newCheckIn, newCheckOut, excludeReservationId: r.Id))
+                {
+                    logger.LogWarning(
+                        "[RESA-OVERLAP] Refus édition résa {ResaId} ({ResaRef}) : roomId={RoomId} déjà occupé sur {CheckIn}..{CheckOut}",
+                        r.Id, r.Reference, room.Id, newCheckIn, newCheckOut);
+                    return (null, "Cette chambre est déjà occupée sur la nouvelle période (autre réservation, folio actif ou blocage manuel).");
+                }
             }
 
             var nights = newCheckOut.DayNumber - newCheckIn.DayNumber;
@@ -993,14 +1002,20 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         return (ToDto(updated), null);
     }
 
-    private async Task<bool> CheckOverlapAsync(long roomId, DateOnly checkIn, DateOnly checkOut)
+    // Vérifie si une chambre est déjà prise sur un créneau donné, tous canaux
+    // confondus : réservations, blocks manuels ET folios PMS actifs (y compris
+    // walk-in sans résa). Si excludeReservationId est fourni, la résa
+    // correspondante ET son folio lié sont ignorés (permet l'auto-édition sans
+    // se bloquer soi-même).
+    private async Task<bool> CheckOverlapAsync(long roomId, DateOnly checkIn, DateOnly checkOut, long? excludeReservationId = null)
     {
         var resaOverlap = await db.Reservations.AnyAsync(r =>
             r.RoomId == roomId &&
             r.Status != ReservationStatus.Cancelled &&
             r.Status != ReservationStatus.NoShow &&
             r.CheckInDate  < checkOut &&
-            r.CheckOutDate > checkIn);
+            r.CheckOutDate > checkIn &&
+            (excludeReservationId == null || r.Id != excludeReservationId.Value));
 
         if (resaOverlap) return true;
 
@@ -1009,7 +1024,25 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             b.StartDate < checkOut &&
             b.EndDate   > checkIn);
 
-        return blockOverlap;
+        if (blockOverlap) return true;
+
+        // Folios actifs sur le créneau — quand une résa est liée, elle EST la
+        // source de vérité (chambre + dates). Sinon (folio walk-in), on lit les
+        // colonnes propres au folio. Cf. [[project-architecture]].
+        var folioOverlap = await db.Folios.AnyAsync(f =>
+            !f.Closed &&
+            f.ResaStatus != FolioResaStatus.Annulee &&
+            f.ResaStatus != FolioResaStatus.NoShow &&
+            (excludeReservationId == null || f.ReservationId != excludeReservationId.Value) &&
+            (f.Reservation != null && f.Reservation.RoomId != null
+                ? f.Reservation.RoomId.Value == roomId &&
+                  f.Reservation.CheckInDate  < checkOut &&
+                  f.Reservation.CheckOutDate > checkIn
+                : f.UnitId == roomId &&
+                  f.Arrival  < checkOut &&
+                  f.Departure > checkIn));
+
+        return folioOverlap;
     }
 
     private async Task CreateFolioFromReservationAsync(Reservation r)

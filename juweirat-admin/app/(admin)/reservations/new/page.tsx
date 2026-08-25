@@ -116,7 +116,6 @@ function NewReservationPageInner() {
   const [companyList, setCompanyList]       = useState<CompanyDto[]>([]);
 
   useEffect(() => { categories.getAll().then(setCategoryList); }, []);
-  useEffect(() => { rooms.getAll().then(setRoomList); }, []);
 
   // Ids des catégories qui ont au moins une chambre dispo sur la période choisie.
   // Vide tant que les dates ne sont pas complètes.
@@ -260,6 +259,17 @@ function NewReservationPageInner() {
     return () => { cancelled = true; };
   }, [checkIn, checkOut, nights, adults]);
 
+  // Liste des chambres RÉELLEMENT dispo sur le créneau (backend filtre résas +
+  // folios actifs + blocks manuels). Recharge à chaque changement de dates.
+  useEffect(() => {
+    if (!checkIn || !checkOut || nights <= 0) { setRoomList([]); return; }
+    let cancelled = false;
+    rooms.getAvailable({ checkIn, checkOut, adults: Math.max(1, adults) })
+      .then(list => { if (!cancelled) setRoomList(list); })
+      .catch(() => { if (!cancelled) setRoomList([]); });
+    return () => { cancelled = true; };
+  }, [checkIn, checkOut, nights, adults]);
+
   // Si la catégorie déjà cochée devient complète après un changement de dates,
   // on la désélectionne pour forcer l'utilisateur à en reprendre une valide.
   useEffect(() => {
@@ -274,8 +284,11 @@ function NewReservationPageInner() {
   const effectivePricePerNight = tarifPreview?.pricePerNight ?? (tier ? tier.rate : 0);
   const hebergement = effectivePricePerNight * nights;
 
+  // Le backend filtre déjà les chambres occupées sur le créneau — plus besoin
+  // de re-filtrer sur r.status côté client (Status est un flag manuel non lié
+  // à l'occupation, sauf Inactive/HS déjà exclus par le endpoint).
   const categoryRooms = useMemo(
-    () => roomList.filter(r => r.categoryId === categoryId && r.status === 'Available'),
+    () => roomList.filter(r => r.categoryId === categoryId),
     [roomList, categoryId],
   );
 

@@ -26,11 +26,14 @@ public class RoomsController(RoomService roomService, IWebHostEnvironment env) :
     public async Task<IActionResult> GetAvailable(
         [FromQuery] DateOnly checkIn,
         [FromQuery] DateOnly checkOut,
-        [FromQuery] int adults = 1)
+        [FromQuery] int adults = 1,
+        // Pour l'édition d'une résa existante : exclut sa propre occupation
+        // afin que la chambre actuellement assignée reste sélectionnable.
+        [FromQuery] long? excludeReservationId = null)
     {
         if (checkOut <= checkIn)
             return BadRequest(new { error = "checkOut must be after checkIn" });
-        return Ok(await roomService.GetAvailableAsync(checkIn, checkOut, adults));
+        return Ok(await roomService.GetAvailableAsync(checkIn, checkOut, adults, excludeReservationId));
     }
 
     [Authorize]

@@ -87,6 +87,18 @@ export const rooms = {
     if (params?.floor !== undefined) qs.set('floor', String(params.floor));
     return request<import('./types').RoomDto[]>(`/api/rooms?${qs}`);
   },
+  // Liste des chambres réellement disponibles sur un créneau (exclut résas
+  // actives, blocks manuels et folios PMS actifs). excludeReservationId sert
+  // à l'édition d'une résa existante pour ne pas s'auto-bloquer.
+  getAvailable: (params: { checkIn: string; checkOut: string; adults: number; excludeReservationId?: number }) => {
+    const qs = new URLSearchParams({
+      checkIn: params.checkIn,
+      checkOut: params.checkOut,
+      adults: String(params.adults),
+    });
+    if (params.excludeReservationId != null) qs.set('excludeReservationId', String(params.excludeReservationId));
+    return request<import('./types').RoomDto[]>(`/api/rooms/available?${qs}`);
+  },
   getById: (id: number) => request<import('./types').RoomDto>(`/api/rooms/${id}`),
   create:  (body: unknown) => request<import('./types').RoomDto>('/api/rooms', { method: 'POST', body: JSON.stringify(body) }),
   update:  (id: number, body: unknown) => request<import('./types').RoomDto>(`/api/rooms/${id}`, { method: 'PUT', body: JSON.stringify(body) }),

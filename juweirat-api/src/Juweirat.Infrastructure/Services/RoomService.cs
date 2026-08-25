@@ -236,16 +236,17 @@ public class RoomService(AppDbContext db)
         return true;
     }
 
-    public async Task<List<RoomDto>> GetAvailableAsync(DateOnly checkIn, DateOnly checkOut, int adults)
+    public async Task<List<RoomDto>> GetAvailableAsync(DateOnly checkIn, DateOnly checkOut, int adults, long? excludeReservationId = null)
     {
-        // Réservations web bloquant les créneaux
+        // Réservations web bloquant les créneaux (auto-exclusion pour l'édition inplace).
         var occupiedRoomIds = await db.Reservations
             .Where(r =>
                 r.Status != ReservationStatus.Cancelled &&
                 r.Status != ReservationStatus.NoShow &&
                 r.RoomId != null &&
                 r.CheckInDate  < checkOut &&
-                r.CheckOutDate > checkIn)
+                r.CheckOutDate > checkIn &&
+                (excludeReservationId == null || r.Id != excludeReservationId.Value))
             .Select(r => r.RoomId!.Value)
             .ToListAsync();
 
@@ -264,6 +265,7 @@ public class RoomService(AppDbContext db)
                 f.ResaStatus != FolioStatus.Annulee &&
                 f.ResaStatus != FolioStatus.NoShow &&
                 !f.Closed &&
+                (excludeReservationId == null || f.ReservationId != excludeReservationId.Value) &&
                 (f.Reservation != null
                     ? f.Reservation.CheckInDate  < checkOut && f.Reservation.CheckOutDate > checkIn
                     : f.Arrival < checkOut && f.Departure > checkIn))

@@ -176,17 +176,17 @@ function EditReservationPageInner() {
     if (!id) return;
     let cancelled = false;
     setLoading(true);
+    // Charge la résa, catégories et prestations. La liste des chambres dispo
+    // est chargée à part (dépend des dates de la résa, effet suivant).
     Promise.all([
       reservations.getById(id),
       categories.getAll(),
-      rooms.getAll(),
       prestations.getAll(true),
     ])
-      .then(([r, cats, rms, prs]) => {
+      .then(([r, cats, prs]) => {
         if (cancelled) return;
         setResa(r);
         setCategoryList(cats);
-        setRoomList(rms);
         setPrestationList(prs);
 
         setCheckIn(r.checkInDate);
@@ -297,12 +297,26 @@ function EditReservationPageInner() {
     }
   }, [availableCategoryIds, categoryId]);
 
+  // Chambres réellement dispo sur le créneau — backend filtre résas + folios +
+  // blocks. excludeReservationId=id garantit que la chambre actuellement
+  // assignée à la résa en cours reste visible (elle ne se s'auto-bloque pas).
+  useEffect(() => {
+    if (!id || !checkIn || !checkOut || nights <= 0) { setRoomList([]); return; }
+    let cancelled = false;
+    rooms.getAvailable({ checkIn, checkOut, adults: Math.max(1, adults), excludeReservationId: id })
+      .then(list => { if (!cancelled) setRoomList(list); })
+      .catch(() => { if (!cancelled) setRoomList([]); });
+    return () => { cancelled = true; };
+  }, [id, checkIn, checkOut, nights, adults]);
+
   const tier = selectedCat && nights > 0 ? tierFor(nights, selectedCat) : null;
   const effectivePricePerNight = tarifPreview?.pricePerNight ?? (tier ? tier.rate : 0);
   const hebergement = effectivePricePerNight * nights;
 
+  // Le backend filtre déjà l'occupation sur le créneau. On garde uniquement
+  // le filtre catégorie côté client.
   const categoryRooms = useMemo(
-    () => roomList.filter(r => r.categoryId === categoryId && r.status === 'Available'),
+    () => roomList.filter(r => r.categoryId === categoryId),
     [roomList, categoryId],
   );
 
