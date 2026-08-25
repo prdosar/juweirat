@@ -58,7 +58,9 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         // La gouvernante voit l'unité effective : quand une résa est liée, la chambre
         // qui est réellement occupée est r.RoomId (source de vérité), pas f.UnitId
-        // qui peut avoir drifted. Cf. [[project-architecture]].
+        // qui peut avoir drifted. Le nom/société aussi viennent de la résa liée
+        // (Client + Company), fallback folio.Guest/Societe pour les walk-in.
+        // Cf. [[project-architecture]].
         var activeFoliosToday = await db.Folios
             .Where(f =>
                 !f.Closed &&
@@ -74,12 +76,32 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
                     : f.UnitId,
                 f.Number,
                 f.CreatedAt,
+                // Nom : résa (Client.FirstName + LastName) si liée, sinon folio.Guest.
+                ResaFirstName = f.Reservation != null ? f.Reservation.Client.FirstName : null,
+                ResaLastName  = f.Reservation != null ? f.Reservation.Client.LastName  : null,
+                FolioGuest    = f.Guest,
+                // Société : résa.Client.Company.Name si liée, sinon folio.Societe.
+                ResaCompany   = f.Reservation != null && f.Reservation.Client.Company != null
+                                    ? f.Reservation.Client.Company.Name
+                                    : null,
+                FolioSociete  = f.Societe,
             })
             .ToListAsync();
 
         var activeByUnit = activeFoliosToday
             .GroupBy(x => x.EffectiveUnitId)
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.CreatedAt).First().Number);
+            .ToDictionary(g => g.Key, g =>
+            {
+                var latest = g.OrderByDescending(x => x.CreatedAt).First();
+                var name = !string.IsNullOrWhiteSpace(latest.ResaFirstName) || !string.IsNullOrWhiteSpace(latest.ResaLastName)
+                    ? $"{latest.ResaFirstName} {latest.ResaLastName}".Trim()
+                    : latest.FolioGuest;
+                var company = latest.ResaCompany ?? latest.FolioSociete;
+                return new UnitOccupation(
+                    latest.Number,
+                    string.IsNullOrWhiteSpace(name) ? null : name,
+                    string.IsNullOrWhiteSpace(company) ? null : company);
+            });
 
         return rooms.Select(r => ToUnitDto(r, activeByUnit.GetValueOrDefault(r.Id))).ToList();
     }
@@ -104,10 +126,33 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
                     : f.UnitId == id &&
                       f.Arrival <= today && f.Departure > today))
             .OrderByDescending(f => f.CreatedAt)
-            .Select(f => f.Number)
+            .Select(f => new
+            {
+                f.Number,
+                ResaFirstName = f.Reservation != null ? f.Reservation.Client.FirstName : null,
+                ResaLastName  = f.Reservation != null ? f.Reservation.Client.LastName  : null,
+                FolioGuest    = f.Guest,
+                ResaCompany   = f.Reservation != null && f.Reservation.Client.Company != null
+                                    ? f.Reservation.Client.Company.Name
+                                    : null,
+                FolioSociete  = f.Societe,
+            })
             .FirstOrDefaultAsync();
 
-        return ToUnitDto(room, activeFolio);
+        UnitOccupation? occupation = null;
+        if (activeFolio is not null)
+        {
+            var name = !string.IsNullOrWhiteSpace(activeFolio.ResaFirstName) || !string.IsNullOrWhiteSpace(activeFolio.ResaLastName)
+                ? $"{activeFolio.ResaFirstName} {activeFolio.ResaLastName}".Trim()
+                : activeFolio.FolioGuest;
+            var company = activeFolio.ResaCompany ?? activeFolio.FolioSociete;
+            occupation = new UnitOccupation(
+                activeFolio.Number,
+                string.IsNullOrWhiteSpace(name) ? null : name,
+                string.IsNullOrWhiteSpace(company) ? null : company);
+        }
+
+        return ToUnitDto(room, occupation);
     }
 
     public async Task<(UnitDto? dto, string? error)> PatchMenageAsync(long id, PatchMenageRequest req)
@@ -704,7 +749,10 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
         c.ResaSeq, c.FactureSeq
     );
 
-    private static UnitDto ToUnitDto(Room r, string? currentFolioNumber) => new(
+    // Info d'occupation courante affichée dans la vue gouvernante.
+    internal record UnitOccupation(string FolioNumber, string? GuestName, string? CompanyName);
+
+    private static UnitDto ToUnitDto(Room r, UnitOccupation? occupation) => new(
         r.Id,
         r.PmsRoomNo ?? r.RoomNumber,
         r.PmsType ?? r.Category?.PmsType ?? "T2",
@@ -721,7 +769,9 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
         r.PlanRow,
         r.NameFr,
         r.NameEn,
-        currentFolioNumber
+        occupation?.FolioNumber,
+        occupation?.GuestName,
+        occupation?.CompanyName
     );
 
     internal static FolioDto ToFolioDto(Folio f)

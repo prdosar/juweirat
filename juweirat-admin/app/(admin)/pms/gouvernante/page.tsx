@@ -53,8 +53,11 @@ function UnitCard({ unit, onUpdate, onOpenPropreModal }: { unit: UnitDto; onUpda
       </div>
 
       {unit.currentFolioNumber && (
-        <p className={`text-[11px] font-mono px-2 py-0.5 rounded w-fit ${propre ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'}`}>
-          Occupé · {unit.currentFolioNumber}
+        <p className={`text-[11px] px-2 py-0.5 rounded w-fit ${propre ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800'}`}>
+          <span className="font-mono">Occupé · {unit.currentFolioNumber}</span>
+          {unit.currentGuestName && (
+            <> · <span className="font-semibold">{unit.currentGuestName}</span>{unit.currentCompanyName && <> ({unit.currentCompanyName})</>}</>
+          )}
         </p>
       )}
 

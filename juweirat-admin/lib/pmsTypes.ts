@@ -27,6 +27,8 @@ export interface UnitDto {
   nameFr: string;
   nameEn: string;
   currentFolioNumber: string | null;
+  currentGuestName: string | null;
+  currentCompanyName: string | null;
 }
 
 export interface FolioDto {

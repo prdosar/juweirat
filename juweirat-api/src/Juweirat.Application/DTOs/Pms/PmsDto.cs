@@ -39,7 +39,11 @@ public record UnitDto(
     int PlanRow,
     string NameFr,
     string NameEn,
-    string? CurrentFolioNumber
+    string? CurrentFolioNumber,
+    // Occupant courant — source de vérité : réservation liée (Client + Company).
+    // Fallback sur folio.Guest / folio.Societe pour les folios walk-in sans résa.
+    string? CurrentGuestName,
+    string? CurrentCompanyName
 );
 
 public record PatchMenageRequest(
