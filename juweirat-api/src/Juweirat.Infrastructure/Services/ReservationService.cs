@@ -1,6 +1,7 @@
 using Juweirat.Application.Common.Pagination;
 using Juweirat.Application.DTOs.Prestations;
 using Juweirat.Application.DTOs.Reservations;
+using Juweirat.Application.Notifications;
 using Juweirat.Domain.Entities;
 using Juweirat.Domain.Enums;
 using Juweirat.Infrastructure.Data;
@@ -11,7 +12,7 @@ using FolioStatus = Juweirat.Domain.Enums.FolioResaStatus;
 
 namespace Juweirat.Infrastructure.Services;
 
-public class ReservationService(AppDbContext db, EmailService emailService, ILogger<ReservationService> logger, AccountingService accountingService)
+public class ReservationService(AppDbContext db, EmailService emailService, ILogger<ReservationService> logger, AccountingService accountingService, INotificationPublisher notifications)
 {
     public async Task<PagedResult<ReservationDto>> GetPagedAsync(ReservationFilterParams filter)
     {
@@ -265,7 +266,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         var created = await db.Reservations
             .Include(r => r.Room)
             .Include(r => r.Category)
-            .Include(r => r.Client)
+            .Include(r => r.Client).ThenInclude(c => c!.Company)
             .Include(r => r.Payments)
             .Include(r => r.Prestations).ThenInclude(p => p.Prestation)
             .FirstAsync(r => r.Id == reservation.Id);
@@ -276,6 +277,22 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         {
             _ = SendAdminBookingEmailsAsync(client, category, req);
         }
+
+        // Notification Angèle : toute création de résa (peu importe la source)
+        // déclenche un push Telegram. Fire-and-forget côté SignalR.
+        await notifications.NewReservationAsync(new NewReservationEvent(
+            ReservationId:  created.Id,
+            Reference:      created.Reference,
+            ClientFullName: created.Client.FullName,
+            CompanyName:    created.Client.Company?.Name,
+            CategoryNameFr: created.Category.NameFr,
+            Source:         created.Source,
+            CheckInDate:    created.CheckInDate,
+            CheckOutDate:   created.CheckOutDate,
+            Nights:         created.Nights,
+            TotalPrice:     created.TotalPrice,
+            Currency:       created.Currency,
+            OccurredAt:     DateTime.UtcNow));
 
         return (ToDto(created), null);
     }

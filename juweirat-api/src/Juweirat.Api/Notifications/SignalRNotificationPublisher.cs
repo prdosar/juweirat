@@ -13,8 +13,11 @@ public sealed class SignalRNotificationPublisher(
     IHubContext<NotificationsHub> hub,
     ILogger<SignalRNotificationPublisher> logger) : INotificationPublisher
 {
-    public Task NewOnlineReservationAsync(NewOnlineReservationEvent evt, CancellationToken ct = default)
-        => SafeSendAsync("NewOnlineReservation", evt, ct);
+    public Task NewReservationAsync(NewReservationEvent evt, CancellationToken ct = default)
+        => SafeSendAsync("NewReservation", evt, ct);
+
+    public Task ClientCheckinAsync(ClientCheckinEvent evt, CancellationToken ct = default)
+        => SafeSendAsync("ClientCheckin", evt, ct);
 
     public Task ClientCheckoutAsync(ClientCheckoutEvent evt, CancellationToken ct = default)
         => SafeSendAsync("ClientCheckout", evt, ct);

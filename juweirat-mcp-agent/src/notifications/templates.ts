@@ -4,17 +4,34 @@ import { toMarkdownV2 } from "../telegram/format.js";
 // Doit rester aligné avec les records C# de juweirat-api (Juweirat.Application.Notifications).
 // SignalR sérialise en JSON PascalCase par défaut → on lit les propriétés en Pascal.
 
-export interface NewOnlineReservationEvent {
+// Émis pour TOUTE création de résa (site public, admin, MCP, autres canaux).
+// Source distingue l'origine : "website" | "phone" | "walkIn" | "bookingCom" | "airbnb" | null.
+export interface NewReservationEvent {
   ReservationId: number;
   Reference: string;
   ClientFullName: string;
+  CompanyName: string | null;
   CategoryNameFr: string;
+  Source: string | null;
   CheckInDate: string;   // "YYYY-MM-DD"
   CheckOutDate: string;  // "YYYY-MM-DD"
   Nights: number;
   TotalPrice: number;
   Currency: string;
   OccurredAt: string;    // ISO
+}
+
+// Émis quand un staff clique "Check-in" dans le PMS (transition CheckedIn false→true).
+export interface ClientCheckinEvent {
+  FolioId: number;
+  FolioNumber: string;
+  UnitLabel: string;
+  Guest: string | null;
+  CompanyName: string | null;
+  Arrival: string;    // "YYYY-MM-DD"
+  Departure: string;  // "YYYY-MM-DD"
+  Nights: number;
+  OccurredAt: string;
 }
 
 export interface ClientCheckoutEvent {
@@ -62,14 +79,38 @@ function formatDateFr(iso: string): string {
 
 const SIGNATURE = "\n\n— Angèle 🤖";
 
-export function renderNewOnlineReservation(evt: NewOnlineReservationEvent): string {
+const SOURCE_LABEL: Record<string, string> = {
+  website:    "site web",
+  phone:      "téléphone",
+  walkIn:     "walk-in",
+  bookingCom: "Booking.com",
+  airbnb:     "Airbnb",
+  admin:      "back-office",
+};
+
+export function renderNewReservation(evt: NewReservationEvent): string {
+  const sourceLabel = evt.Source ? (SOURCE_LABEL[evt.Source] ?? evt.Source) : "back-office";
+  const client = evt.CompanyName ? `${evt.ClientFullName} (${evt.CompanyName})` : evt.ClientFullName;
   const body =
-    `🆕 **Nouvelle réservation en ligne**\n\n` +
-    `**Client** : ${evt.ClientFullName}\n` +
+    `🆕 **Nouvelle réservation** (${sourceLabel})\n\n` +
+    `**Client** : ${client}\n` +
     `**Catégorie** : ${evt.CategoryNameFr}\n` +
     `**Séjour** : du ${formatDateFr(evt.CheckInDate)} au ${formatDateFr(evt.CheckOutDate)} (${evt.Nights} nuit${evt.Nights > 1 ? "s" : ""})\n` +
     `**Montant** : ${formatXof(Math.round(evt.TotalPrice))}\n` +
     `**Référence** : ${evt.Reference}` +
+    SIGNATURE;
+  return toMarkdownV2(body);
+}
+
+export function renderClientCheckin(evt: ClientCheckinEvent): string {
+  const guest = evt.Guest ?? "Client";
+  const clientLine = evt.CompanyName ? `${guest} (${evt.CompanyName})` : guest;
+  const body =
+    `🛬 **Check-in effectué**\n\n` +
+    `**Client** : ${clientLine}\n` +
+    `**Chambre** : ${evt.UnitLabel}\n` +
+    `**Séjour** : du ${formatDateFr(evt.Arrival)} au ${formatDateFr(evt.Departure)} (${evt.Nights} nuit${evt.Nights > 1 ? "s" : ""})\n` +
+    `**Folio** : ${evt.FolioNumber}` +
     SIGNATURE;
   return toMarkdownV2(body);
 }

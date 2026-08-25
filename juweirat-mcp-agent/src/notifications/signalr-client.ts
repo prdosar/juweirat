@@ -3,12 +3,14 @@ import { config } from "../config.js";
 import { generateServiceJwt } from "./jwt-service.js";
 import { broadcastToActiveStaff } from "./broadcast.js";
 import {
+  renderClientCheckin,
   renderClientCheckout,
   renderMaintenanceReported,
-  renderNewOnlineReservation,
+  renderNewReservation,
+  type ClientCheckinEvent,
   type ClientCheckoutEvent,
   type MaintenanceReportedEvent,
-  type NewOnlineReservationEvent,
+  type NewReservationEvent,
 } from "./templates.js";
 
 let connection: HubConnection | null = null;
@@ -29,10 +31,17 @@ export async function startSignalRClient(): Promise<void> {
     .configureLogging(LogLevel.Warning)
     .build();
 
-  connection.on("NewOnlineReservation", (evt: NewOnlineReservationEvent) => {
-    console.log(`[notifications] NewOnlineReservation reçu (ref=${evt.Reference})`);
-    void broadcastToActiveStaff(renderNewOnlineReservation(evt)).catch((err) =>
-      console.error("[notifications] broadcast NewOnlineReservation:", err),
+  connection.on("NewReservation", (evt: NewReservationEvent) => {
+    console.log(`[notifications] NewReservation reçu (ref=${evt.Reference}, source=${evt.Source ?? "back-office"})`);
+    void broadcastToActiveStaff(renderNewReservation(evt)).catch((err) =>
+      console.error("[notifications] broadcast NewReservation:", err),
+    );
+  });
+
+  connection.on("ClientCheckin", (evt: ClientCheckinEvent) => {
+    console.log(`[notifications] ClientCheckin reçu (folio=${evt.FolioNumber})`);
+    void broadcastToActiveStaff(renderClientCheckin(evt)).catch((err) =>
+      console.error("[notifications] broadcast ClientCheckin:", err),
     );
   });
 

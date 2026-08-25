@@ -18,8 +18,7 @@ public class PublicController(
     ReservationService reservationService,
     RoomCategoryService categorySvc,
     EmailService emailService,
-    ContactMessageService contactMessageService,
-    INotificationPublisher notifications
+    ContactMessageService contactMessageService
 ) : ControllerBase
 {
     public record PublicBookingRequest(
@@ -109,19 +108,8 @@ public class PublicController(
         var category = await categorySvc.GetByIdAsync(res!.CategoryId);
         string categoryName = category?.NameFr ?? res.RoomNameFr ?? "Appartement Résidence Juweirat";
 
-        // Notif Angèle (SignalR → agent Node → Telegram broadcast). Fire-and-forget
-        // logué en interne — n'échoue jamais le POST /booking en cas de panne SignalR.
-        await notifications.NewOnlineReservationAsync(new NewOnlineReservationEvent(
-            ReservationId:   res.Id,
-            Reference:       res.Reference,
-            ClientFullName:  res.ClientFullName,
-            CategoryNameFr:  categoryName,
-            CheckInDate:     res.CheckInDate,
-            CheckOutDate:    res.CheckOutDate,
-            Nights:          res.Nights,
-            TotalPrice:      res.TotalPrice,
-            Currency:        res.Currency,
-            OccurredAt:      DateTime.UtcNow));
+        // Notif Angèle : la publication SignalR est faite dans ReservationService.CreateAsync
+        // (toutes sources : site public, admin, MCP, etc.). Rien à faire ici.
 
         // 1. Send luxury notification to admin
         string adminSubject = $"[RÉSERVATION WEB] {req.FirstName} {req.LastName} — {res.RoomNameFr ?? categoryName}";

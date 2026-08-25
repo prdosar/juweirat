@@ -10,7 +10,8 @@ namespace Juweirat.Application.Notifications;
 /// </summary>
 public interface INotificationPublisher
 {
-    Task NewOnlineReservationAsync(NewOnlineReservationEvent evt, CancellationToken ct = default);
+    Task NewReservationAsync(NewReservationEvent evt, CancellationToken ct = default);
+    Task ClientCheckinAsync(ClientCheckinEvent evt, CancellationToken ct = default);
     Task ClientCheckoutAsync(ClientCheckoutEvent evt, CancellationToken ct = default);
     Task MaintenanceReportedAsync(MaintenanceReportedEvent evt, CancellationToken ct = default);
 }

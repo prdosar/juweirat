@@ -553,6 +553,23 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
         }
 
         await db.SaveChangesAsync();
+
+        // Notification Angèle : le check-in vient d'être effectué (vraie transition).
+        var v = EffectiveView(folio);
+        var guestName = !string.IsNullOrWhiteSpace(folio.Prenom) || !string.IsNullOrWhiteSpace(folio.Nom)
+            ? $"{folio.Prenom} {folio.Nom}".Trim()
+            : folio.Guest;
+        await notifications.ClientCheckinAsync(new ClientCheckinEvent(
+            FolioId:      folio.Id,
+            FolioNumber:  folio.Number,
+            UnitLabel:    v.UnitName,
+            Guest:        string.IsNullOrWhiteSpace(guestName) ? null : guestName,
+            CompanyName:  folio.Societe,
+            Arrival:      v.Arrival,
+            Departure:    v.Departure,
+            Nights:       v.Departure.DayNumber - v.Arrival.DayNumber,
+            OccurredAt:   DateTime.UtcNow));
+
         return (ToFolioDto(folio), null);
     }
 
