@@ -37,5 +37,6 @@ export const tools: McpTool[] = [
 
   // ── Housekeeping & maintenance ──
   { ...housekeeping.roomsDefinition, handler: housekeeping.roomsHandler as AnyHandler },
+  { ...housekeeping.cleaningHistoryDefinition, handler: housekeeping.cleaningHistoryHandler as AnyHandler },
   { ...housekeeping.ticketsDefinition, handler: housekeeping.ticketsHandler as AnyHandler },
 ];

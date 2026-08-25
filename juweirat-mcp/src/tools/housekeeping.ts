@@ -9,7 +9,7 @@ export const roomsInputSchema = z.object({});
 export const roomsDefinition = {
   name: "list_rooms_by_status",
   description:
-    "État temps réel des chambres PMS. Pour chaque chambre : type/gamme, statut ménage, hors service, ET occupation courante (client actuellement dans la chambre, via folio actif où arrival ≤ aujourd'hui < departure). Utilise ce tool pour répondre à \"qui occupe la chambre X\", \"quelles chambres sont libres/occupées\", \"chambres à nettoyer\".",
+    "État temps réel des chambres PMS. Pour chaque chambre : type/gamme, statut ménage, hors service, occupation courante (client actuellement dans la chambre, via folio actif où arrival ≤ aujourd'hui < departure), ET dernier passage ménage (lastCleanedBy = nom du staff, lastCleanedAt = timestamp exact, issu de housekeepingLogs). Utilise ce tool pour répondre à \"qui occupe la chambre X\", \"quelles chambres sont libres/occupées\", \"chambres à nettoyer\", \"qui a nettoyé la chambre X\".",
   inputSchema: roomsInputSchema,
 } as const;
 
@@ -44,6 +44,8 @@ export async function roomsHandler(): Promise<string> {
       r."pmsType", r."pmsGamme",
       r."statutMenage", r."horsService",
       to_char(r."lastCleaned", 'YYYY-MM-DD') AS "lastCleaned",
+      hk."lastCleanedAt",
+      hk."lastCleanedBy",
       CASE WHEN af."folioId" IS NOT NULL THEN 'Occupied' ELSE 'Free' END AS "occupancyState",
       COALESCE(af."namePrenomNom", af.guest, af.societe) AS "currentGuest",
       af.societe                          AS "currentCompany",
@@ -54,6 +56,16 @@ export async function roomsHandler(): Promise<string> {
       af."departure"                      AS "currentDeparture"
     FROM rooms r
     LEFT JOIN active_folio af ON af."unitId" = r.id
+    LEFT JOIN LATERAL (
+      SELECT
+        to_char(h."cleanedAt", 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "lastCleanedAt",
+        NULLIF(TRIM(COALESCE(s."firstName", '') || ' ' || COALESCE(s."lastName", '')), '') AS "lastCleanedBy"
+      FROM "housekeepingLogs" h
+      LEFT JOIN "maintenanceStaff" s ON s.id = h."staffId"
+      WHERE h."roomId" = r.id
+      ORDER BY h."cleanedAt" DESC
+      LIMIT 1
+    ) hk ON true
     WHERE r."pmsRoomNo" IS NOT NULL
     ORDER BY r."pmsRoomNo"::int
     LIMIT $1
@@ -108,6 +120,66 @@ export async function roomsHandler(): Promise<string> {
     null,
     2,
   );
+}
+
+// ─── get_room_cleaning_history ───────────────────────────────────────────────
+
+export const cleaningHistoryInputSchema = z.object({
+  pmsRoomNo: z.string().describe("Numéro PMS de la chambre (ex: \"23\"). C'est le même numéro que celui affiché dans l'admin."),
+  limit: z.number().int().min(1).max(100).default(20),
+});
+
+export const cleaningHistoryDefinition = {
+  name: "get_room_cleaning_history",
+  description:
+    "Historique des N derniers passages ménage d'une chambre donnée : date/heure exacte, staff (nom + téléphone), notes éventuelles. Utile pour \"qui a nettoyé la chambre X et quand\", \"combien de fois nettoyée cette semaine\", \"historique housekeeping du 23\". Retourne les logs les plus récents en premier.",
+  inputSchema: cleaningHistoryInputSchema,
+} as const;
+
+export async function cleaningHistoryHandler(
+  input: z.infer<typeof cleaningHistoryInputSchema>,
+): Promise<string> {
+  const [room] = await query<{
+    id: number;
+    pmsRoomNo: string;
+    roomNumber: string | null;
+    pmsType: string | null;
+    statutMenage: string | null;
+  }>(
+    `SELECT r.id, r."pmsRoomNo", r."roomNumber", r."pmsType", r."statutMenage"
+     FROM rooms r
+     WHERE r."pmsRoomNo" = $1
+     LIMIT 1`,
+    [input.pmsRoomNo],
+  );
+
+  if (!room) {
+    return JSON.stringify(
+      { error: `Aucune chambre trouvée avec pmsRoomNo=${input.pmsRoomNo}.` },
+      null,
+      2,
+    );
+  }
+
+  const logs = await query(
+    `
+    SELECT
+      h.id,
+      to_char(h."cleanedAt", 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "cleanedAt",
+      h."staffId",
+      NULLIF(TRIM(COALESCE(s."firstName", '') || ' ' || COALESCE(s."lastName", '')), '') AS "staffName",
+      s.phone AS "staffPhone",
+      h.notes
+    FROM "housekeepingLogs" h
+    LEFT JOIN "maintenanceStaff" s ON s.id = h."staffId"
+    WHERE h."roomId" = $1
+    ORDER BY h."cleanedAt" DESC
+    LIMIT $2
+    `,
+    [room.id, input.limit],
+  );
+
+  return JSON.stringify({ room, count: logs.length, logs }, null, 2);
 }
 
 // ─── list_maintenance_incidents ──────────────────────────────────────────────
