@@ -883,6 +883,55 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             r.TotalPrice = newTotal;
         }
 
+        // ── Cascade vers le folio lié ────────────────────────────────────────
+        // La réservation est la source de vérité pour les champs partagés :
+        // chambre, dates, pax, tarif/nuit, exonération TVA. Le folio est un artefact
+        // PMS qui reflète la résa — s'il existe et n'est pas encore archivé (Closed),
+        // il DOIT être resynchronisé, sinon RoomService.GetAvailableAsync continue
+        // de voir l'ancienne chambre occupée par un folio fantôme.
+        // Champs propres au folio (Pdj*, Kwh, Debiteur, Arrhes, Paid, Postings, etc.)
+        // ne sont jamais touchés — ce sont des opérations réception.
+        var paxChanged = req.Adults.HasValue || req.Children.HasValue;
+        var folioNeedsSync = stayChanged || paxChanged || req.TvaExonere.HasValue;
+        var linkedFolio = folioNeedsSync
+            ? await db.Folios.FirstOrDefaultAsync(f => f.ReservationId == r.Id)
+            : null;
+        var folioSynced = false;
+        if (linkedFolio is not null && !linkedFolio.Closed)
+        {
+            if (roomChanged && r.RoomId is not null)
+            {
+                // Refuse plutôt que dupliquer si un autre folio actif occupe déjà
+                // la chambre cible sur le nouveau créneau (walk-in, autre résa PMS).
+                var conflictingFolio = await db.Folios.AnyAsync(f =>
+                    f.Id != linkedFolio.Id &&
+                    f.UnitId == r.RoomId.Value &&
+                    !f.Closed &&
+                    f.ResaStatus != FolioResaStatus.Annulee &&
+                    f.ResaStatus != FolioResaStatus.NoShow &&
+                    f.Arrival  < r.CheckOutDate &&
+                    f.Departure > r.CheckInDate);
+                if (conflictingFolio)
+                    return (null, "Un autre folio actif occupe déjà la chambre cible sur ce créneau. Libérez-le côté PMS avant de réassigner cette réservation.");
+
+                linkedFolio.UnitId = r.RoomId.Value;
+            }
+            if (datesChanged)
+            {
+                linkedFolio.Arrival   = r.CheckInDate;
+                linkedFolio.Departure = r.CheckOutDate;
+            }
+            if (paxChanged)
+                linkedFolio.Pax = r.Adults + r.Children;
+            if (req.TvaExonere.HasValue)
+                linkedFolio.TvaExonere = r.TvaExonere;
+            if (stayChanged)
+                linkedFolio.Rate = (int)Math.Round(r.PricePerNightSnapshot);
+
+            linkedFolio.UpdatedAt = DateTime.UtcNow;
+            folioSynced = true;
+        }
+
         // ── Journal des modifications ────────────────────────────────────────
         // Construction du diff en comparant chaque champ tracé à sa valeur AVANT.
         // Une entrée est toujours créée (même si aucun champ suivi n'a changé) pour
@@ -918,6 +967,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         Track("tarifN30Snapshot",       before.TarifN30Snapshot,       r.TarifN30Snapshot);
         // Prestations : trace juste "changed" (le détail est dans la table reservationPrestations).
         if (prestationsChanged) diff["prestations"] = new { changed = true };
+        if (folioSynced) diff["folioSynced"] = new { folioId = linkedFolio!.Id };
 
         db.ReservationChangeLogs.Add(new ReservationChangeLog
         {
