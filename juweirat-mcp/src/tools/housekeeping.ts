@@ -9,53 +9,122 @@ export const roomsInputSchema = z.object({});
 export const roomsDefinition = {
   name: "list_rooms_by_status",
   description:
-    "État temps réel des chambres PMS. Pour chaque chambre : type/gamme, statut ménage, hors service, occupation courante (client actuellement dans la chambre, via folio actif où arrival ≤ aujourd'hui < departure), ET dernier passage ménage (lastCleanedBy = nom du staff, lastCleanedAt = timestamp exact, issu de housekeepingLogs). Utilise ce tool pour répondre à \"qui occupe la chambre X\", \"quelles chambres sont libres/occupées\", \"chambres à nettoyer\", \"qui a nettoyé la chambre X\".",
+    "État temps réel des chambres PMS. Pour chaque chambre : type/gamme, statut ménage, hors service, occupation courante (client actuellement dans la chambre), source d'occupation (Folio | Reservation | Block), ET dernier passage ménage (lastCleanedBy = nom du staff, lastCleanedAt = timestamp exact, issu de housekeepingLogs). Une chambre est comptée occupée si un folio PMS actif, une réservation web active OU un blocage manuel (RoomBlock) chevauche la nuit courante — même logique que l'admin (RoomService.GetAvailableAsync). Utilise ce tool pour répondre à \"qui occupe la chambre X\", \"quelles chambres sont libres/occupées\", \"chambres à nettoyer\", \"qui a nettoyé la chambre X\".",
   inputSchema: roomsInputSchema,
 } as const;
 
+// CTE partagée : chambres bloquées pour la nuit courante, agrégées depuis
+// les 3 sources qui verrouillent une chambre côté admin (RoomService.GetAvailableAsync) :
+//   1) Folios PMS actifs (resaStatus ≠ Annulee/NoShow, non clôturés). Si le folio
+//      est lié à une résa, on projette sur les dates de la résa (source de vérité).
+//   2) Réservations web assignées à une chambre (roomId non null, status ≠ Cancelled/NoShow).
+//   3) RoomBlocks manuels.
+// L'ordre de priorité (Folio > Reservation > Block) sert uniquement à choisir la
+// ligne d'affichage quand plusieurs sources concernent la même chambre — pour
+// l'état "Occupied", n'importe laquelle suffit.
+const ACTIVE_OCCUPANCY_CTE = `
+  active_folio AS (
+    SELECT DISTINCT ON (f."unitId")
+      f."unitId"                                        AS room_id,
+      'Folio'                                           AS source,
+      f.id                                              AS "folioId",
+      f.number                                          AS "folioNumber",
+      f."checkedIn",
+      to_char(COALESCE(res."checkInDate",  f.arrival),   'YYYY-MM-DD') AS arrival,
+      to_char(COALESCE(res."checkOutDate", f.departure), 'YYYY-MM-DD') AS departure,
+      NULLIF(TRIM(COALESCE(f.prenom, '') || ' ' || COALESCE(f.nom, '')), '') AS "namePrenomNom",
+      f.guest,
+      f.societe,
+      NULL::text                                        AS "blockReason"
+    FROM folios f
+    LEFT JOIN reservations res ON res.id = f."reservationId"
+    WHERE f."resaStatus" NOT IN ('Annulee', 'NoShow')
+      AND NOT f.closed
+      AND (CASE
+        WHEN res.id IS NOT NULL
+          THEN res."checkInDate"  <= CURRENT_DATE AND res."checkOutDate" > CURRENT_DATE
+        ELSE   f.arrival          <= CURRENT_DATE AND f.departure         > CURRENT_DATE
+      END)
+    ORDER BY f."unitId", f.id DESC
+  ),
+  active_resa AS (
+    SELECT DISTINCT ON (r."roomId")
+      r."roomId"                                        AS room_id,
+      'Reservation'                                     AS source,
+      NULL::bigint                                      AS "folioId",
+      NULL::text                                        AS "folioNumber",
+      (r.status = 'CheckedIn')                          AS "checkedIn",
+      to_char(r."checkInDate",  'YYYY-MM-DD')           AS arrival,
+      to_char(r."checkOutDate", 'YYYY-MM-DD')           AS departure,
+      NULLIF(TRIM(COALESCE(cl."firstName", '') || ' ' || COALESCE(cl."lastName", '')), '') AS "namePrenomNom",
+      NULL::text                                        AS guest,
+      co.name                                           AS societe,
+      NULL::text                                        AS "blockReason"
+    FROM reservations r
+    JOIN clients cl ON cl.id = r."clientId"
+    LEFT JOIN companies co ON co.id = cl."companyId"
+    WHERE r."roomId" IS NOT NULL
+      AND r.status NOT IN ('Cancelled', 'NoShow')
+      AND r."checkInDate"  <= CURRENT_DATE
+      AND r."checkOutDate" >  CURRENT_DATE
+      AND r."roomId" NOT IN (SELECT room_id FROM active_folio)
+    ORDER BY r."roomId", r.id DESC
+  ),
+  active_block AS (
+    SELECT DISTINCT ON (b."roomId")
+      b."roomId"                                        AS room_id,
+      'Block'                                           AS source,
+      NULL::bigint                                      AS "folioId",
+      NULL::text                                        AS "folioNumber",
+      FALSE                                             AS "checkedIn",
+      to_char(b."startDate", 'YYYY-MM-DD')              AS arrival,
+      to_char(b."endDate",   'YYYY-MM-DD')              AS departure,
+      NULL::text                                        AS "namePrenomNom",
+      NULL::text                                        AS guest,
+      NULL::text                                        AS societe,
+      b.reason                                          AS "blockReason"
+    FROM "roomBlocks" b
+    WHERE b."startDate" <= CURRENT_DATE
+      AND b."endDate"   >  CURRENT_DATE
+      AND b."roomId" NOT IN (SELECT room_id FROM active_folio)
+      AND b."roomId" NOT IN (SELECT room_id FROM active_resa)
+    ORDER BY b."roomId", b.id DESC
+  ),
+  active_occupancy AS (
+    SELECT * FROM active_folio
+    UNION ALL SELECT * FROM active_resa
+    UNION ALL SELECT * FROM active_block
+  )
+`;
+
 export async function roomsHandler(): Promise<string> {
-  // Folio actif = englobe aujourd'hui et pas encore clôturé. Une chambre peut
-  // techniquement avoir plusieurs folios sur la même date (overlap accidentel) ;
-  // on prend le plus récent par id pour rester déterministe.
   const rooms = await query(
     `
-    WITH active_folio AS (
-      SELECT DISTINCT ON (f."unitId")
-        f."unitId",
-        f.id                                              AS "folioId",
-        f.number                                          AS "folioNumber",
-        f."checkedIn",
-        to_char(f.arrival, 'YYYY-MM-DD')                  AS "arrival",
-        to_char(f.departure, 'YYYY-MM-DD')                AS "departure",
-        NULLIF(
-          TRIM(COALESCE(f.prenom, '') || ' ' || COALESCE(f.nom, '')),
-          ''
-        )                                                 AS "namePrenomNom",
-        f.guest,
-        f.societe
-      FROM folios f
-      WHERE f.arrival <= CURRENT_DATE
-        AND f.departure > CURRENT_DATE
-        AND NOT f.closed
-      ORDER BY f."unitId", f.id DESC
-    )
+    WITH ${ACTIVE_OCCUPANCY_CTE}
     SELECT
       r.id, r."pmsRoomNo", r."roomNumber", r.floor,
       r."pmsType", r."pmsGamme",
-      r."statutMenage", r."horsService",
+      r."statutMenage", r."horsService", r.status AS "roomStatus",
       to_char(r."lastCleaned", 'YYYY-MM-DD') AS "lastCleaned",
       hk."lastCleanedAt",
       hk."lastCleanedBy",
-      CASE WHEN af."folioId" IS NOT NULL THEN 'Occupied' ELSE 'Free' END AS "occupancyState",
-      COALESCE(af."namePrenomNom", af.guest, af.societe) AS "currentGuest",
-      af.societe                          AS "currentCompany",
-      af."folioNumber"                    AS "currentFolioNumber",
-      af."folioId"                        AS "currentFolioId",
-      af."checkedIn"                      AS "currentCheckedIn",
-      af."arrival"                        AS "currentArrival",
-      af."departure"                      AS "currentDeparture"
+      CASE
+        WHEN r."horsService"          THEN 'HorsService'
+        WHEN r.status = 'Inactive'    THEN 'Inactive'
+        WHEN ao.room_id IS NOT NULL   THEN 'Occupied'
+        ELSE 'Free'
+      END                                 AS "occupancyState",
+      ao.source                           AS "occupancySource",
+      COALESCE(ao."namePrenomNom", ao.guest, ao.societe) AS "currentGuest",
+      ao.societe                          AS "currentCompany",
+      ao."folioNumber"                    AS "currentFolioNumber",
+      ao."folioId"                        AS "currentFolioId",
+      ao."checkedIn"                      AS "currentCheckedIn",
+      ao.arrival                          AS "currentArrival",
+      ao.departure                        AS "currentDeparture",
+      ao."blockReason"                    AS "currentBlockReason"
     FROM rooms r
-    LEFT JOIN active_folio af ON af."unitId" = r.id
+    LEFT JOIN active_occupancy ao ON ao.room_id = r.id
     LEFT JOIN LATERAL (
       SELECT
         to_char(h."cleanedAt", 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS "lastCleanedAt",
@@ -79,27 +148,25 @@ export async function roomsHandler(): Promise<string> {
     checkedInNow: number;
     availableNow: number;
     horsService: number;
+    inactive: number;
     toClean: number;
   }>(
     `
-    WITH active_folio AS (
-      SELECT DISTINCT ON (f."unitId")
-        f."unitId", f."checkedIn"
-      FROM folios f
-      WHERE f.arrival <= CURRENT_DATE
-        AND f.departure > CURRENT_DATE
-        AND NOT f.closed
-      ORDER BY f."unitId", f.id DESC
-    )
+    WITH ${ACTIVE_OCCUPANCY_CTE}
     SELECT
-      COUNT(*)::int                                                        AS total,
-      COUNT(af."unitId")::int                                              AS "occupiedNow",
-      COUNT(*) FILTER (WHERE af."checkedIn")::int                          AS "checkedInNow",
-      (COUNT(*) - COUNT(af."unitId"))::int                                 AS "availableNow",
-      COUNT(*) FILTER (WHERE r."horsService")::int                         AS "horsService",
-      COUNT(*) FILTER (WHERE r."statutMenage" = 'Sale')::int               AS "toClean"
+      COUNT(*)::int                                                                     AS total,
+      COUNT(ao.room_id)::int                                                            AS "occupiedNow",
+      COUNT(*) FILTER (WHERE ao."checkedIn")::int                                       AS "checkedInNow",
+      COUNT(*) FILTER (
+        WHERE ao.room_id IS NULL
+          AND NOT r."horsService"
+          AND r.status != 'Inactive'
+      )::int                                                                             AS "availableNow",
+      COUNT(*) FILTER (WHERE r."horsService")::int                                      AS "horsService",
+      COUNT(*) FILTER (WHERE r.status = 'Inactive')::int                                AS "inactive",
+      COUNT(*) FILTER (WHERE r."statutMenage" = 'Sale')::int                            AS "toClean"
     FROM rooms r
-    LEFT JOIN active_folio af ON af."unitId" = r.id
+    LEFT JOIN active_occupancy ao ON ao.room_id = r.id
     WHERE r."pmsRoomNo" IS NOT NULL
     `,
   );
