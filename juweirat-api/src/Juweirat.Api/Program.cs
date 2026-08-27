@@ -96,7 +96,12 @@ builder.Services.AddAuthorization();
 
 // ─── SignalR ────────────────────────────────────────────────────────────────
 // Push serveur → clients (agent Node → Telegram). Hub unique NotificationsHub.
-builder.Services.AddSignalR();
+// PropertyNamingPolicy = null force PascalCase : depuis .NET 7, le protocole
+// JSON SignalR utilise camelCase par défaut — on restaure PascalCase pour rester
+// aligné avec les interfaces TypeScript côté agent (templates.ts).
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options =>
+        options.PayloadSerializerOptions.PropertyNamingPolicy = null);
 builder.Services.AddSingleton<INotificationPublisher, SignalRNotificationPublisher>();
 
 // ─── CORS ────────────────────────────────────────────────────────────────────

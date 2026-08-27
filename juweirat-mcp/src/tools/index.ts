@@ -35,6 +35,7 @@ export const tools: McpTool[] = [
   { ...folios.cashDefinition, handler: folios.cashHandler as AnyHandler },
   { ...folios.tvaDefinition, handler: folios.tvaHandler as AnyHandler },
   { ...folios.checkinsOnDefinition, handler: folios.checkinsOnHandler as AnyHandler },
+  { ...folios.checkoutsOnDefinition, handler: folios.checkoutsOnHandler as AnyHandler },
 
   // ── Housekeeping & maintenance ──
   { ...housekeeping.roomsDefinition, handler: housekeeping.roomsHandler as AnyHandler },

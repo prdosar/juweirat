@@ -328,3 +328,74 @@ export async function checkinsOnHandler(
     2,
   );
 }
+
+// ─── list_checkouts_on ───────────────────────────────────────────────────────
+
+export const checkoutsOnInputSchema = z.object({
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Format attendu : YYYY-MM-DD")
+    .optional()
+    .describe("Date au format YYYY-MM-DD. Si omis, utilise la date du jour côté serveur (UTC)."),
+});
+
+export const checkoutsOnDefinition = {
+  name: "list_checkouts_on",
+  description:
+    "Liste les VRAIS check-outs effectués un jour donné (par défaut aujourd'hui) : filtre sur folios.checkoutDate (date posée au moment où le staff clique \"Départ\" dans le PMS). Utilise ce tool pour \"qui est parti\", \"quels clients ont quitté l'hôtel\", \"combien de départs aujourd'hui\", \"checkouts du 27 août\". ⚠️ Différent de \"départs prévus\" (date planifiée) : Departure est une date théorique, checkoutDate est l'événement réel. Les folios importés (checkoutDate null) N'apparaissent PAS ici.",
+  inputSchema: checkoutsOnInputSchema,
+} as const;
+
+export async function checkoutsOnHandler(
+  input: z.infer<typeof checkoutsOnInputSchema>,
+): Promise<string> {
+  const dateParam = input.date ?? null;
+
+  const [countRow] = await query<{ total: number }>(
+    `
+    SELECT COUNT(*)::int AS "total"
+    FROM folios f
+    WHERE f."checkoutDate" IS NOT NULL
+      AND f."checkoutDate" = COALESCE($1::date, CURRENT_DATE)
+    `,
+    [dateParam],
+  );
+
+  const checkouts = await query(
+    `
+    SELECT
+      f.id                                           AS "folioId",
+      f.number                                       AS "folioNumber",
+      to_char(f."checkoutDate", 'YYYY-MM-DD')        AS "checkoutDate",
+      to_char(f.arrival,   'YYYY-MM-DD')             AS "arrival",
+      to_char(f.departure, 'YYYY-MM-DD')             AS "departure",
+      f.pax,
+      NULLIF(TRIM(COALESCE(f.prenom, '') || ' ' || COALESCE(f.nom, '')), '') AS "namePrenomNom",
+      f.guest,
+      f.societe,
+      f."reservationId",
+      r.reference                                    AS "reservationRef",
+      f."unitId"                                     AS "roomId",
+      u."pmsRoomNo",
+      u."roomNumber",
+      u."pmsType"
+    FROM folios f
+    LEFT JOIN reservations r ON r.id = f."reservationId"
+    LEFT JOIN rooms u        ON u.id = f."unitId"
+    WHERE f."checkoutDate" IS NOT NULL
+      AND f."checkoutDate" = COALESCE($1::date, CURRENT_DATE)
+    ORDER BY f.id ASC
+    `,
+    [dateParam],
+  );
+
+  return JSON.stringify(
+    {
+      date: dateParam ?? "CURRENT_DATE (UTC serveur)",
+      count: countRow.total,
+      checkouts,
+    },
+    null,
+    2,
+  );
+}
