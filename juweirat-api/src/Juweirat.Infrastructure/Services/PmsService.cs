@@ -552,6 +552,11 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
             folio.CheckedInAt = DateTime.UtcNow;
         }
 
+        // Cascade vers la réservation liée et la chambre (source de vérité = réservation).
+        folio.Unit.Status = RoomStatus.Occupied;
+        if (folio.Reservation is not null)
+            folio.Reservation.Status = ReservationStatus.CheckedIn;
+
         await db.SaveChangesAsync();
 
         // Notification Angèle : le check-in vient d'être effectué (vraie transition).
@@ -597,6 +602,10 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
         // (à nettoyer) en une même transaction — les deux états sont indissociables.
         folio.Unit.Status       = RoomStatus.Available;
         folio.Unit.StatutMenage = MenageStatus.Sale;
+
+        // Cascade vers la réservation liée.
+        if (folio.Reservation is not null)
+            folio.Reservation.Status = ReservationStatus.CheckedOut;
 
         await db.SaveChangesAsync();
 

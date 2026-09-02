@@ -191,6 +191,22 @@ using (var scope = app.Services.CreateScope())
     await PmsSeeder.SeedAsync(db);
     await AccountingSeeder.SeedAsync(db);
     await UserSeeder.SeedAsync(db);
+
+    // Backfill one-time : corrige Room.Status et Reservation.Status pour les folios
+    // déjà check-in en base avant que la cascade ne soit implémentée. Idempotent.
+    var checkedInFolios = await db.Folios
+        .Include(f => f.Unit)
+        .Include(f => f.Reservation)
+        .Where(f => f.CheckedIn && !f.Closed)
+        .ToListAsync();
+    foreach (var folio in checkedInFolios)
+    {
+        folio.Unit.Status = Juweirat.Domain.Enums.RoomStatus.Occupied;
+        if (folio.Reservation is not null)
+            folio.Reservation.Status = Juweirat.Domain.Enums.ReservationStatus.CheckedIn;
+    }
+    if (checkedInFolios.Count > 0)
+        await db.SaveChangesAsync();
 }
 
 app.Run();
