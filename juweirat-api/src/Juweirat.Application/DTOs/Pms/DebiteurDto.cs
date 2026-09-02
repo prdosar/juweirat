@@ -13,7 +13,8 @@ public record DebiteurDto(
     long? FolioId,
     string? FolioNumber,
     DateTime CreatedAt,
-    DateTime UpdatedAt
+    DateTime UpdatedAt,
+    string? PayMode = null
 );
 
 public record CreateDebiteurRequest(
@@ -32,4 +33,4 @@ public record UpdateDebiteurRequest(
     int? Paid = null
 );
 
-public record PayDebiteurRequest([Required, Range(1, int.MaxValue)] int Montant);
+public record PayDebiteurRequest([Required, Range(1, int.MaxValue)] int Montant, string? PayMode = null);

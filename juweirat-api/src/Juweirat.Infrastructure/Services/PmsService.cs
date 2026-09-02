@@ -741,10 +741,10 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
     {
         var v               = EffectiveView(f);
         var nights          = v.Departure.DayNumber - v.Arrival.DayNumber;
-        var (_, _, totalHebNet, _) = ResolveHeb(f, nights);
+        var (_, _, totalHebNet, totalPrestations) = ResolveHeb(f, nights);
         var totalPdj        = f.PdjParJour * f.PdjPrix * nights;
         // Solde en TTC : client paie TTC, prix stockés HT → ComputeSolde ajoute la TVA.
-        var solde           = TarifEngine.ComputeSolde(totalHebNet, totalPdj, f.Debiteur, f.Dependances, f.Paid, f.Arrhes, v.TvaExonere);
+        var solde           = TarifEngine.ComputeSolde(totalHebNet, totalPdj, f.Debiteur, f.Dependances, f.Paid, f.Arrhes, v.TvaExonere, totalPrestations);
         return (totalHebNet, totalPdj, solde);
     }
 
@@ -795,13 +795,13 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
     {
         var v = EffectiveView(f);
         var nights          = v.Departure.DayNumber - v.Arrival.DayNumber;
-        var (gross, discount, totalHeb, _) = ResolveHeb(f, nights);
+        var (gross, discount, totalHeb, totalPrestations) = ResolveHeb(f, nights);
         var totalPdj        = f.PdjParJour * f.PdjPrix * nights;
         var totalDebiteur   = f.Debiteur;
         var totalDependances = f.Dependances;
         // TotalGeneral = HT (les composants sont HT). Le TTC est calculé côté client.
-        var totalGeneral    = totalHeb + totalPdj + totalDebiteur + totalDependances;
-        var solde           = TarifEngine.ComputeSolde(totalHeb, totalPdj, totalDebiteur, totalDependances, f.Paid, f.Arrhes, v.TvaExonere);
+        var totalGeneral    = totalHeb + totalPrestations + totalPdj + totalDebiteur + totalDependances;
+        var solde           = TarifEngine.ComputeSolde(totalHeb, totalPdj, totalDebiteur, totalDependances, f.Paid, f.Arrhes, v.TvaExonere, totalPrestations);
         var tva             = v.TvaExonere ? 0 : (int)Math.Round(totalGeneral * TarifEngine.TVA_RATE);
         var totalTtc        = totalGeneral + tva;
 
@@ -820,7 +820,8 @@ public class PmsService(AppDbContext db, AccountingService accountingService, IN
             f.CreatedAt, f.UpdatedAt,
             totalHeb, totalPdj, totalDebiteur, totalDependances, totalGeneral, solde,
             v.TvaExonere, tva, totalTtc,
-            gross, discount
+            gross, discount,
+            TotalPrestations: totalPrestations
         );
     }
 

@@ -86,6 +86,7 @@ export interface FolioDto {
   // Pour un folio direct PMS sans résa, totalHebGross = totalHeb et discount = 0.
   totalHebGross: number;
   discount: number;
+  totalPrestations: number;
 }
 
 export interface CloturePreviewDto {
@@ -262,4 +263,5 @@ export interface DebiteurDto {
   folioNumber: string | null;
   createdAt: string;
   updatedAt: string;
+  payMode: string | null;
 }

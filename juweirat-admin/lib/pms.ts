@@ -189,7 +189,7 @@ export const pmsDebiteurs = {
     pmsReq<DebiteurDto>('/api/pms/debiteurs', { method: 'POST', body: JSON.stringify(body) }),
   update:  (id: number, body: Record<string, unknown>) =>
     pmsReq<DebiteurDto>(`/api/pms/debiteurs/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  pay:     (id: number, montant: number) =>
-    pmsReq<DebiteurDto>(`/api/pms/debiteurs/${id}/payer`, { method: 'POST', body: JSON.stringify({ montant }) }),
+  pay:     (id: number, montant: number, payMode?: string) =>
+    pmsReq<DebiteurDto>(`/api/pms/debiteurs/${id}/payer`, { method: 'POST', body: JSON.stringify({ montant, payMode }) }),
   delete:  (id: number) => pmsReq<void>(`/api/pms/debiteurs/${id}`, { method: 'DELETE' }),
 };

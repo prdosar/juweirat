@@ -60,7 +60,8 @@ public class DebiteurService(AppDbContext db)
         var d = await db.Debtors.Include(d => d.Folio).FirstOrDefaultAsync(x => x.Id == id);
         if (d is null) return (null, null);
 
-        d.Paid = Math.Min(d.Paid + req.Montant, d.Amount);
+        d.Paid    = Math.Min(d.Paid + req.Montant, d.Amount);
+        d.PayMode = req.PayMode ?? d.PayMode;
         await db.SaveChangesAsync();
         return (ToDto(d), null);
     }
@@ -78,6 +79,7 @@ public class DebiteurService(AppDbContext db)
         d.Id, d.Client, d.Label, d.DueDate,
         d.Amount, d.Paid, Math.Max(0, d.Amount - d.Paid),
         d.FolioId, d.Folio?.Number,
-        d.CreatedAt, d.UpdatedAt
+        d.CreatedAt, d.UpdatedAt,
+        PayMode: d.PayMode
     );
 }

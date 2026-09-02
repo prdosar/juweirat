@@ -124,7 +124,8 @@ public record FolioDto(
     // liée quand elle existe (source unique de vérité prix). Pour un folio direct
     // PMS sans résa liée, TotalHebGross = TotalHeb et Discount = 0.
     int TotalHebGross = 0,
-    int Discount = 0
+    int Discount = 0,
+    int TotalPrestations = 0
 );
 
 public record CreateFolioRequest(
