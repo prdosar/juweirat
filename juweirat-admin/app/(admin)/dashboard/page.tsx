@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import Header from '@/components/Header';
 import { rooms, clients, reservations } from '@/lib/api';
+import { pmsFolios } from '@/lib/pms';
 import type { RoomDto, ReservationDto, ClientDto } from '@/lib/types';
+import type { FolioDto } from '@/lib/pmsTypes';
 import { BedDouble, Users, CalendarCheck, TrendingUp, Clock, CheckCircle, XCircle } from 'lucide-react';
 
 function StatCard({ label, value, icon: Icon, iconBg }: {
@@ -38,29 +40,34 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function DashboardPage() {
-  const [roomList, setRoomList]     = useState<RoomDto[]>([]);
-  const [resList, setResList]       = useState<ReservationDto[]>([]);
-  const [clientList, setClientList] = useState<ClientDto[]>([]);
-  const [loading, setLoading]       = useState(true);
+  const [roomList, setRoomList]       = useState<RoomDto[]>([]);
+  const [resList, setResList]         = useState<ReservationDto[]>([]);
+  const [clientList, setClientList]   = useState<ClientDto[]>([]);
+  const [activeFolios, setActiveFolios] = useState<FolioDto[]>([]);
+  const [loading, setLoading]         = useState(true);
 
   useEffect(() => {
     Promise.all([
       rooms.getAll(),
       reservations.getAll(),
       clients.getAll(),
+      pmsFolios.getAll({ closed: false }),
     ])
-      .then(([r, res, c]) => {
+      .then(([r, res, c, folios]) => {
         setRoomList(r);
         setResList(res);
         setClientList(c);
+        setActiveFolios(folios);
       })
       .finally(() => setLoading(false));
   }, []);
 
-  // Source de vérité : Room.Status (mis à jour en cascade lors du check-in/check-out folio).
+  // Disponibilité : Room.Status mis à jour en cascade lors du check-in/check-out folio.
   const available    = roomList.filter(r => r.status === 'Available').length;
-  // Clients physiquement en chambre = réservations au statut CheckedIn.
-  const presentCount = resList.filter(r => r.status === 'CheckedIn').length;
+  // Clients physiquement en chambre : folios actifs avec check-in effectué.
+  // On utilise les folios (pas les réservations) car les folios PMS directs
+  // (sans réservation liée) sont aussi comptés.
+  const presentCount = activeFolios.filter(f => f.checkedIn).length;
 
   // Statuts réservations
   const pending    = resList.filter(r => r.status === 'Pending').length;
