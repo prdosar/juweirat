@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import Header from '@/components/Header';
 import { rooms, clients, reservations } from '@/lib/api';
+import { pmsFolios } from '@/lib/pms';
 import type { RoomDto, ReservationDto, ClientDto } from '@/lib/types';
+import type { FolioDto } from '@/lib/pmsTypes';
 import { BedDouble, Users, CalendarCheck, TrendingUp, Clock, CheckCircle, XCircle } from 'lucide-react';
 
 function StatCard({ label, value, icon: Icon, iconBg }: {
@@ -38,28 +40,51 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function DashboardPage() {
-  const [roomList, setRoomList]     = useState<RoomDto[]>([]);
-  const [resList, setResList]       = useState<ReservationDto[]>([]);
-  const [clientList, setClientList] = useState<ClientDto[]>([]);
-  const [loading, setLoading]       = useState(true);
+  const [roomList, setRoomList]       = useState<RoomDto[]>([]);
+  const [resList, setResList]         = useState<ReservationDto[]>([]);
+  const [clientList, setClientList]   = useState<ClientDto[]>([]);
+  const [activeFolios, setActiveFolios] = useState<FolioDto[]>([]);
+  const [loading, setLoading]         = useState(true);
 
   useEffect(() => {
-    Promise.all([rooms.getAll(), reservations.getAll(), clients.getAll()])
-      .then(([r, res, c]) => { setRoomList(r); setResList(res); setClientList(c); })
+    Promise.all([
+      rooms.getAll(),
+      reservations.getAll(),
+      clients.getAll(),
+      pmsFolios.getAll({ closed: false }),
+    ])
+      .then(([r, res, c, folios]) => {
+        setRoomList(r);
+        setResList(res);
+        setClientList(c);
+        setActiveFolios(folios);
+      })
       .finally(() => setLoading(false));
   }, []);
 
-  const available    = roomList.filter(r => r.status === 'Available').length;
-  const checkedIn    = resList.filter(r => r.status === 'CheckedIn').length;
-  const pending      = resList.filter(r => r.status === 'Pending').length;
+  // Source de vérité : folios actifs (non clôturés) = chambres réellement occupées.
+  const occupiedCount = activeFolios.length;
+  const available     = Math.max(0, roomList.length - occupiedCount);
+  // Clients physiquement en chambre = folio actif + check-in effectué.
+  const presentCount  = activeFolios.filter(f => f.checkedIn).length;
+
+  // Statuts réservations
+  const pending    = resList.filter(r => r.status === 'Pending').length;
+  const confirmed  = resList.filter(r => r.status === 'Confirmed').length;
+  const cancelled  = resList.filter(r => r.status === 'Cancelled').length;
+
+  // Revenu du mois : séjours qui chevauchent le mois courant et ne sont pas annulés/no-show.
+  const now          = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endOfMonth   = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   const revenueMonth = resList
     .filter(r => {
-      const d = new Date(r.createdAt);
-      const now = new Date();
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
-        && r.status !== 'Cancelled';
+      if (r.status === 'Cancelled' || r.status === 'NoShow') return false;
+      const checkIn  = new Date(r.checkInDate  + 'T00:00:00');
+      const checkOut = new Date(r.checkOutDate + 'T00:00:00');
+      return checkIn <= endOfMonth && checkOut >= startOfMonth;
     })
-    .reduce((sum, r) => sum + r.amountPaid, 0);
+    .reduce((sum, r) => sum + r.totalPrice, 0);
 
   const recent = [...resList]
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -79,16 +104,16 @@ export default function DashboardPage() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard label="Chambres disponibles" value={`${available} / ${roomList.length}`} icon={BedDouble}     iconBg="bg-charcoal"     />
               <StatCard label="Clients enregistrés"  value={clientList.length}                   icon={Users}         iconBg="bg-charcoal-700" />
-              <StatCard label="Clients présents"     value={checkedIn}                            icon={CalendarCheck} iconBg="bg-green-dark"   />
+              <StatCard label="Clients présents"     value={presentCount}                         icon={CalendarCheck} iconBg="bg-green-dark"   />
               <StatCard label="Revenu ce mois (XOF)" value={revenueMonth.toLocaleString('fr')}   icon={TrendingUp}    iconBg="bg-green"        />
             </div>
 
             {/* Quick status */}
             <div className="grid grid-cols-3 gap-4">
               {[
-                { label: 'En attente',  value: pending,                                                     icon: Clock,        bg: 'bg-amber-50  border-amber-200', iconCls: 'text-amber-600' },
-                { label: 'Confirmées',  value: resList.filter(r => r.status === 'Confirmed').length,        icon: CheckCircle,  bg: 'bg-green/5   border-green/25',  iconCls: 'text-green-dark' },
-                { label: 'Annulées',    value: resList.filter(r => r.status === 'Cancelled').length,        icon: XCircle,      bg: 'bg-red-50    border-red-200',   iconCls: 'text-red-500' },
+                { label: 'En attente',  value: pending,   icon: Clock,        bg: 'bg-amber-50  border-amber-200', iconCls: 'text-amber-600' },
+                { label: 'Confirmées',  value: confirmed,  icon: CheckCircle,  bg: 'bg-green/5   border-green/25',  iconCls: 'text-green-dark' },
+                { label: 'Annulées',    value: cancelled,  icon: XCircle,      bg: 'bg-red-50    border-red-200',   iconCls: 'text-red-500' },
               ].map(({ label, value, icon: Icon, bg, iconCls }) => (
                 <div key={label} className={`rounded-xl border p-4 flex items-center gap-3 ${bg}`}>
                   <Icon size={18} className={`shrink-0 ${iconCls}`} />
