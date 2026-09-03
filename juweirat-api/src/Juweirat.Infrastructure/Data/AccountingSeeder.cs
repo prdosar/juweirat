@@ -12,11 +12,13 @@ public static class AccountingSeeder
     // Libellés stables pour les comptes système (utilisés côté UI comptable).
     private static readonly (AccountKind Kind, string Name)[] SystemAccounts =
     [
-        (AccountKind.RevenueHebergement,  "Revenus Hébergement"),
-        (AccountKind.RevenueNoShow,       "Revenus No Show"),
-        (AccountKind.RevenueCancellation, "Revenus Annulation"),
-        (AccountKind.TvaCollected,        "TVA Collectée"),
-        (AccountKind.Expense,             "Sorties / Dépenses diverses"),
+        (AccountKind.RevenueHebergement,      "Revenus Hébergement"),
+        (AccountKind.RevenueNoShow,           "Revenus No Show"),
+        (AccountKind.RevenueCancellation,     "Revenus Annulation"),
+        (AccountKind.TvaCollected,            "TVA Collectée"),
+        (AccountKind.Expense,                 "Sorties / Dépenses diverses"),
+        (AccountKind.FixedAsset,              "Immobilisations"),
+        (AccountKind.AccumulatedDepreciation, "Amortissements Cumulés"),
     ];
 
     public static async Task SeedAsync(AppDbContext db)
@@ -26,6 +28,36 @@ public static class AccountingSeeder
         await BackfillClientAccountsAsync(db);
         await BackfillCompanyAccountsAsync(db);
         await BackfillPrestationAccountsAsync(db);
+        await SeedDefaultExpenseCategoriesAsync(db);
+    }
+
+    private static readonly (string Name, string Color)[] DefaultExpenseCategories =
+    [
+        ("Eau",              "#3b82f6"),
+        ("Électricité",      "#f59e0b"),
+        ("Internet / Téléphone", "#8b5cf6"),
+        ("Loyer / Charges",  "#6b7280"),
+        ("Personnel",        "#10b981"),
+        ("Entretien / Ménage", "#14b8a6"),
+        ("Fournitures",      "#f97316"),
+        ("Alimentation",     "#84cc16"),
+        ("Autres",           "#9ca3af"),
+    ];
+
+    private static async Task SeedDefaultExpenseCategoriesAsync(AppDbContext db)
+    {
+        if (await db.ExpenseCategories.AnyAsync()) return;
+
+        foreach (var (name, color) in DefaultExpenseCategories)
+        {
+            db.ExpenseCategories.Add(new ExpenseCategory
+            {
+                Name    = name,
+                Color   = color,
+                IsActive = true,
+            });
+        }
+        await db.SaveChangesAsync();
     }
 
     private static async Task SeedSystemAccountsAsync(AppDbContext db)

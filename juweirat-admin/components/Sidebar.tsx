@@ -8,7 +8,7 @@ import {
   CreditCard, LogOut, CalendarDays, Building2, ClipboardList, Wrench,
   Receipt, Settings, BarChart2, Printer, Mail, ShoppingCart, Package,
   Briefcase, ShieldCheck, BookOpen, Wallet, BookText, Scale, Percent,
-  FilePlus, Hotel, ClipboardCheck, ChevronDown, Sparkles,
+  FilePlus, Hotel, ClipboardCheck, ChevronDown, Sparkles, TrendingDown,
 } from 'lucide-react';
 import { clearAuth, getUser } from '@/lib/auth';
 import { useEffect, useMemo, useState } from 'react';
@@ -57,11 +57,14 @@ const CORE: Item[] = [
 
 const ACCOUNTING: Group = {
   key: 'comptabilite', label: 'Comptabilité', icon: BookOpen, children: [
-    { href: '/comptabilite/journal',     label: 'Journal de caisse',   icon: BookOpen },
-    { href: '/comptabilite/grand-livre', label: 'Grand livre',         icon: BookText },
-    { href: '/comptabilite/balance',     label: 'Balance',             icon: Scale    },
-    { href: '/comptabilite/tva',         label: 'État TVA',            icon: Percent  },
-    { href: '/comptabilite/od',          label: 'Opérations diverses', icon: FilePlus },
+    { href: '/comptabilite/journal',          label: 'Journal de caisse',   icon: BookOpen     },
+    { href: '/comptabilite/grand-livre',      label: 'Grand livre',         icon: BookText     },
+    { href: '/comptabilite/balance',          label: 'Balance',             icon: Scale        },
+    { href: '/comptabilite/tva',              label: 'État TVA',            icon: Percent      },
+    { href: '/comptabilite/od',              label: 'Opérations diverses', icon: FilePlus     },
+    { href: '/comptabilite/charges',          label: 'Charges',             icon: TrendingDown },
+    { href: '/comptabilite/immobilisations',  label: 'Immobilisations',     icon: Package      },
+    { href: '/comptabilite/fournisseurs',     label: 'Fournisseurs',        icon: Building2    },
   ],
 };
 

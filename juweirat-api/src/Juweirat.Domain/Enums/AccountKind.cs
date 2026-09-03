@@ -16,5 +16,9 @@ public enum AccountKind
     RevenueHebergement,   // CA hébergement classique (nuitées / forfaits)
     RevenueNoShow,        // Retenues No Show — isolé pour KPI et déclaration
     RevenueCancellation,  // Retenues annulation tardive — isolé pour KPI
-    Expense               // Sorties diverses (achats, retraits, avances)
+    Expense,              // Sorties diverses (achats, retraits, avances)
+
+    // ── Immobilisations ───────────────────────────────────────────
+    FixedAsset,           // Actifs immobilisés (valeur brute d'acquisition)
+    AccumulatedDepreciation // Amortissements cumulés (compte créditeur)
 }

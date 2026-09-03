@@ -439,3 +439,95 @@ export const contactMessages = {
     }),
 };
 
+// ── Fournisseurs ──────────────────────────────────────────────────────────────
+export const suppliers = {
+  getAll: (params?: { search?: string; includeInactive?: boolean }) => {
+    const qs = new URLSearchParams();
+    if (params?.search)          qs.set('search', params.search);
+    if (params?.includeInactive) qs.set('includeInactive', 'true');
+    return request<import('./types').SupplierDto[]>(`/api/suppliers?${qs}`);
+  },
+  getById: (id: number) =>
+    request<import('./types').SupplierDto>(`/api/suppliers/${id}`),
+  create: (body: { name: string; phone?: string; email?: string; address?: string }) =>
+    request<import('./types').SupplierDto>('/api/suppliers', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: number, body: { name: string; phone?: string; email?: string; address?: string }) =>
+    request<import('./types').SupplierDto>(`/api/suppliers/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deactivate: (id: number) =>
+    request<void>(`/api/suppliers/${id}`, { method: 'DELETE' }),
+};
+
+// ── Catégories de charges ─────────────────────────────────────────────────────
+export const expenseCategories = {
+  getAll: (includeInactive = false) =>
+    request<import('./types').ExpenseCategoryDto[]>(`/api/expense-categories?includeInactive=${includeInactive}`),
+  create: (body: { name: string; color?: string }) =>
+    request<import('./types').ExpenseCategoryDto>('/api/expense-categories', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: number, body: { name: string; color?: string }) =>
+    request<import('./types').ExpenseCategoryDto>(`/api/expense-categories/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+};
+
+// ── Charges ───────────────────────────────────────────────────────────────────
+export const expenses = {
+  getAll: (params?: {
+    from?: string; to?: string;
+    categoryId?: number; supplierId?: number;
+    pageNumber?: number; pageSize?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.from)       qs.set('from', params.from);
+    if (params?.to)         qs.set('to', params.to);
+    if (params?.categoryId) qs.set('categoryId', String(params.categoryId));
+    if (params?.supplierId) qs.set('supplierId', String(params.supplierId));
+    if (params?.pageNumber) qs.set('pageNumber', String(params.pageNumber));
+    qs.set('pageSize', String(params?.pageSize ?? 100));
+    return request<{ items: import('./types').ExpenseDto[]; totalCount: number }>(`/api/expenses?${qs}`);
+  },
+  getReport: (params?: { from?: string; to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set('from', params.from);
+    if (params?.to)   qs.set('to', params.to);
+    return request<import('./types').ExpenseReportDto>(`/api/expenses/report?${qs}`);
+  },
+  getById: (id: number) =>
+    request<import('./types').ExpenseDto>(`/api/expenses/${id}`),
+  create: (body: {
+    date: string; label: string; amount: number;
+    categoryId: number; supplierId?: number;
+    cashRegisterId?: number; notes?: string;
+  }) => request<import('./types').ExpenseDto>('/api/expenses', { method: 'POST', body: JSON.stringify(body) }),
+  remove: (id: number) =>
+    request<void>(`/api/expenses/${id}`, { method: 'DELETE' }),
+};
+
+// ── Immobilisations ───────────────────────────────────────────────────────────
+export const fixedAssets = {
+  getAll: (params?: { status?: string; category?: string; pageSize?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.status)   qs.set('status', params.status);
+    if (params?.category) qs.set('category', params.category);
+    qs.set('pageSize', String(params?.pageSize ?? 200));
+    return request<{ items: import('./types').FixedAssetDto[]; totalCount: number }>(`/api/fixed-assets?${qs}`);
+  },
+  getById: (id: number) =>
+    request<import('./types').FixedAssetDto>(`/api/fixed-assets/${id}`),
+  getSchedule: (id: number) =>
+    request<import('./types').DepreciationScheduleDto>(`/api/fixed-assets/${id}/depreciation-schedule`),
+  create: (body: {
+    name: string; description?: string; category: string;
+    acquisitionDate: string; acquisitionCost: number;
+    usefulLifeMonths: number; residualValue: number;
+    depreciationMethod: string; notes?: string;
+    supplierId?: number; cashRegisterId?: number;
+  }) => request<import('./types').FixedAssetDto>('/api/fixed-assets', { method: 'POST', body: JSON.stringify(body) }),
+  update: (id: number, body: { name: string; description?: string; notes?: string }) =>
+    request<import('./types').FixedAssetDto>(`/api/fixed-assets/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  dispose: (id: number, body: { disposedAt: string; notes?: string }) =>
+    request<void>(`/api/fixed-assets/${id}/dispose`, { method: 'POST', body: JSON.stringify(body) }),
+  runDepreciation: (period: string) =>
+    request<import('./types').RunDepreciationResult>('/api/fixed-assets/run-depreciation', {
+      method: 'POST',
+      body: JSON.stringify({ period }),
+    }),
+};
+

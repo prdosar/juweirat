@@ -57,6 +57,10 @@ builder.Services.AddScoped<AccountingService>();
 builder.Services.AddScoped<CashSessionService>();
 builder.Services.AddScoped<BackfillService>();
 builder.Services.AddScoped<UserService>();
+builder.Services.AddScoped<SupplierService>();
+builder.Services.AddScoped<ExpenseCategoryService>();
+builder.Services.AddScoped<ExpenseService>();
+builder.Services.AddScoped<FixedAssetService>();
 
 // ─── Authentication / JWT ────────────────────────────────────────────────────
 var jwtSection = builder.Configuration.GetSection("Jwt");

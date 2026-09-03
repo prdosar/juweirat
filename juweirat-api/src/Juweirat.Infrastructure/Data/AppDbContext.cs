@@ -42,6 +42,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<CashRegister>     CashRegisters     { get; set; }
     public DbSet<CashSession>      CashSessions      { get; set; }
 
+    // ── Compta : charges, fournisseurs, immobilisations ──────────────────────
+    public DbSet<Supplier>          Suppliers          { get; set; }
+    public DbSet<ExpenseCategory>   ExpenseCategories  { get; set; }
+    public DbSet<Expense>           Expenses           { get; set; }
+    public DbSet<FixedAsset>        FixedAssets        { get; set; }
+    public DbSet<DepreciationEntry> DepreciationEntries { get; set; }
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         base.OnConfiguring(optionsBuilder);
@@ -464,6 +471,77 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.HasIndex(s => new { s.RegisterId, s.OpenedByUserId, s.Status })
              .IsUnique()
              .HasFilter("\"status\" = 'Open'");
+        });
+
+        // ── Charges : suppliers ───────────────────────────────────
+        modelBuilder.Entity<Supplier>(e =>
+        {
+            e.Property(s => s.IsActive).HasDefaultValue(true);
+            e.HasMany(s => s.Expenses)
+             .WithOne(ex => ex.Supplier)
+             .HasForeignKey(ex => ex.SupplierId)
+             .IsRequired(false)
+             .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // ── Charges : expenseCategories ───────────────────────────
+        modelBuilder.Entity<ExpenseCategory>(e =>
+        {
+            e.Property(c => c.IsActive).HasDefaultValue(true);
+            e.HasMany(c => c.Expenses)
+             .WithOne(ex => ex.Category)
+             .HasForeignKey(ex => ex.CategoryId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── Charges : expenses ─────────────────────────────────────
+        modelBuilder.Entity<Expense>(e =>
+        {
+            e.Property(ex => ex.Amount).HasPrecision(14, 2);
+
+            e.HasOne(ex => ex.CashRegister)
+             .WithMany()
+             .HasForeignKey(ex => ex.CashRegisterId)
+             .IsRequired(false)
+             .OnDelete(DeleteBehavior.SetNull);
+
+            e.HasIndex(ex => ex.Date);
+            e.HasIndex(ex => ex.CategoryId);
+            e.HasIndex(ex => ex.SupplierId);
+        });
+
+        // ── Immobilisations : fixedAssets ─────────────────────────
+        modelBuilder.Entity<FixedAsset>(e =>
+        {
+            e.Property(a => a.Category).HasConversion<string>();
+            e.Property(a => a.Status).HasConversion<string>().HasDefaultValue(AssetStatus.Active);
+            e.Property(a => a.DepreciationMethod).HasConversion<string>();
+            e.Property(a => a.AcquisitionCost).HasPrecision(14, 2);
+            e.Property(a => a.ResidualValue).HasPrecision(14, 2);
+
+            e.HasOne(a => a.Supplier)
+             .WithMany()
+             .HasForeignKey(a => a.SupplierId)
+             .IsRequired(false)
+             .OnDelete(DeleteBehavior.SetNull);
+
+            e.HasMany(a => a.DepreciationEntries)
+             .WithOne(d => d.Asset)
+             .HasForeignKey(d => d.AssetId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasIndex(a => a.Status);
+        });
+
+        // ── Immobilisations : depreciationEntries ─────────────────
+        modelBuilder.Entity<DepreciationEntry>(e =>
+        {
+            e.Property(d => d.Amount).HasPrecision(14, 2);
+            e.Property(d => d.CumulativeAmount).HasPrecision(14, 2);
+            e.Property(d => d.BookValue).HasPrecision(14, 2);
+
+            // Idempotence : un seul enregistrement par actif × période
+            e.HasIndex(d => new { d.AssetId, d.Period }).IsUnique();
         });
 
         // Apply camelCase naming to all tables and columns

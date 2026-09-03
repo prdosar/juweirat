@@ -10,5 +10,8 @@ public enum MovementReason
     SortieCaisse,    // Retrait manuel espèces (achat lessive, avance perso…)
     EntreeCaisse,    // Fond de caisse à l'ouverture, ou apport ponctuel
     Correction,      // Écriture manuelle du comptable
-    Backfill         // Écriture rétroactive générée par le backfill historique
+    Backfill,        // Écriture rétroactive générée par le backfill historique
+    ChargeSortie,    // Paiement d'une charge (eau, électricité, loyer…)
+    Acquisition,     // Achat d'une immobilisation
+    Amortissement    // Dotation aux amortissements mensuelle
 }

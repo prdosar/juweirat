@@ -597,4 +597,105 @@ export interface FolioFilterParams extends PaginationFilterParams {
   departureTo?: string;
 }
 
+// ─── Fournisseurs ─────────────────────────────────────────────────────────────
+export interface SupplierDto {
+  id: number;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  isActive: boolean;
+  expenseCount: number;
+  createdAt: string;
+}
+
+// ─── Catégories de charges ────────────────────────────────────────────────────
+export interface ExpenseCategoryDto {
+  id: number;
+  name: string;
+  color: string | null;
+  isActive: boolean;
+  expenseCount: number;
+}
+
+// ─── Charges ─────────────────────────────────────────────────────────────────
+export interface ExpenseDto {
+  id: number;
+  date: string;
+  label: string;
+  amount: number;
+  notes: string | null;
+  categoryId: number;
+  categoryName: string;
+  categoryColor: string | null;
+  supplierId: number | null;
+  supplierName: string | null;
+  cashRegisterId: number | null;
+  cashRegisterName: string | null;
+  createdByUserId: number | null;
+  createdAt: string;
+}
+
+export interface ExpenseByCategoryDto {
+  categoryId: number;
+  categoryName: string;
+  categoryColor: string | null;
+  total: number;
+  count: number;
+}
+
+export interface ExpenseReportDto {
+  from: string | null;
+  to: string | null;
+  totalAmount: number;
+  byCategory: ExpenseByCategoryDto[];
+  entries: ExpenseDto[];
+}
+
+// ─── Immobilisations ──────────────────────────────────────────────────────────
+export interface FixedAssetDto {
+  id: number;
+  name: string;
+  description: string | null;
+  category: string;
+  acquisitionDate: string;
+  acquisitionCost: number;
+  usefulLifeMonths: number;
+  residualValue: number;
+  depreciationMethod: string;
+  status: string;
+  disposedAt: string | null;
+  notes: string | null;
+  supplierId: number | null;
+  supplierName: string | null;
+  depreciatedAmount: number;
+  bookValue: number;
+  depreciatedMonths: number;
+  createdAt: string;
+}
+
+export interface DepreciationEntryDto {
+  id: number;
+  period: string;
+  amount: number;
+  cumulativeAmount: number;
+  bookValue: number;
+  isRecorded: boolean;
+  createdAt: string | null;
+}
+
+export interface DepreciationScheduleDto {
+  asset: FixedAssetDto;
+  entries: DepreciationEntryDto[];
+  totalDepreciation: number;
+  finalResidualValue: number;
+}
+
+export interface RunDepreciationResult {
+  period: string;
+  assetsProcessed: number;
+  skipped: number;
+  totalAmount: number;
+}
+
 

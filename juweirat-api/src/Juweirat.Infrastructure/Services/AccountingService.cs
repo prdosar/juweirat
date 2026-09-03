@@ -634,6 +634,115 @@ public class AccountingService(AppDbContext db, IHttpContextAccessor? httpContex
         await db.SaveChangesAsync();
     }
 
+    // Comptabilise le paiement d'une charge depuis une caisse.
+    // Caisse → Expense. Si pas de caisse précisée, utilise la caisse par défaut.
+    public async Task PostExpensePaymentAsync(
+        long expenseId,
+        long? registerId,
+        decimal amount,
+        string label,
+        long? createdByUserId = null)
+    {
+        if (amount <= 0) return;
+
+        Juweirat.Domain.Entities.Account? cashAccount;
+        if (registerId is not null)
+            cashAccount = await GetAuxiliaryAccountAsync(AccountKind.CashRegister, registerId.Value);
+        else
+            cashAccount = await GetDefaultCashAccountAsync();
+
+        if (cashAccount is null) return;
+
+        var expenseAccount = await GetSystemAccountAsync(AccountKind.Expense);
+        if (expenseAccount is null) return;
+
+        var (_, autoUserId) = await TryDetectCurrentSessionAsync(cashAccount.OwnerRefId);
+
+        QueueMovement(cashAccount, expenseAccount, amount,
+            MovementReason.ChargeSortie, "Expense", expenseId, label,
+            null, createdByUserId ?? autoUserId);
+
+        await db.SaveChangesAsync();
+    }
+
+    // Annule le mouvement d'une charge (correction inverse).
+    public async Task ReverseExpensePaymentAsync(
+        long expenseId,
+        long? registerId,
+        decimal amount,
+        string label)
+    {
+        if (amount <= 0) return;
+
+        Juweirat.Domain.Entities.Account? cashAccount;
+        if (registerId is not null)
+            cashAccount = await GetAuxiliaryAccountAsync(AccountKind.CashRegister, registerId.Value);
+        else
+            cashAccount = await GetDefaultCashAccountAsync();
+
+        if (cashAccount is null) return;
+
+        var expenseAccount = await GetSystemAccountAsync(AccountKind.Expense);
+        if (expenseAccount is null) return;
+
+        // Inverse : Expense → Caisse
+        QueueMovement(expenseAccount, cashAccount, amount,
+            MovementReason.Correction, "Expense", expenseId, $"Annulation — {label}");
+
+        await db.SaveChangesAsync();
+    }
+
+    // Comptabilise l'acquisition d'une immobilisation : Caisse → FixedAsset.
+    public async Task PostAssetAcquisitionAsync(
+        long assetId,
+        long? registerId,
+        decimal amount,
+        string label,
+        long? createdByUserId = null)
+    {
+        if (amount <= 0) return;
+
+        Juweirat.Domain.Entities.Account? cashAccount;
+        if (registerId is not null)
+            cashAccount = await GetAuxiliaryAccountAsync(AccountKind.CashRegister, registerId.Value);
+        else
+            cashAccount = await GetDefaultCashAccountAsync();
+
+        if (cashAccount is null) return;
+
+        var fixedAssetAccount = await GetSystemAccountAsync(AccountKind.FixedAsset);
+        if (fixedAssetAccount is null) return;
+
+        var (_, autoUserId) = await TryDetectCurrentSessionAsync(cashAccount.OwnerRefId);
+
+        QueueMovement(cashAccount, fixedAssetAccount, amount,
+            MovementReason.Acquisition, "FixedAsset", assetId, label,
+            null, createdByUserId ?? autoUserId);
+
+        await db.SaveChangesAsync();
+    }
+
+    // Comptabilise une dotation aux amortissements : Expense → AccumulatedDepreciation.
+    public async Task PostDepreciationAsync(
+        long assetId,
+        decimal amount,
+        string period,
+        string label)
+    {
+        if (amount <= 0) return;
+
+        var expenseAccount = await GetSystemAccountAsync(AccountKind.Expense);
+        if (expenseAccount is null) return;
+
+        var accumDepAccount = await GetSystemAccountAsync(AccountKind.AccumulatedDepreciation);
+        if (accumDepAccount is null) return;
+
+        QueueMovement(expenseAccount, accumDepAccount, amount,
+            MovementReason.Amortissement, "Depreciation", assetId, label);
+
+        await db.SaveChangesAsync();
+    }
+
     // Auto-détection de la session ouverte de l'utilisateur JWT courant sur une caisse donnée.
     // Retourne (null, null) si pas d'user contextuel ou pas de session ouverte.
     private async Task<(long? sessionId, long? userId)> TryDetectCurrentSessionAsync(long? registerOwnerRefId)
