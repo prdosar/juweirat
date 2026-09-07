@@ -48,14 +48,22 @@ const CTE = `
     JOIN "roomCategories" rc ON rc.id = r."categoryId"
     WHERE r."pmsRoomNo" IS NOT NULL
   ),
+  -- Alignement PmsService.GetUnitsAsync : chambre effective = résa liée si présente,
+  -- sinon f.unitId. + résa liée fait autorité sur les dates.
   active_folio AS (
-    SELECT DISTINCT ON (f."unitId")
-      f."unitId", f.rate
+    SELECT DISTINCT ON (COALESCE(res."roomId", f."unitId"))
+      COALESCE(res."roomId", f."unitId") AS "unitId",
+      f.rate
     FROM folios f
-    WHERE f.arrival <= CURRENT_DATE
-      AND f.departure > CURRENT_DATE
+    LEFT JOIN reservations res ON res.id = f."reservationId"
+    WHERE f."resaStatus" NOT IN ('Annulee', 'NoShow')
       AND NOT f.closed
-    ORDER BY f."unitId", f.id DESC
+      AND (CASE
+        WHEN res.id IS NOT NULL
+          THEN res."checkInDate"  <= CURRENT_DATE AND res."checkOutDate" > CURRENT_DATE
+        ELSE   f.arrival          <= CURRENT_DATE AND f.departure         > CURRENT_DATE
+      END)
+    ORDER BY COALESCE(res."roomId", f."unitId"), f.id DESC
   )
 `;
 

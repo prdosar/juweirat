@@ -9,14 +9,16 @@ export const roomsInputSchema = z.object({});
 export const roomsDefinition = {
   name: "list_rooms_by_status",
   description:
-    "État temps réel des chambres PMS. Pour chaque chambre : type/gamme, statut ménage, hors service, occupation courante (client actuellement dans la chambre), source d'occupation (Folio | Reservation | Block), ET dernier passage ménage (lastCleanedBy = nom du staff, lastCleanedAt = timestamp exact, issu de housekeepingLogs). Une chambre est comptée occupée si un folio PMS actif, une réservation web active OU un blocage manuel (RoomBlock) chevauche la nuit courante — même logique que l'admin (RoomService.GetAvailableAsync). Utilise ce tool pour répondre à \"qui occupe la chambre X\", \"quelles chambres sont libres/occupées\", \"chambres à nettoyer\", \"qui a nettoyé la chambre X\".",
+    "État temps réel des chambres PMS. Pour chaque chambre : type/gamme, statut ménage, hors service, occupation courante (client actuellement dans la chambre), source d'occupation (Folio | Reservation | Block), dernier passage ménage (lastCleanedBy/lastCleanedAt), ET prochaine réservation à venir (nextResaReference/CheckIn/CheckOut/Guest/Company + upcoming30dCount). Une chambre est comptée occupée si un folio PMS actif, une réservation web active OU un blocage manuel (RoomBlock) chevauche la nuit courante — même logique que l'admin (RoomService.GetAvailableAsync, PmsService.GetUnitsAsync). IMPORTANT : quand un folio est lié à une résa, la chambre effective est celle de la RÉSA (roomId), pas celle du folio (unitId peut avoir drifté). IMPORTANT #2 : \"est-ce que la chambre X est réservée ?\" ≠ \"est-ce qu'elle est occupée aujourd'hui ?\" — utilise nextResaReference pour signaler une résa future même si la chambre est libre cette nuit. Utilise ce tool pour \"qui occupe la chambre X\", \"chambres libres/occupées\", \"chambres à nettoyer\", \"qui a nettoyé la chambre X\", \"la chambre X est-elle réservée ?\".",
   inputSchema: roomsInputSchema,
 } as const;
 
 // CTE partagée : chambres bloquées pour la nuit courante, agrégées depuis
 // les 3 sources qui verrouillent une chambre côté admin (RoomService.GetAvailableAsync) :
 //   1) Folios PMS actifs (resaStatus ≠ Annulee/NoShow, non clôturés). Si le folio
-//      est lié à une résa, on projette sur les dates de la résa (source de vérité).
+//      est lié à une résa, on projette sur les dates ET la chambre de la résa
+//      (source de vérité — cf. PmsService.GetUnitsAsync : `f.UnitId` peut avoir
+//      drifted par rapport à `Reservation.RoomId`).
 //   2) Réservations web assignées à une chambre (roomId non null, status ≠ Cancelled/NoShow).
 //   3) RoomBlocks manuels.
 // L'ordre de priorité (Folio > Reservation > Block) sert uniquement à choisir la
@@ -24,8 +26,8 @@ export const roomsDefinition = {
 // l'état "Occupied", n'importe laquelle suffit.
 const ACTIVE_OCCUPANCY_CTE = `
   active_folio AS (
-    SELECT DISTINCT ON (f."unitId")
-      f."unitId"                                        AS room_id,
+    SELECT DISTINCT ON (COALESCE(res."roomId", f."unitId"))
+      COALESCE(res."roomId", f."unitId")                AS room_id,
       'Folio'                                           AS source,
       f.id                                              AS "folioId",
       f.number                                          AS "folioNumber",
@@ -45,7 +47,7 @@ const ACTIVE_OCCUPANCY_CTE = `
           THEN res."checkInDate"  <= CURRENT_DATE AND res."checkOutDate" > CURRENT_DATE
         ELSE   f.arrival          <= CURRENT_DATE AND f.departure         > CURRENT_DATE
       END)
-    ORDER BY f."unitId", f.id DESC
+    ORDER BY COALESCE(res."roomId", f."unitId"), f.id DESC
   ),
   active_resa AS (
     SELECT DISTINCT ON (r."roomId")
@@ -103,7 +105,11 @@ export async function roomsHandler(): Promise<string> {
     WITH ${ACTIVE_OCCUPANCY_CTE}
     SELECT
       r.id, r."pmsRoomNo", r."roomNumber", r.floor,
-      r."pmsType", r."pmsGamme",
+      -- Fallback catégorie : mirror de PmsService.ToUnitDto (r.PmsType ?? r.Category?.PmsType).
+      -- Sans ce fallback, une chambre dont r.pmsType est NULL/stale renvoie une valeur incohérente
+      -- avec l'admin (bug remonté 2026-09-07 sur appt 61 : bot "T2 supérieure" vs admin "T1 privilège").
+      COALESCE(r."pmsType",  cat."pmsType")  AS "pmsType",
+      COALESCE(r."pmsGamme", cat."pmsGamme") AS "pmsGamme",
       r."statutMenage", r."horsService", r.status AS "roomStatus",
       to_char(r."lastCleaned", 'YYYY-MM-DD') AS "lastCleaned",
       hk."lastCleanedAt",
@@ -122,8 +128,18 @@ export async function roomsHandler(): Promise<string> {
       ao."checkedIn"                      AS "currentCheckedIn",
       ao.arrival                          AS "currentArrival",
       ao.departure                        AS "currentDeparture",
-      ao."blockReason"                    AS "currentBlockReason"
+      ao."blockReason"                    AS "currentBlockReason",
+      -- Prochaine résa à venir sur cette chambre (assignée, non annulée, checkIn > aujourd'hui).
+      -- Permet de répondre correctement à "la chambre X est-elle réservée ?" quand une résa
+      -- future existe mais que la chambre est libre aujourd'hui.
+      nr."nextResaReference",
+      nr."nextResaCheckIn",
+      nr."nextResaCheckOut",
+      nr."nextResaGuest",
+      nr."nextResaCompany",
+      nr."upcoming30dCount"
     FROM rooms r
+    LEFT JOIN "roomCategories" cat ON cat.id = r."categoryId"
     LEFT JOIN active_occupancy ao ON ao.room_id = r.id
     LEFT JOIN LATERAL (
       SELECT
@@ -135,6 +151,28 @@ export async function roomsHandler(): Promise<string> {
       ORDER BY h."cleanedAt" DESC
       LIMIT 1
     ) hk ON true
+    LEFT JOIN LATERAL (
+      SELECT
+        res.reference                                    AS "nextResaReference",
+        to_char(res."checkInDate",  'YYYY-MM-DD')        AS "nextResaCheckIn",
+        to_char(res."checkOutDate", 'YYYY-MM-DD')        AS "nextResaCheckOut",
+        NULLIF(TRIM(COALESCE(cl."firstName", '') || ' ' || COALESCE(cl."lastName", '')), '') AS "nextResaGuest",
+        co.name                                          AS "nextResaCompany",
+        (SELECT COUNT(*)::int
+           FROM reservations r2
+          WHERE r2."roomId" = r.id
+            AND r2.status NOT IN ('Cancelled', 'NoShow')
+            AND r2."checkInDate" >  CURRENT_DATE
+            AND r2."checkInDate" <= CURRENT_DATE + INTERVAL '30 days') AS "upcoming30dCount"
+      FROM reservations res
+      JOIN clients cl ON cl.id = res."clientId"
+      LEFT JOIN companies co ON co.id = cl."companyId"
+      WHERE res."roomId" = r.id
+        AND res.status NOT IN ('Cancelled', 'NoShow')
+        AND res."checkInDate" > CURRENT_DATE
+      ORDER BY res."checkInDate" ASC
+      LIMIT 1
+    ) nr ON true
     WHERE r."pmsRoomNo" IS NOT NULL
     ORDER BY r."pmsRoomNo"::int
     LIMIT $1

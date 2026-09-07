@@ -259,13 +259,35 @@ export async function noShowHandler(input: z.infer<typeof noShowInputSchema>): P
     [input.from, input.to],
   );
 
-  const [folioStats] = await query<{ count: number; totalRetained: number }>(
+  // Retenue effective : les Payments taggés "Retenue No Show" créés par
+  // ReservationService.ProcessNoShowAsync (ReservationService.cs:487). C'est LA
+  // seule source cohérente avec la comptabilité (compte système RevenueNoShow).
+  // folios.paid ne convient pas : il agrège aussi les acomptes antérieurs qui
+  // n'ont rien à voir avec la retenue.
+  const [retentionStats] = await query<{ count: number; totalRetained: number }>(
     `
-    SELECT COUNT(*)::int AS count, COALESCE(SUM(paid), 0)::float8 AS "totalRetained"
-    FROM folios
-    WHERE "resaStatus" = 'NoShow'
-      AND arrival >= $1::date
-      AND arrival <= $2::date
+    SELECT COUNT(*)::int AS count, COALESCE(SUM(p.amount), 0)::float8 AS "totalRetained"
+    FROM payments p
+    JOIN reservations r ON r.id = p."reservationId"
+    WHERE p.notes ILIKE 'Retenue No Show%'
+      AND p.status = 'Completed'
+      AND r."checkInDate" >= $1::date
+      AND r."checkInDate" <= $2::date
+    `,
+    [input.from, input.to],
+  );
+
+  // Croisé compta : montant réellement passé au compte RevenueNoShow sur la période.
+  // Double contrôle indépendant du canal Payments (source unique = accountMovements).
+  const [accountingStats] = await query<{ totalRevenueNoShow: number }>(
+    `
+    SELECT COALESCE(SUM(m.amount), 0)::float8 AS "totalRevenueNoShow"
+    FROM "accountMovements" m
+    JOIN accounts a ON a.id = m."fromAccountId"
+    WHERE m.reason = 'Vente'
+      AND a.kind = 'RevenueNoShow'
+      AND m.date >= $1::date
+      AND m.date <  ($2::date + INTERVAL '1 day')
     `,
     [input.from, input.to],
   );
@@ -289,7 +311,15 @@ export async function noShowHandler(input: z.infer<typeof noShowInputSchema>): P
       period: { from: input.from, to: input.to },
       currency: "XOF",
       reservations: { count: resaStats.count, totalLost: resaStats.totalLost },
-      folios: { count: folioStats.count, totalRetained: folioStats.totalRetained },
+      retentions: {
+        count: retentionStats.count,
+        totalRetained: retentionStats.totalRetained,
+        source: "payments where notes ILIKE 'Retenue No Show%'",
+      },
+      accounting: {
+        totalRevenueNoShow: accountingStats.totalRevenueNoShow,
+        source: "accountMovements where reason='Vente' and account.kind='RevenueNoShow'",
+      },
       byCategory,
     },
     null,

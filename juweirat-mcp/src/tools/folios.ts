@@ -33,19 +33,27 @@ export async function getHandler(input: z.infer<typeof getInputSchema>): Promise
     param = input.identifier;
   }
 
+  // Chambre effective = résa liée (source de vérité) sinon f.unitId (folio direct PMS).
+  // Idem dates : la résa fait autorité si présente. Cf. PmsService.GetUnitsAsync et
+  // le bug de drift remonté 2026-09-07 (folio FL-2026-0019 / appt 61).
   const rows = await query<Record<string, unknown>>(
     `
     SELECT
       f.id, f.number,
-      f."unitId", u."roomNumber", u."pmsRoomNo", u."pmsType",
+      COALESCE(r."roomId", f."unitId")    AS "unitId",
+      u."roomNumber", u."pmsRoomNo", u."pmsType",
+      -- Flag exposé pour que le staff sache si la chambre affichée provient de la résa
+      -- ou du folio (utile en cas de drift à investiguer).
+      (r."roomId" IS NOT NULL AND r."roomId" <> f."unitId") AS "unitDriftDetected",
       f.guest, f.nom, f.prenom, f.societe, f.reservataire,
       f.segment, f.pax,
-      to_char(f.arrival, 'YYYY-MM-DD')   AS arrival,
-      to_char(f.departure, 'YYYY-MM-DD') AS departure,
+      to_char(COALESCE(r."checkInDate",  f.arrival),   'YYYY-MM-DD') AS arrival,
+      to_char(COALESCE(r."checkOutDate", f.departure), 'YYYY-MM-DD') AS departure,
       f.rate, f.heb, f."tarifTier", f."elecIncluded",
       f."pdjParJour", f."pdjPrix", f.kwh, f.debiteur, f.dependances,
       f.arrhes, f.paid, f."payMode", f."factRecipient",
-      f."tvaExonere",
+      -- Exonération TVA : autoritative sur la résa liée si elle existe.
+      COALESCE(r."tvaExonere", f."tvaExonere") AS "tvaExonere",
       f."resaStatus", f."checkedIn", f.closed,
       to_char(f."checkoutDate", 'YYYY-MM-DD') AS "checkoutDate",
       f.note,
@@ -53,8 +61,8 @@ export async function getHandler(input: z.infer<typeof getInputSchema>): Promise
       f."factureId", fa.number AS "factureNumber", fa.status AS "factureStatus",
       f."createdAt"
     FROM folios f
-    JOIN rooms u ON u.id = f."unitId"
     LEFT JOIN reservations r ON r.id = f."reservationId"
+    LEFT JOIN rooms u ON u.id = COALESCE(r."roomId", f."unitId")
     LEFT JOIN factures fa ON fa.id = f."factureId"
     WHERE ${where}
     `,
@@ -91,12 +99,17 @@ export const unpaidInputSchema = z.object({
 export const unpaidDefinition = {
   name: "list_unpaid_folios",
   description:
-    "Liste les folios avec un solde restant dû (heb + prestations - paid > 0), triés par montant dû décroissant.",
+    "Liste les folios avec un solde restant dû, triés par montant dû décroissant. Formule alignée sur TarifEngine.ComputeSolde (admin) : solde = max(0, TTC_total − paid − arrhes) où TTC_total = HT × 1,18 sauf tvaExonere, et HT = hébergement + prestations résa + PDJ + débiteur + dépendances. Exclut folios clôturés, Annulés et NoShow.",
   inputSchema: unpaidInputSchema,
 } as const;
 
 export async function unpaidHandler(input: z.infer<typeof unpaidInputSchema>): Promise<string> {
-  // heb : si 0 → rate × (departure - arrival) ; sinon valeur directe.
+  // Aligné sur TarifEngine.ComputeSolde (TarifEngine.cs:27) :
+  //   totalHt  = totalHeb + totalPrestations + totalPdj + totalDebiteur + totalDependances
+  //   tva      = tvaExonere ? 0 : round(totalHt * 0.18)
+  //   solde    = max(0, totalHt + tva - paid - arrhes)
+  // Prestations : sum(reservationPrestations.totalLigne) via la résa liée.
+  // Chambre/dates/tvaExonere : projetées via la résa liée (drift fix).
   const rows = await query(
     `
     WITH folios_calc AS (
@@ -104,25 +117,53 @@ export async function unpaidHandler(input: z.infer<typeof unpaidInputSchema>): P
         f.id, f.number,
         u."pmsRoomNo",
         f.guest, f.societe,
-        to_char(f.arrival, 'YYYY-MM-DD')   AS arrival,
-        to_char(f.departure, 'YYYY-MM-DD') AS departure,
+        to_char(COALESCE(r."checkInDate",  f.arrival),   'YYYY-MM-DD') AS arrival,
+        to_char(COALESCE(r."checkOutDate", f.departure), 'YYYY-MM-DD') AS departure,
         f."resaStatus", f."checkedIn", f.closed,
-        CASE WHEN f.heb = 0 THEN f.rate * (f.departure - f.arrival) ELSE f.heb END AS heb_effectif,
-        f.paid,
-        COALESCE(f."pdjParJour" * f."pdjPrix" * (f.departure - f.arrival), 0)
-          + COALESCE(f.debiteur, 0)
-          + COALESCE(f.dependances, 0) AS supplements
+        CASE
+          WHEN f.heb = 0 THEN f.rate * (COALESCE(r."checkOutDate", f.departure) - COALESCE(r."checkInDate", f.arrival))
+          ELSE f.heb
+        END AS heb_effectif,
+        f.paid, f.arrhes,
+        COALESCE(r."tvaExonere", f."tvaExonere") AS tva_exonere,
+        COALESCE(f."pdjParJour" * f."pdjPrix" * (COALESCE(r."checkOutDate", f.departure) - COALESCE(r."checkInDate", f.arrival)), 0) AS total_pdj,
+        COALESCE(f.debiteur, 0)   AS total_debiteur,
+        COALESCE(f.dependances, 0) AS total_dependances,
+        COALESCE((
+          SELECT SUM(rp."totalLigne")
+          FROM "reservationPrestations" rp
+          WHERE rp."reservationId" = f."reservationId"
+        ), 0)::int AS total_prestations
       FROM folios f
-      JOIN rooms u ON u.id = f."unitId"
+      LEFT JOIN reservations r ON r.id = f."reservationId"
+      LEFT JOIN rooms u ON u.id = COALESCE(r."roomId", f."unitId")
       WHERE NOT f.closed
+        AND f."resaStatus" NOT IN ('Annulee', 'NoShow')
+    ),
+    folios_ttc AS (
+      SELECT
+        *,
+        (heb_effectif + total_prestations + total_pdj + total_debiteur + total_dependances)::int AS total_ht
+      FROM folios_calc
+    ),
+    folios_solde AS (
+      SELECT
+        *,
+        CASE WHEN tva_exonere THEN 0 ELSE ROUND(total_ht * 0.18)::int END AS tva,
+        (total_ht + CASE WHEN tva_exonere THEN 0 ELSE ROUND(total_ht * 0.18)::int END)::int AS total_ttc
+      FROM folios_ttc
     )
     SELECT
       id, number, "pmsRoomNo", guest, societe, arrival, departure, "resaStatus", "checkedIn",
-      (heb_effectif + supplements)::int AS "totalDue",
+      tva_exonere AS "tvaExonere",
+      total_ht    AS "totalHt",
+      tva         AS "tva",
+      total_ttc   AS "totalTtc",
       paid,
-      (heb_effectif + supplements - paid)::int AS remaining
-    FROM folios_calc
-    WHERE (heb_effectif + supplements - paid) >= $1
+      arrhes,
+      GREATEST(0, total_ttc - paid - arrhes)::int AS remaining
+    FROM folios_solde
+    WHERE GREATEST(0, total_ttc - paid - arrhes) >= $1
     ORDER BY remaining DESC
     LIMIT $2
     `,
@@ -206,52 +247,86 @@ export const tvaInputSchema = z.object({
 export const tvaDefinition = {
   name: "get_tva_report",
   description:
-    "Rapport TVA sur la période : CA HT/TTC/TVA basé sur les folios (arrival dans la période), séparé exonéré vs assujetti (TVA 18%).",
+    "Rapport TVA sur la période : CA HT / TVA / TTC sourcé depuis accountMovements (reason=Vente + reason=TvaCollectee) — même source authoritative que AccountingService.GetTvaReportAsync côté admin. Inclut hébergement, prestations, PDJ, remises, ventes directes, retenues NoShow. Ventilé par SourceType (Payment | VenteDirecte | Facture | Folio | Manual). Si vide sur une période, ça signifie que la compta n'a pas encore été utilisée en prod pour cette période — dis-le explicitement.",
   inputSchema: tvaInputSchema,
 } as const;
 
 export async function tvaHandler(input: z.infer<typeof tvaInputSchema>): Promise<string> {
   assertPeriod(input.from, input.to);
 
-  const [row] = await query<{
-    countAll: number;
-    countExonere: number;
-    revenuExonereTtc: number;
-    revenuAssujettiTtc: number;
+  // Source authoritative : accountMovements. reason=Vente = HT, reason=TvaCollectee = TVA.
+  // Regroupe par (SourceType, SourceId) — 1 ligne = 1 opération métier (paiement,
+  // facture, vente directe…). Cf. AccountingService.GetTvaReportAsync (AccountingService.cs:239).
+  // Fenêtre inclusive : date >= from AND date < (to + 1 jour) pour capturer toute la journée `to`.
+  const [totals] = await query<{
+    countLines: number;
+    ht: number;
+    tva: number;
+    ttc: number;
   }>(
     `
+    WITH grouped AS (
+      SELECT
+        "sourceType",
+        "sourceId",
+        SUM(amount) FILTER (WHERE reason = 'Vente')        AS ht,
+        SUM(amount) FILTER (WHERE reason = 'TvaCollectee') AS tva
+      FROM "accountMovements"
+      WHERE date >= $1::date
+        AND date <  ($2::date + INTERVAL '1 day')
+        AND "sourceType" IS NOT NULL
+        AND "sourceId"   IS NOT NULL
+      GROUP BY "sourceType", "sourceId"
+      HAVING COALESCE(SUM(amount) FILTER (WHERE reason = 'Vente'), 0) <> 0
+          OR COALESCE(SUM(amount) FILTER (WHERE reason = 'TvaCollectee'), 0) <> 0
+    )
     SELECT
-      COUNT(*)::int AS "countAll",
-      COUNT(*) FILTER (WHERE "tvaExonere")::int AS "countExonere",
-      COALESCE(SUM(
-        CASE WHEN "tvaExonere"
-          THEN (CASE WHEN heb = 0 THEN rate * (departure - arrival) ELSE heb END)
-          ELSE 0
-        END
-      ), 0)::float8 AS "revenuExonereTtc",
-      COALESCE(SUM(
-        CASE WHEN NOT "tvaExonere"
-          THEN (CASE WHEN heb = 0 THEN rate * (departure - arrival) ELSE heb END)
-          ELSE 0
-        END
-      ), 0)::float8 AS "revenuAssujettiTtc"
-    FROM folios
-    WHERE arrival >= $1::date AND arrival <= $2::date
+      COUNT(*)::int                                AS "countLines",
+      COALESCE(SUM(ht), 0)::float8                 AS ht,
+      COALESCE(SUM(tva), 0)::float8                AS tva,
+      COALESCE(SUM(ht) + SUM(tva), 0)::float8      AS ttc
+    FROM grouped
     `,
     [input.from, input.to],
   );
 
-  const ht = row.revenuAssujettiTtc / (1 + TVA_RATE);
-  const tva = row.revenuAssujettiTtc - ht;
+  const bySourceType = await query(
+    `
+    SELECT
+      "sourceType",
+      COUNT(*) FILTER (WHERE reason = 'Vente')::int              AS "linesCount",
+      COALESCE(SUM(amount) FILTER (WHERE reason = 'Vente'), 0)::float8         AS ht,
+      COALESCE(SUM(amount) FILTER (WHERE reason = 'TvaCollectee'), 0)::float8  AS tva
+    FROM "accountMovements"
+    WHERE date >= $1::date
+      AND date <  ($2::date + INTERVAL '1 day')
+      AND "sourceType" IS NOT NULL
+      AND reason IN ('Vente', 'TvaCollectee')
+    GROUP BY "sourceType"
+    ORDER BY ht DESC
+    `,
+    [input.from, input.to],
+  );
 
   return JSON.stringify(
     {
       period: { from: input.from, to: input.to },
       currency: "XOF",
       tvaRate: TVA_RATE,
-      folios: { total: row.countAll, exonere: row.countExonere, assujetti: row.countAll - row.countExonere },
-      exonere: { ht: Math.round(row.revenuExonereTtc), tva: 0, ttc: Math.round(row.revenuExonereTtc) },
-      assujetti: { ht: Math.round(ht), tva: Math.round(tva), ttc: Math.round(row.revenuAssujettiTtc) },
+      source: "accountMovements (reason=Vente + reason=TvaCollectee)",
+      totals: {
+        operations: totals.countLines,
+        ht: Math.round(totals.ht),
+        tva: Math.round(totals.tva),
+        ttc: Math.round(totals.ttc),
+      },
+      bySourceType: bySourceType.map((r) => ({
+        sourceType: r.sourceType,
+        linesCount: r.linesCount,
+        ht: Math.round(r.ht as number),
+        tva: Math.round(r.tva as number),
+        ttc: Math.round((r.ht as number) + (r.tva as number)),
+      })),
     },
     null,
     2,

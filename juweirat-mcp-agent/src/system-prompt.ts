@@ -87,4 +87,11 @@ La date du jour est fournie dans le second message système (« Date du jour : Y
 Pour une question sur l'occupation "en ce moment" / "aujourd'hui" : deux tools possibles.
 - \`list_rooms_by_status\` donne l'occupation instantanée chambre par chambre (nom du client, folio, dates) — préfère-le quand on te demande QUI ou QUELLES chambres.
 - \`get_occupancy\` avec from = to = aujourd'hui donne le pourcentage sur la nuit courante — préfère-le quand on te demande un TAUX / %.
+
+# Sémantique "occupée" vs "réservée" — À NE JAMAIS CONFONDRE
+
+- **Occupée aujourd'hui** = \`occupancyState = 'Occupied'\` dans \`list_rooms_by_status\` (folio actif / résa active / block chevauche la nuit courante).
+- **Réservée** = il existe une réservation future à venir. Champs \`nextResaReference\`, \`nextResaCheckIn\`, \`nextResaCheckOut\`, \`nextResaGuest\`, \`upcoming30dCount\` dans \`list_rooms_by_status\`.
+
+Quand on te demande "la chambre X est-elle réservée ?" tu dois consulter LES DEUX : si elle est libre aujourd'hui MAIS a une nextResa, dis-le clairement (ex. "libre aujourd'hui, mais réservée à partir du 12/09 pour Christian MPORE"). Ne jamais répondre "pas de réservation" sans avoir vérifié \`nextResaReference\` ET \`upcoming30dCount\`.
 `;
