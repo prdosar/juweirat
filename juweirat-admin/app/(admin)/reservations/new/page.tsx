@@ -3,8 +3,8 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { categories, clients, companies, rooms, reservations, prestations } from '@/lib/api';
-import type { ClientDto, CompanyDto, CompanyTarifDto, PrestationAnnexeDto, RoomCategoryDto, RoomDto, TarifPreviewDto } from '@/lib/types';
+import { categories, clients, companies, companyContracts, rooms, reservations, prestations } from '@/lib/api';
+import type { ClientDto, CompanyContractDto, CompanyDto, CompanyTarifDto, PrestationAnnexeDto, RoomCategoryDto, RoomDto, TarifPreviewDto } from '@/lib/types';
 import DuplicateClientDialog from '@/components/DuplicateClientDialog';
 
 /* ────────────────────────── Design tokens ───────────────────────── */
@@ -106,7 +106,8 @@ export default function NewReservationPage() {
 function NewReservationPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const preselectedClientId = Number(searchParams.get('clientId')) || 0;
+  const preselectedClientId   = Number(searchParams.get('clientId')) || 0;
+  const preselectedContractId = Number(searchParams.get('companyContractId')) || 0;
 
   // ── Data ──
   const [categoryList, setCategoryList]     = useState<RoomCategoryDto[]>([]);
@@ -163,6 +164,17 @@ function NewReservationPageInner() {
   // Step 4 — logement + prestations
   const [categoryId, setCategoryId] = useState(0);
   const [roomId, setRoomId]         = useState(0);
+
+  // Contrat compagnie : optionnel, forcé si ?companyContractId=X en URL, sinon
+  // proposé sur le step Séjour si le client sélectionné est rattaché à une
+  // compagnie ayant des contrats actifs. Quand présent, verrouille roomId et
+  // catégorie sur ceux du contrat.
+  const [contractsForCompany, setContractsForCompany] = useState<CompanyContractDto[]>([]);
+  const [selectedContractId,  setSelectedContractId]  = useState(0);
+  const selectedContract = useMemo(
+    () => contractsForCompany.find(c => c.id === selectedContractId) ?? null,
+    [contractsForCompany, selectedContractId],
+  );
   // Pour chaque prestation cochée : quantity override (null = auto selon mode) + prix unitaire manuel (utilisé uniquement si prestation.prixFlexible).
   type PrestationSelection = { quantity: number | null; prixUnitaire: number | null };
   const [selectedPrestations, setSelectedPrestations] = useState<Map<number, PrestationSelection>>(new Map());
@@ -193,6 +205,63 @@ function NewReservationPageInner() {
     }, 250);
     return () => clearTimeout(t);
   }, [clientQuery]);
+
+  // ── Fetch active company contracts when a client with a company is selected ──
+  // Le waterfall verrouille la chambre du contrat quand un contrat est choisi.
+  useEffect(() => {
+    setContractsForCompany([]);
+    const companyId = clientMode === 'existing' ? selectedClient?.companyId : (newClient.companyId || null);
+    if (!companyId) { setSelectedContractId(0); return; }
+    let cancelled = false;
+    companyContracts.getPaged({
+      companyId,
+      status: 'Active',
+      pageSize: 50,
+    })
+      .then(res => { if (!cancelled) setContractsForCompany(res.items); })
+      .catch(() => { if (!cancelled) setContractsForCompany([]); });
+    return () => { cancelled = true; };
+  }, [clientMode, selectedClient?.companyId, newClient.companyId]);
+
+  // ── Préchargement contrat via URL ?companyContractId=X ──
+  // Le contrat est chargé indépendamment de la compagnie sélectionnée pour permettre
+  // l'accès direct depuis la page détail contrat ; la vérif client.CompanyId sera
+  // faite côté serveur au submit.
+  useEffect(() => {
+    if (!preselectedContractId) return;
+    companyContracts.getById(preselectedContractId)
+      .then(c => {
+        setContractsForCompany(prev => (prev.some(x => x.id === c.id) ? prev : [
+          ...prev,
+          {
+            id: c.id, reference: c.reference,
+            companyId: c.companyId, companyName: c.companyName,
+            roomId: c.roomId, roomNumber: c.roomNumber, roomNameFr: c.roomNameFr,
+            startDate: c.startDate, endDate: c.endDate,
+            monthlyRate: c.monthlyRate, status: c.status,
+            tvaExonere: c.tvaExonere, notes: c.notes,
+            occupantCount: c.occupants.length,
+            createdAt: c.createdAt,
+          },
+        ]));
+        setSelectedContractId(c.id);
+      })
+      .catch(() => { /* silent */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preselectedContractId]);
+
+  // ── Sélection contrat → verrouille categoryId + roomId ──
+  // roomList (chambres dispo pour la période) peut ne pas contenir la chambre du
+  // contrat (le contrat lui-même la marque occupée) → on la charge en direct.
+  useEffect(() => {
+    if (!selectedContract) return;
+    setRoomId(selectedContract.roomId);
+    let cancelled = false;
+    rooms.getById(selectedContract.roomId)
+      .then(r => { if (!cancelled && r.categoryId) setCategoryId(r.categoryId); })
+      .catch(() => { /* silent */ });
+    return () => { cancelled = true; };
+  }, [selectedContract]);
 
   // ── Fetch full company tarifs when a client with a company is selected ──
   // These are used to override the default category prices in the category picker.
@@ -359,6 +428,10 @@ function NewReservationPageInner() {
     if (current === 1) {
       if (!checkIn || !checkOut) return "Renseignez les dates d'arrivée et de départ.";
       if (nights <= 0)           return 'La date de départ doit être postérieure à la date d\'arrivée.';
+      if (selectedContract) {
+        if (checkIn  < selectedContract.startDate) return `Le début doit être ≥ ${selectedContract.startDate} (début du contrat).`;
+        if (checkOut > selectedContract.endDate)   return `La fin doit être ≤ ${selectedContract.endDate} (fin du contrat).`;
+      }
     }
     if (current === 2) {
       if (adults < 1) return "Au moins un adulte est requis.";
@@ -498,6 +571,7 @@ function NewReservationPageInner() {
         prestations:         prestationsPayload.length > 0 ? prestationsPayload : null,
         tvaExonere,
         discount:            discountNum > 0 ? discountNum : 0,
+        companyContractId:   selectedContractId > 0 ? selectedContractId : null,
       };
       const created = await reservations.create(body);
       router.push(`/reservations/${created.id}`);
@@ -878,6 +952,36 @@ function NewReservationPageInner() {
                   </button>
                 ))}
               </div>
+
+              {/* Rattachement contrat compagnie */}
+              {(contractsForCompany.length > 0 || selectedContract) && (
+                <div style={{
+                  marginTop: 20, padding: 14,
+                  background: '#eef6ff', border: '1px solid #cfe0f7', borderRadius: 12,
+                }}>
+                  <div style={{ ...fieldLabel, color: '#1e5eb0', marginBottom: 8 }}>
+                    🏢 Contrat compagnie
+                  </div>
+                  <select
+                    value={selectedContractId}
+                    onChange={e => setSelectedContractId(Number(e.target.value) || 0)}
+                    style={{ ...fieldInput, background: '#fff' }}
+                  >
+                    <option value={0}>— Aucun (résa classique) —</option>
+                    {contractsForCompany.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.reference} · Chambre {c.roomNumber} · {c.startDate} → {c.endDate}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedContract && (
+                    <p style={{ margin: '8px 0 0', fontSize: 11, color: '#1e5eb0' }}>
+                      Chambre <strong>{selectedContract.roomNumber}</strong> imposée par le contrat.
+                      Les dates doivent rester dans {selectedContract.startDate} → {selectedContract.endDate}.
+                    </p>
+                  )}
+                </div>
+              )}
             </section>
           )}
 
@@ -910,6 +1014,16 @@ function NewReservationPageInner() {
                 </h2>
               </div>
 
+              {selectedContract && (
+                <div style={{
+                  marginBottom: 14, padding: 12,
+                  background: '#eef6ff', border: '1px solid #cfe0f7', borderRadius: 10,
+                  fontSize: 12, color: '#1e5eb0',
+                }}>
+                  🏢 Contrat <strong>{selectedContract.reference}</strong> — chambre <strong>{selectedContract.roomNumber}</strong> et sa catégorie sont imposées.
+                </div>
+              )}
+
               <span style={{ ...fieldLabel, display: 'block', marginBottom: 10 }}>Catégorie de logement *</span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {categoryList.length === 0 && (
@@ -923,18 +1037,21 @@ function NewReservationPageInner() {
                   const savings = isCompanyRate ? cat.tarifNuit - priced.rate : 0;
                   // Complet = dispo chargée + catégorie absente. Tant que la dispo
                   // n'est pas chargée (dates incomplètes ou API en cours), on n'affiche rien.
+                  // Contrat sélectionné → verrouille sur la catégorie du contrat.
                   const soldOut = availableCategoryIds !== null && !availableCategoryIds.has(cat.id);
+                  const lockedByContract = selectedContract && cat.id !== categoryId;
+                  const disabled = soldOut || !!lockedByContract;
                   return (
                     <button
                       key={cat.id}
                       type="button"
-                      onClick={() => { if (soldOut) return; setCategoryId(cat.id); setRoomId(0); }}
-                      disabled={soldOut}
+                      onClick={() => { if (disabled) return; setCategoryId(cat.id); setRoomId(0); }}
+                      disabled={disabled}
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         gap: 16, padding: '15px 18px', borderRadius: 12,
-                        cursor: soldOut ? 'not-allowed' : 'pointer',
-                        opacity: soldOut ? 0.55 : 1,
+                        cursor: disabled ? 'not-allowed' : 'pointer',
+                        opacity: disabled ? 0.5 : 1,
                         background: on ? C.accentSoft : C.card,
                         border: `1px solid ${on ? C.accent : soldOut ? '#f1c9c9' : C.sep2}`,
                         textAlign: 'left',

@@ -9,6 +9,7 @@ import {
   Receipt, Settings, BarChart2, Printer, Mail, ShoppingCart, Package,
   Briefcase, ShieldCheck, BookOpen, Wallet, BookText, Scale, Percent,
   FilePlus, Hotel, ClipboardCheck, ChevronDown, Sparkles, TrendingDown,
+  FileSignature,
 } from 'lucide-react';
 import { clearAuth, getUser } from '@/lib/auth';
 import { useEffect, useMemo, useState } from 'react';
@@ -30,8 +31,9 @@ const CORE: Item[] = [
     { href: '/rooms',      label: 'Chambres',   icon: BedDouble  },
   ]},
   { key: 'clients', label: 'Clients', icon: Users, children: [
-    { href: '/clients',   label: 'Particuliers', icon: Users     },
-    { href: '/companies', label: 'Compagnies',   icon: Briefcase },
+    { href: '/clients',   label: 'Particuliers', icon: Users          },
+    { href: '/companies', label: 'Compagnies',   icon: Briefcase      },
+    { href: '/contracts', label: 'Contrats',     icon: FileSignature  },
   ]},
   { href: '/reservations', label: 'Réservations', icon: CalendarCheck },
   { href: '/prestations',  label: 'Prestations',  icon: Package       },

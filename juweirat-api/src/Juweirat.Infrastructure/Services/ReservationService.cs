@@ -114,22 +114,45 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         if (req.CheckOutDate <= req.CheckInDate)
             return (null, "checkOutDate must be after checkInDate");
 
-        Room? room = null;
-        if (req.RoomId is not null)
+        // ── Contrat compagnie (résa "occupant d'un contrat") ─────────────────
+        // Si CompanyContractId fourni, on résout d'abord le contrat car il impose
+        // la chambre et la compagnie du client. L'overlap check ignorera alors les
+        // autres résas du même contrat (co-occupants successifs autorisés).
+        CompanyContract? contract = null;
+        if (req.CompanyContractId is not null)
         {
-            room = await db.Rooms.Include(r => r.Category).FirstOrDefaultAsync(r => r.Id == req.RoomId.Value);
-            if (room is null) return (null, "Room not found");
-            if (room.Status != RoomStatus.Available) return (null, "Room is not available");
+            contract = await db.CompanyContracts.FindAsync(req.CompanyContractId.Value);
+            if (contract is null) return (null, "Contrat introuvable.");
+            if (contract.Status != ContractStatus.Active)
+                return (null, "Contrat non actif : impossible d'y rattacher une nouvelle occupation.");
+            if (req.CheckInDate < contract.StartDate || req.CheckOutDate > contract.EndDate)
+                return (null, "Les dates de l'occupation dépassent la période du contrat.");
+            if (req.RoomId is not null && req.RoomId.Value != contract.RoomId)
+                return (null, "La chambre doit être celle du contrat.");
+        }
 
-            var overlap = await CheckOverlapAsync(req.RoomId.Value, req.CheckInDate, req.CheckOutDate);
+        Room? room = null;
+        var effectiveRoomId = req.RoomId ?? contract?.RoomId;
+        if (effectiveRoomId is not null)
+        {
+            room = await db.Rooms.Include(r => r.Category).FirstOrDefaultAsync(r => r.Id == effectiveRoomId.Value);
+            if (room is null) return (null, "Room not found");
+            // Une chambre sous contrat peut être Occupied/HS pour l'usage public ; on autorise
+            // quand même le rattachement à son contrat propre (le contrat gouverne la disponibilité).
+            if (contract is null && room.Status != RoomStatus.Available)
+                return (null, "Room is not available");
+
+            var overlap = await CheckOverlapAsync(
+                effectiveRoomId.Value, req.CheckInDate, req.CheckOutDate,
+                contractContextId: contract?.Id);
             if (overlap)
             {
-                // Signal fort : le client (front, MCP, tiers) a envoyé une chambre
-                // déjà prise. Signe d'un picker/filter cassé quelque part.
                 logger.LogWarning(
-                    "[RESA-OVERLAP] Refus création : roomId={RoomId} déjà occupé sur {CheckIn}..{CheckOut} (source={Source}, clientId={ClientId})",
-                    req.RoomId.Value, req.CheckInDate, req.CheckOutDate, req.Source, req.ClientId);
-                return (null, "Room is already reserved for these dates");
+                    "[RESA-OVERLAP] Refus création : roomId={RoomId} déjà occupé sur {CheckIn}..{CheckOut} (source={Source}, clientId={ClientId}, contractId={ContractId})",
+                    effectiveRoomId.Value, req.CheckInDate, req.CheckOutDate, req.Source, req.ClientId, contract?.Id);
+                return (null, contract is null
+                    ? "Room is already reserved for these dates (ou bloquée par un contrat compagnie)"
+                    : "Cette période chevauche une autre occupation du même contrat sur cette chambre.");
             }
         }
 
@@ -167,6 +190,10 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
         var client = await db.Clients
             .Include(c => c.Company)
             .FirstOrDefaultAsync(c => c.Id == req.ClientId);
+
+        if (contract is not null && client is not null && client.CompanyId != contract.CompanyId)
+            return (null, "Le client doit être rattaché à la compagnie du contrat.");
+
         var isWebBooking = string.Equals(req.Source, "website", StringComparison.OrdinalIgnoreCase);
         var resolved = await ResolveTarifAsync(client, category, room, applyCompanyTarif: !isWebBooking);
 
@@ -250,6 +277,7 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             CarteSuffix           = req.CarteSuffix,
             CarteExpiration       = req.CarteExpiration,
             TvaExonere            = req.TvaExonere,
+            CompanyContractId     = contract?.Id,
         };
 
         db.Reservations.Add(reservation);
@@ -1020,11 +1048,21 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
     }
 
     // Vérifie si une chambre est déjà prise sur un créneau donné, tous canaux
-    // confondus : réservations, blocks manuels ET folios PMS actifs (y compris
-    // walk-in sans résa). Si excludeReservationId est fourni, la résa
-    // correspondante ET son folio lié sont ignorés (permet l'auto-édition sans
-    // se bloquer soi-même).
-    private async Task<bool> CheckOverlapAsync(long roomId, DateOnly checkIn, DateOnly checkOut, long? excludeReservationId = null)
+    // confondus : réservations, blocks manuels, folios PMS actifs (y compris
+    // walk-in sans résa) ET contrats compagnie couvrant la période.
+    //
+    // - excludeReservationId : la résa donnée ET son folio lié sont ignorés
+    //   (permet l'auto-édition sans se bloquer soi-même).
+    // - contractContextId : si fourni, la résa en cours de création s'inscrit
+    //   dans ce contrat compagnie ; on ignore alors (a) les résas du même contrat
+    //   entre elles (co-occupants successifs), et (b) le contrat lui-même en tant
+    //   que bloqueur externe (sinon toute résa dans un contrat serait bloquée).
+    private async Task<bool> CheckOverlapAsync(
+        long roomId,
+        DateOnly checkIn,
+        DateOnly checkOut,
+        long? excludeReservationId = null,
+        long? contractContextId = null)
     {
         var resaOverlap = await db.Reservations.AnyAsync(r =>
             r.RoomId == roomId &&
@@ -1032,7 +1070,8 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             r.Status != ReservationStatus.NoShow &&
             r.CheckInDate  < checkOut &&
             r.CheckOutDate > checkIn &&
-            (excludeReservationId == null || r.Id != excludeReservationId.Value));
+            (excludeReservationId == null || r.Id != excludeReservationId.Value) &&
+            (contractContextId    == null || r.CompanyContractId != contractContextId.Value));
 
         if (resaOverlap) return true;
 
@@ -1051,6 +1090,9 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
             f.ResaStatus != FolioResaStatus.Annulee &&
             f.ResaStatus != FolioResaStatus.NoShow &&
             (excludeReservationId == null || f.ReservationId != excludeReservationId.Value) &&
+            (contractContextId    == null
+                || f.Reservation == null
+                || f.Reservation.CompanyContractId != contractContextId.Value) &&
             (f.Reservation != null && f.Reservation.RoomId != null
                 ? f.Reservation.RoomId.Value == roomId &&
                   f.Reservation.CheckInDate  < checkOut &&
@@ -1059,7 +1101,22 @@ public class ReservationService(AppDbContext db, EmailService emailService, ILog
                   f.Arrival  < checkOut &&
                   f.Departure > checkIn));
 
-        return folioOverlap;
+        if (folioOverlap) return true;
+
+        // Contrat compagnie couvrant tout ou partie de la période : bloque toute
+        // résa NON rattachée à ce contrat (contractContextId == null → aucune
+        // résa hors contrat n'a le droit d'entrer sur les dates du contrat).
+        if (contractContextId is null)
+        {
+            var contractBlocking = await db.CompanyContracts.AnyAsync(c =>
+                c.RoomId == roomId &&
+                c.Status == ContractStatus.Active &&
+                c.StartDate < checkOut &&
+                c.EndDate   > checkIn);
+            if (contractBlocking) return true;
+        }
+
+        return false;
     }
 
     private async Task CreateFolioFromReservationAsync(Reservation r)

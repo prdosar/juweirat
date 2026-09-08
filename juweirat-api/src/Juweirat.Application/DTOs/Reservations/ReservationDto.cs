@@ -77,7 +77,10 @@ public record CreateReservationRequest(
     string? CarteExpiration = null,
     List<PrestationLigneRequest>? Prestations = null,
     bool TvaExonere = false,
-    int Discount = 0
+    int Discount = 0,
+    // Rattachement optionnel à un contrat compagnie long terme.
+    // Si présent : chambre imposée par le contrat, dates ⊂ contrat, client.CompanyId = contrat.CompanyId.
+    long? CompanyContractId = null
 );
 
 public record UpdateReservationStatusRequest(

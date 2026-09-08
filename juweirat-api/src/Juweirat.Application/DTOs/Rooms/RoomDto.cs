@@ -25,7 +25,10 @@ public record RoomDto(
     string? PmsGamme,
     List<RoomImageDto> Images,
     List<AmenityDto> Amenities,
-    RoomOccupationDto? CurrentOccupation = null
+    RoomOccupationDto? CurrentOccupation = null,
+    // Contrat compagnie actif couvrant aujourd'hui (indépendant de l'occupation).
+    // Peut être présent avec CurrentOccupation = null (chambre sous contrat, sans occupant du jour).
+    RoomContractDto? CurrentContract = null
 );
 
 /// <summary>Résa qui couvre la journée courante (client + jusqu'à quelle date).</summary>
@@ -37,6 +40,15 @@ public record RoomOccupationDto(
     DateOnly CheckInDate,
     DateOnly CheckOutDate,
     string Status
+);
+
+/// <summary>Contrat compagnie actif couvrant la journée courante sur la chambre.</summary>
+public record RoomContractDto(
+    long ContractId,
+    string Reference,
+    string CompanyName,
+    DateOnly StartDate,
+    DateOnly EndDate
 );
 
 public record RoomImageDto(

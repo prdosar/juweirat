@@ -24,8 +24,13 @@ public class RoomService(AppDbContext db)
             query = query.Where(r => r.Floor == floor);
 
         var rooms = await query.OrderBy(r => r.Floor).ThenBy(r => r.RoomNumber).ToListAsync();
-        var occupations = await LoadCurrentOccupationsAsync(rooms.Select(r => r.Id).ToList());
-        return rooms.Select(r => ToDto(r, occupations.GetValueOrDefault(r.Id))).ToList();
+        var roomIds     = rooms.Select(r => r.Id).ToList();
+        var occupations = await LoadCurrentOccupationsAsync(roomIds);
+        var contracts   = await LoadCurrentContractsAsync(roomIds);
+        return rooms.Select(r => ToDto(
+            r,
+            occupations.GetValueOrDefault(r.Id),
+            contracts.GetValueOrDefault(r.Id))).ToList();
     }
 
     public async Task<RoomDto?> GetByIdAsync(long id)
@@ -36,8 +41,12 @@ public class RoomService(AppDbContext db)
             .Include(r => r.Category)
             .FirstOrDefaultAsync(r => r.Id == id);
         if (room is null) return null;
-        var occupations = await LoadCurrentOccupationsAsync(new List<long> { room.Id });
-        return ToDto(room, occupations.GetValueOrDefault(room.Id));
+        var ids         = new List<long> { room.Id };
+        var occupations = await LoadCurrentOccupationsAsync(ids);
+        var contracts   = await LoadCurrentContractsAsync(ids);
+        return ToDto(room,
+            occupations.GetValueOrDefault(room.Id),
+            contracts.GetValueOrDefault(room.Id));
     }
 
     /// <summary>
@@ -72,6 +81,30 @@ public class RoomService(AppDbContext db)
             );
         }
         return dict;
+    }
+
+    /// <summary>
+    /// Pour chaque roomId, renvoie le contrat compagnie actif qui couvre aujourd'hui
+    /// (start ≤ today AND end > today, Status=Active). Utilisé par la page /rooms
+    /// pour afficher le badge "Sous contrat [Compagnie] jusqu'au …".
+    /// </summary>
+    private async Task<Dictionary<long, RoomContractDto>> LoadCurrentContractsAsync(List<long> roomIds)
+    {
+        if (roomIds.Count == 0) return new();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        var contracts = await db.CompanyContracts
+            .Include(c => c.Company)
+            .Where(c =>
+                roomIds.Contains(c.RoomId) &&
+                c.Status == ContractStatus.Active &&
+                c.StartDate <= today &&
+                c.EndDate    > today)
+            .ToListAsync();
+
+        return contracts.ToDictionary(
+            c => c.RoomId,
+            c => new RoomContractDto(c.Id, c.Reference, c.Company.Name, c.StartDate, c.EndDate));
     }
 
     public async Task<RoomDto> CreateAsync(CreateRoomRequest req)
@@ -297,7 +330,10 @@ public class RoomService(AppDbContext db)
         return rooms.Select(r => ToDto(r)).ToList();
     }
 
-    private static RoomDto ToDto(Room r, RoomOccupationDto? occupation = null) => new(
+    private static RoomDto ToDto(
+        Room r,
+        RoomOccupationDto? occupation = null,
+        RoomContractDto?   contract   = null) => new(
         r.Id, r.RoomNumber, r.Floor,
         r.NameFr, r.NameEn, r.DescriptionFr, r.DescriptionEn,
         r.CapacityAdults, r.CapacityChildren, r.SizeSqm,
@@ -310,6 +346,7 @@ public class RoomService(AppDbContext db)
         r.CategoryId, r.Category?.Slug, r.PmsType, r.PmsGamme,
         r.Images.Select(i => new RoomImageDto(i.Id, i.FilePath, i.AltTextFr, i.AltTextEn, i.SortOrder, i.IsCover)).ToList(),
         r.Amenities.Select(a => new AmenityDto(a.Id, a.NameFr, a.NameEn, a.Icon)).ToList(),
-        occupation
+        occupation,
+        contract
     );
 }

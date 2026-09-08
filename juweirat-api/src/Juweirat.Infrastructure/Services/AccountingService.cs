@@ -605,6 +605,108 @@ public class AccountingService(AppDbContext db, IHttpContextAccessor? httpContex
         await db.SaveChangesAsync();
     }
 
+    // Variante compagnie : la contrepartie est le compte auxiliaire Company.
+    // Utilisé par les factures mensuelles de contrats long terme (ContractInvoice),
+    // où le débiteur n'est pas un occupant (Client) mais la compagnie elle-même.
+    public async Task PostContractInvoiceSaleAsync(
+        long companyId,
+        decimal amountHt,
+        bool tvaExonere,
+        string sourceType,
+        long sourceId,
+        string label)
+    {
+        if (amountHt <= 0) return;
+
+        var companyAccount = await GetAuxiliaryAccountAsync(AccountKind.Company, companyId);
+        if (companyAccount is null) return;
+
+        var revenueAccount = await GetSystemAccountAsync(AccountKind.RevenueHebergement);
+        if (revenueAccount is null) return;
+
+        int ht  = (int)Math.Round(amountHt);
+        int tva = tvaExonere ? 0 : (int)Math.Round(ht * TVA_RATE);
+
+        QueueMovement(revenueAccount, companyAccount, ht,
+            MovementReason.Vente, sourceType, sourceId,
+            tva > 0 ? $"{label} — HT" : label);
+
+        if (tva > 0)
+        {
+            var tvaAccount = await GetSystemAccountAsync(AccountKind.TvaCollected);
+            if (tvaAccount is not null)
+            {
+                QueueMovement(tvaAccount, companyAccount, tva,
+                    MovementReason.TvaCollectee, sourceType, sourceId, $"{label} — TVA 18%");
+            }
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    // Encaissement d'une facture compagnie : Company → Caisse.
+    public async Task PostContractInvoicePaidAsync(
+        long companyId,
+        decimal amount,
+        string sourceType,
+        long sourceId,
+        string label,
+        long? createdByUserId = null)
+    {
+        if (amount <= 0) return;
+
+        var companyAccount = await GetAuxiliaryAccountAsync(AccountKind.Company, companyId);
+        if (companyAccount is null) return;
+
+        var cashAccount = await GetDefaultCashAccountAsync();
+        if (cashAccount is null) return;
+
+        var (autoSessionId, autoUserId) = await TryDetectCurrentSessionAsync(cashAccount.OwnerRefId);
+
+        QueueMovement(companyAccount, cashAccount, amount,
+            MovementReason.Encaissement, sourceType, sourceId, label,
+            autoSessionId, createdByUserId ?? autoUserId);
+
+        await db.SaveChangesAsync();
+    }
+
+    // Contre-passe l'écriture d'une facture contrat annulée. Symétrique de
+    // PostContractInvoiceSaleAsync (Company → Revenue, Company → TVA).
+    public async Task ReverseContractInvoiceSaleAsync(
+        long companyId,
+        decimal amountHt,
+        bool tvaExonere,
+        string sourceType,
+        long sourceId,
+        string label)
+    {
+        if (amountHt <= 0) return;
+
+        var companyAccount = await GetAuxiliaryAccountAsync(AccountKind.Company, companyId);
+        if (companyAccount is null) return;
+
+        var revenueAccount = await GetSystemAccountAsync(AccountKind.RevenueHebergement);
+        if (revenueAccount is null) return;
+
+        int ht  = (int)Math.Round(amountHt);
+        int tva = tvaExonere ? 0 : (int)Math.Round(ht * TVA_RATE);
+
+        QueueMovement(companyAccount, revenueAccount, ht,
+            MovementReason.Correction, sourceType, sourceId, $"Annulation {label} — HT");
+
+        if (tva > 0)
+        {
+            var tvaAccount = await GetSystemAccountAsync(AccountKind.TvaCollected);
+            if (tvaAccount is not null)
+            {
+                QueueMovement(companyAccount, tvaAccount, tva,
+                    MovementReason.Correction, sourceType, sourceId, $"Annulation {label} — TVA");
+            }
+        }
+
+        await db.SaveChangesAsync();
+    }
+
     // Entrée / sortie de caisse hors ventes (fond d'ouverture, retrait, achat matériel).
     // Contre-partie sur le compte système Expense pour rester équilibré.
     public async Task PostCashInOutAsync(

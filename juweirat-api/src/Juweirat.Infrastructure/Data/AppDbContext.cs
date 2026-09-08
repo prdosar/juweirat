@@ -32,6 +32,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<VenteDirecte>          VentesDirectes         { get; set; }
     public DbSet<Company>               Companies              { get; set; }
     public DbSet<CompanyTarif>          CompanyTarifs          { get; set; }
+    public DbSet<CompanyContract>       CompanyContracts       { get; set; }
+    public DbSet<ContractInvoice>       ContractInvoices       { get; set; }
     public DbSet<MaintenanceCategory>   MaintenanceCategories  { get; set; }
     public DbSet<MaintenanceStaff>      MaintenanceStaff       { get; set; }
     public DbSet<HousekeepingLog>       HousekeepingLogs       { get; set; }
@@ -137,6 +139,56 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
              .OnDelete(DeleteBehavior.Restrict);
         });
 
+        // ── companyContracts ──────────────────────────────────────
+        // Contrat long terme d'une compagnie sur une chambre. Bloque la chambre pour la
+        // compagnie sur [StartDate, EndDate[ ; les résas d'occupants s'y rattachent.
+        modelBuilder.Entity<CompanyContract>(e =>
+        {
+            e.HasIndex(c => c.Reference).IsUnique();
+            e.Property(c => c.Status)
+             .HasConversion<string>()
+             .HasDefaultValue(ContractStatus.Active);
+
+            e.HasOne(c => c.Company)
+             .WithMany(co => co.Contracts)
+             .HasForeignKey(c => c.CompanyId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(c => c.Room)
+             .WithMany()
+             .HasForeignKey(c => c.RoomId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            // Overlap check "1 contrat actif par chambre × période" : index composite
+            // pour accélérer la requête de chevauchement.
+            e.HasIndex(c => new { c.RoomId, c.StartDate, c.EndDate });
+
+            e.ToTable(t => t.HasCheckConstraint("ck_contractEndAfterStart",
+                "\"endDate\" > \"startDate\""));
+        });
+
+        // ── contractInvoices ──────────────────────────────────────
+        // Facture mensuelle d'un contrat compagnie. Une par mois par contrat.
+        modelBuilder.Entity<ContractInvoice>(e =>
+        {
+            e.HasIndex(i => i.Number).IsUnique();
+            e.Property(i => i.Status)
+             .HasConversion<string>()
+             .HasDefaultValue(ContractInvoiceStatus.Issued);
+            e.Property(i => i.TvaRate).HasPrecision(5, 4);
+
+            e.HasOne(i => i.Contract)
+             .WithMany()
+             .HasForeignKey(i => i.CompanyContractId)
+             .OnDelete(DeleteBehavior.Restrict);
+
+            // Anti-doublon strict : une seule facture par mois par contrat.
+            e.HasIndex(i => new { i.CompanyContractId, i.Year, i.Month }).IsUnique();
+
+            e.ToTable(t => t.HasCheckConstraint("ck_contractInvoiceMonthValid",
+                "\"month\" BETWEEN 1 AND 12"));
+        });
+
         // ── clients ───────────────────────────────────────────────
         modelBuilder.Entity<Client>(e =>
         {
@@ -169,6 +221,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
              .WithMany(c => c.Reservations)
              .HasForeignKey(r => r.ClientId)
              .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(r => r.CompanyContract)
+             .WithMany(cc => cc.Reservations)
+             .HasForeignKey(r => r.CompanyContractId)
+             .IsRequired(false)
+             .OnDelete(DeleteBehavior.SetNull);
+
+            e.HasIndex(r => r.CompanyContractId).HasFilter("\"companyContractId\" IS NOT NULL");
 
             e.ToTable(t => t.HasCheckConstraint("ck_checkOutAfterCheckIn",
                 "\"checkOutDate\" > \"checkInDate\""));
@@ -307,6 +367,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
              .WithOne(f => f.Facture)
              .HasForeignKey<Facture>(f => f.FolioId)
              .OnDelete(DeleteBehavior.Restrict);
+
+            e.HasOne(f => f.CompanyContract)
+             .WithMany()
+             .HasForeignKey(f => f.CompanyContractId)
+             .IsRequired(false)
+             .OnDelete(DeleteBehavior.SetNull);
+
+            e.HasIndex(f => f.CompanyContractId).HasFilter("\"companyContractId\" IS NOT NULL");
 
             // Snapshot figé en JSONB via le support JSON natif d'EF Core 8+.
             // HasColumnName explicite car ApplyCamelCaseNaming saute les types JSON-mappés.

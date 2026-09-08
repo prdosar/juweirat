@@ -247,6 +247,7 @@ export interface RoomDto {
   images: RoomImageDto[];
   amenities: AmenityDto[];
   currentOccupation?: RoomOccupationDto | null;
+  currentContract?: RoomContractDto | null;
 }
 
 export interface RoomOccupationDto {
@@ -257,6 +258,14 @@ export interface RoomOccupationDto {
   checkInDate: string;
   checkOutDate: string;
   status: string;
+}
+
+export interface RoomContractDto {
+  contractId: number;
+  reference: string;
+  companyName: string;
+  startDate: string;
+  endDate: string;
 }
 
 export interface ClientDto {
@@ -696,6 +705,93 @@ export interface RunDepreciationResult {
   assetsProcessed: number;
   skipped: number;
   totalAmount: number;
+}
+
+// ── Contrats compagnie ──────────────────────────────────────────────────────
+export interface CompanyContractDto {
+  id: number;
+  reference: string;
+  companyId: number;
+  companyName: string;
+  roomId: number;
+  roomNumber: string;
+  roomNameFr: string | null;
+  startDate: string;
+  endDate: string;
+  monthlyRate: number;
+  status: string; // Active | Ended | Cancelled
+  tvaExonere: boolean;
+  notes: string | null;
+  occupantCount: number;
+  createdAt: string;
+}
+
+export interface CompanyContractDetailDto {
+  id: number;
+  reference: string;
+  companyId: number;
+  companyName: string;
+  roomId: number;
+  roomNumber: string;
+  roomNameFr: string | null;
+  startDate: string;
+  endDate: string;
+  monthlyRate: number;
+  status: string;
+  tvaExonere: boolean;
+  notes: string | null;
+  createdAt: string;
+  occupants: ContractOccupantDto[];
+}
+
+export interface ContractOccupantDto {
+  reservationId: number;
+  reference: string;
+  clientId: number;
+  clientFullName: string;
+  checkInDate: string;
+  checkOutDate: string;
+  nights: number;
+  status: string;
+}
+
+export interface CompanyContractFilterParams {
+  pageNumber?: number;
+  pageSize?: number;
+  sortBy?: string;
+  isDescending?: boolean;
+  companyId?: number;
+  roomId?: number;
+  status?: string;   // Active | Ended | Cancelled
+  activeOn?: boolean; // filtrer les contrats couvrant aujourd'hui
+}
+
+// Facture mensuelle d'un contrat compagnie.
+export interface ContractInvoiceDto {
+  id: number;
+  number: string;                 // CT-INV-YYYY-MM-NNNN
+  companyContractId: number;
+  contractReference: string;
+  companyId: number;
+  companyName: string;
+  roomId: number;
+  roomNumber: string;
+  year: number;
+  month: number;                  // 1-12
+  periodStart: string;            // YYYY-MM-DD
+  periodEnd: string;
+  totalHt: number;
+  tva: number;
+  totalTtc: number;
+  tvaRate: number;
+  tvaExonere: boolean;
+  status: 'Issued' | 'Paid' | 'Cancelled' | string;
+  issuedAt: string;
+  paidAt: string | null;
+  paymentMethod: string | null;   // "Virement" | "Chèque" | "Cash"
+  paymentRef: string | null;
+  notes: string | null;
+  createdAt: string;
 }
 
 

@@ -51,6 +51,8 @@ builder.Services.AddScoped<PaginationService>();
 builder.Services.AddScoped<PrestationAnnexeService>();
 builder.Services.AddScoped<VenteDirecteService>();
 builder.Services.AddScoped<CompanyService>();
+builder.Services.AddScoped<CompanyContractService>();
+builder.Services.AddScoped<ContractInvoiceService>();
 builder.Services.AddScoped<MaintenanceStaffService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<AccountingService>();

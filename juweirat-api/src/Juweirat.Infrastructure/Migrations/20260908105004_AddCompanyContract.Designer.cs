@@ -3,6 +3,7 @@ using System;
 using Juweirat.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Juweirat.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260908105004_AddCompanyContract")]
+    partial class AddCompanyContract
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -700,116 +703,6 @@ namespace Juweirat.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("contactMessages");
-                });
-
-            modelBuilder.Entity("Juweirat.Domain.Entities.ContractInvoice", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint")
-                        .HasColumnName("id");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
-
-                    b.Property<long>("CompanyContractId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("companyContractId");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("createdAt");
-
-                    b.Property<DateTime>("IssuedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("issuedAt");
-
-                    b.Property<long?>("IssuedByUserId")
-                        .HasColumnType("bigint")
-                        .HasColumnName("issuedByUserId");
-
-                    b.Property<int>("Month")
-                        .HasColumnType("integer")
-                        .HasColumnName("month");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("text")
-                        .HasColumnName("notes");
-
-                    b.Property<string>("Number")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("number");
-
-                    b.Property<DateTime?>("PaidAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("paidAt");
-
-                    b.Property<string>("PaymentMethod")
-                        .HasColumnType("text")
-                        .HasColumnName("paymentMethod");
-
-                    b.Property<string>("PaymentRef")
-                        .HasColumnType("text")
-                        .HasColumnName("paymentRef");
-
-                    b.Property<DateOnly>("PeriodEnd")
-                        .HasColumnType("date")
-                        .HasColumnName("periodEnd");
-
-                    b.Property<DateOnly>("PeriodStart")
-                        .HasColumnType("date")
-                        .HasColumnName("periodStart");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("text")
-                        .HasDefaultValue("Issued")
-                        .HasColumnName("status");
-
-                    b.Property<int>("TotalHt")
-                        .HasColumnType("integer")
-                        .HasColumnName("totalHt");
-
-                    b.Property<int>("TotalTtc")
-                        .HasColumnType("integer")
-                        .HasColumnName("totalTtc");
-
-                    b.Property<int>("Tva")
-                        .HasColumnType("integer")
-                        .HasColumnName("tva");
-
-                    b.Property<bool>("TvaExonere")
-                        .HasColumnType("boolean")
-                        .HasColumnName("tvaExonere");
-
-                    b.Property<decimal>("TvaRate")
-                        .HasPrecision(5, 4)
-                        .HasColumnType("numeric(5,4)")
-                        .HasColumnName("tvaRate");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updatedAt");
-
-                    b.Property<int>("Year")
-                        .HasColumnType("integer")
-                        .HasColumnName("year");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Number")
-                        .IsUnique()
-                        .HasDatabaseName("iX_contractInvoices_number");
-
-                    b.HasIndex("CompanyContractId", "Year", "Month")
-                        .IsUnique()
-                        .HasDatabaseName("iX_contractInvoices_companyContractId_year_month");
-
-                    b.ToTable("contractInvoices", t =>
-                        {
-                            t.HasCheckConstraint("ck_contractInvoiceMonthValid", "\"month\" BETWEEN 1 AND 12");
-                        });
                 });
 
             modelBuilder.Entity("Juweirat.Domain.Entities.Debtor", b =>
@@ -2641,18 +2534,6 @@ namespace Juweirat.Infrastructure.Migrations
                     b.Navigation("Category");
 
                     b.Navigation("Company");
-                });
-
-            modelBuilder.Entity("Juweirat.Domain.Entities.ContractInvoice", b =>
-                {
-                    b.HasOne("Juweirat.Domain.Entities.CompanyContract", "Contract")
-                        .WithMany()
-                        .HasForeignKey("CompanyContractId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fK_contractInvoices_companyContracts_companyContractId");
-
-                    b.Navigation("Contract");
                 });
 
             modelBuilder.Entity("Juweirat.Domain.Entities.Debtor", b =>

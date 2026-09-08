@@ -16,4 +16,5 @@ public class Company
 
     public ICollection<Client> Clients { get; set; } = [];
     public ICollection<CompanyTarif> Tarifs { get; set; } = [];
+    public ICollection<CompanyContract> Contracts { get; set; } = [];
 }

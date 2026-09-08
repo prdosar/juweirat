@@ -10,6 +10,11 @@ public class Facture
     public long FolioId { get; set; }
     public Folio Folio { get; set; } = null!;
 
+    // Facture mensuelle d'un contrat compagnie (optionnel). Quand renseigné, Folio
+    // reste requis (folio "loyer contrat" créé par la génération de facture mensuelle).
+    public long? CompanyContractId { get; set; }
+    public CompanyContract? CompanyContract { get; set; }
+
     public DateOnly Date { get; set; }
     public FactureStatus Status { get; set; } = FactureStatus.Emise;
     public int PrintCount { get; set; }

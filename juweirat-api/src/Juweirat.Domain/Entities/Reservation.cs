@@ -9,6 +9,10 @@ public class Reservation
     public long? RoomId { get; set; }
     public long CategoryId { get; set; }
     public long ClientId { get; set; }
+    // Contrat compagnie long terme dans lequel s'inscrit cette résa (optionnel).
+    // Quand renseigné : la chambre est celle du contrat, dates ⊂ contrat, Client.CompanyId = contrat.CompanyId.
+    // Ces résas ne bloquent PAS d'autres résas du même contrat (l'overlap check les ignore entre elles).
+    public long? CompanyContractId { get; set; }
     public DateOnly CheckInDate { get; set; }
     public DateOnly CheckOutDate { get; set; }
     public int Nights { get; set; }
@@ -51,6 +55,7 @@ public class Reservation
     public Room? Room { get; set; }
     public RoomCategory Category { get; set; } = null!;
     public Client Client { get; set; } = null!;
+    public CompanyContract? CompanyContract { get; set; }
     public ICollection<Payment> Payments { get; set; } = [];
     public ICollection<ReservationPrestation> Prestations { get; set; } = [];
 

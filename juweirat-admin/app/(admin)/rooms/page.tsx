@@ -147,28 +147,39 @@ export default function RoomsPage() {
                               <span className="text-xs font-normal text-gray-400 ml-1">XOF</span>
                             </td>
                             <td className="px-5 py-3.5">
-                              {room.currentOccupation ? (
-                                <div className="flex flex-col gap-1">
-                                  <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 w-fit">
-                                    Occupée
-                                  </span>
-                                  <div className="text-[11px] leading-tight text-gray-500">
-                                    <div className="font-semibold text-charcoal truncate max-w-[160px]" title={room.currentOccupation.clientName}>
-                                      {room.currentOccupation.clientName}
-                                    </div>
-                                    {room.currentOccupation.companyName && (
-                                      <div className="text-blue-600 font-medium truncate max-w-[160px]" title={room.currentOccupation.companyName}>
-                                        🏢 {room.currentOccupation.companyName}
+                              <div className="flex flex-col gap-1">
+                                {room.currentOccupation ? (
+                                  <>
+                                    <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 w-fit">
+                                      Occupée
+                                    </span>
+                                    <div className="text-[11px] leading-tight text-gray-500">
+                                      <div className="font-semibold text-charcoal truncate max-w-[160px]" title={room.currentOccupation.clientName}>
+                                        {room.currentOccupation.clientName}
                                       </div>
-                                    )}
-                                    <div>Jusqu'au {room.currentOccupation.checkOutDate}</div>
-                                  </div>
-                                </div>
-                              ) : (
-                                <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${s.cls}`}>
-                                  {s.label}
-                                </span>
-                              )}
+                                      {room.currentOccupation.companyName && (
+                                        <div className="text-blue-600 font-medium truncate max-w-[160px]" title={room.currentOccupation.companyName}>
+                                          🏢 {room.currentOccupation.companyName}
+                                        </div>
+                                      )}
+                                      <div>Jusqu'au {room.currentOccupation.checkOutDate}</div>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full w-fit ${s.cls}`}>
+                                    {s.label}
+                                  </span>
+                                )}
+                                {room.currentContract && (
+                                  <Link
+                                    href={`/contracts/${room.currentContract.contractId}`}
+                                    className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 w-fit hover:bg-indigo-200 transition-colors flex items-center gap-1"
+                                    title={`Contrat ${room.currentContract.reference} jusqu'au ${room.currentContract.endDate}`}
+                                  >
+                                    📄 Contrat {room.currentContract.companyName}
+                                  </Link>
+                                )}
+                              </div>
                             </td>
                             <td className="px-5 py-3.5">
                               <div className="flex items-center justify-center gap-1.5">

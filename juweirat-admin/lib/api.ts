@@ -420,6 +420,78 @@ export const companies = {
     request<import('./types').CompanyStayDto[]>(`/api/companies/${id}/stays?from=${from}&to=${to}`),
 };
 
+// ── Contrats compagnie (long terme) ───────────────────────────────────────────
+export const companyContracts = {
+  getPaged: (params?: import('./types').CompanyContractFilterParams) => {
+    const qs = new URLSearchParams();
+    if (params?.pageNumber)                qs.set('pageNumber',   String(params.pageNumber));
+    if (params?.pageSize)                  qs.set('pageSize',     String(params.pageSize));
+    if (params?.sortBy)                    qs.set('sortBy',       params.sortBy);
+    if (params?.isDescending !== undefined) qs.set('isDescending', String(params.isDescending));
+    if (params?.companyId)                 qs.set('companyId',    String(params.companyId));
+    if (params?.roomId)                    qs.set('roomId',       String(params.roomId));
+    if (params?.status)                    qs.set('status',       params.status);
+    if (params?.activeOn !== undefined)    qs.set('activeOn',     String(params.activeOn));
+    return request<import('./types').PagedResult<import('./types').CompanyContractDto>>(`/api/company-contracts?${qs}`);
+  },
+  getById: (id: number) =>
+    request<import('./types').CompanyContractDetailDto>(`/api/company-contracts/${id}`),
+  create: (body: {
+    companyId: number;
+    roomId: number;
+    startDate: string;
+    endDate: string;
+    monthlyRate: number;
+    tvaExonere: boolean;
+    notes?: string;
+  }) =>
+    request<import('./types').CompanyContractDto>('/api/company-contracts', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  update: (id: number, body: Partial<{
+    endDate: string;
+    monthlyRate: number;
+    tvaExonere: boolean;
+    notes: string;
+  }>) =>
+    request<import('./types').CompanyContractDto>(`/api/company-contracts/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  end: (id: number, endedOn?: string) =>
+    request<void>(`/api/company-contracts/${id}/end`, {
+      method: 'POST',
+      body: JSON.stringify({ endedOn: endedOn ?? null }),
+    }),
+  cancel: (id: number) =>
+    request<void>(`/api/company-contracts/${id}/cancel`, { method: 'POST' }),
+
+  // Factures mensuelles rattachées à un contrat.
+  invoices: {
+    list: (contractId: number) =>
+      request<import('./types').ContractInvoiceDto[]>(`/api/company-contracts/${contractId}/invoices`),
+    generate: (contractId: number, year: number, month: number) =>
+      request<import('./types').ContractInvoiceDto>(`/api/company-contracts/${contractId}/invoices`, {
+        method: 'POST',
+        body: JSON.stringify({ year, month }),
+      }),
+  },
+};
+
+// ── Factures mensuelles de contrat (opérations individuelles) ────────────────
+export const contractInvoices = {
+  getById: (invoiceId: number) =>
+    request<import('./types').ContractInvoiceDto>(`/api/contract-invoices/${invoiceId}`),
+  pay: (invoiceId: number, body: { paymentMethod: string; paymentRef?: string; paidOn?: string }) =>
+    request<import('./types').ContractInvoiceDto>(`/api/contract-invoices/${invoiceId}/pay`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  cancel: (invoiceId: number) =>
+    request<import('./types').ContractInvoiceDto>(`/api/contract-invoices/${invoiceId}/cancel`, { method: 'POST' }),
+};
+
 // ── Contact Messages ──────────────────────────────────────────────────────────
 export const contactMessages = {
   getAll: (status?: string, search?: string) => {
