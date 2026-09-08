@@ -15,6 +15,11 @@ ARG NEXT_PUBLIC_API_URL=/api
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_AGENT_URL=/agent
 ENV NEXT_PUBLIC_AGENT_URL=$NEXT_PUBLIC_AGENT_URL
+# Next.js 16 standalone fige les rewrites au build dans required-server-files.json.
+# API_URL doit donc être présent au build pour que le proxy /uploads/* et /api/*
+# pointe sur juweirat-api en Docker (au lieu du fallback localhost:5177).
+ARG API_URL=http://juweirat-api:8080
+ENV API_URL=$API_URL
 RUN npm run build
 
 # Stage 3 — runner
