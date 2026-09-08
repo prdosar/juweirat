@@ -14,6 +14,11 @@ juweirat/
 docker-compose.override.yml
 docker-compose.override.yaml
 
+# Dumps de BDD (jamais commit — données clients)
+backups/
+*.dump
+*.sql.gz
+
 # Dependencies
 **/node_modules/
 **/.next/
