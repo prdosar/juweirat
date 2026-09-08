@@ -19,9 +19,10 @@ export default function NewContractPage() {
     roomId:      '' as number | '',
     startDate:   todayIso(),
     endDate:     addYearsIso(todayIso(), 1),
-    monthlyRate: 500000,
-    tvaExonere:  true,
-    notes:       '',
+    monthlyRate:  500000,
+    tvaExonere:   true,
+    elecIncluded: false,
+    notes:        '',
   });
 
   const [saving, setSaving] = useState(false);
@@ -63,13 +64,14 @@ export default function NewContractPage() {
     setError('');
     try {
       const dto = await companyContracts.create({
-        companyId:   Number(form.companyId),
-        roomId:      Number(form.roomId),
-        startDate:   form.startDate,
-        endDate:     form.endDate,
-        monthlyRate: form.monthlyRate,
-        tvaExonere:  form.tvaExonere,
-        notes:       form.notes || undefined,
+        companyId:    Number(form.companyId),
+        roomId:       Number(form.roomId),
+        startDate:    form.startDate,
+        endDate:      form.endDate,
+        monthlyRate:  form.monthlyRate,
+        tvaExonere:   form.tvaExonere,
+        elecIncluded: form.elecIncluded,
+        notes:        form.notes || undefined,
       });
       router.push(`/contracts/${dto.id}`);
     } catch (err: unknown) {
@@ -185,15 +187,31 @@ export default function NewContractPage() {
                 </p>
               </div>
 
-              <label className="flex items-center gap-2 text-sm text-charcoal">
-                <input
-                  type="checkbox"
-                  checked={form.tvaExonere}
-                  onChange={e => setForm(f => ({ ...f, tvaExonere: e.target.checked }))}
-                  className="rounded border-gray-300 text-green-dark focus:ring-green/30"
-                />
-                Exonération TVA sur les factures mensuelles
-              </label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm text-charcoal">
+                  <input
+                    type="checkbox"
+                    checked={form.tvaExonere}
+                    onChange={e => setForm(f => ({ ...f, tvaExonere: e.target.checked }))}
+                    className="rounded border-gray-300 text-green-dark focus:ring-green/30"
+                  />
+                  Exonération TVA sur les factures mensuelles
+                </label>
+
+                <label className="flex items-center gap-2 text-sm text-charcoal">
+                  <input
+                    type="checkbox"
+                    checked={form.elecIncluded}
+                    onChange={e => setForm(f => ({ ...f, elecIncluded: e.target.checked }))}
+                    className="rounded border-gray-300 text-green-dark focus:ring-green/30"
+                  />
+                  Électricité incluse dans le loyer
+                </label>
+                <p className="ml-6 text-[11px] text-gray-400 -mt-1">
+                  Par défaut décoché (forfait mensuel) — l&apos;élec est facturée à part par relevé.
+                  Cochez si la société l&apos;a négociée dans le loyer.
+                </p>
+              </div>
 
               <div>
                 <label className={labelCls}>Notes internes</label>

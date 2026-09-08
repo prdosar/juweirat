@@ -721,6 +721,7 @@ export interface CompanyContractDto {
   monthlyRate: number;
   status: string; // Active | Ended | Cancelled
   tvaExonere: boolean;
+  elecIncluded: boolean;
   notes: string | null;
   occupantCount: number;
   createdAt: string;
@@ -739,6 +740,7 @@ export interface CompanyContractDetailDto {
   monthlyRate: number;
   status: string;
   tvaExonere: boolean;
+  elecIncluded: boolean;
   notes: string | null;
   createdAt: string;
   occupants: ContractOccupantDto[];
@@ -785,6 +787,7 @@ export interface ContractInvoiceDto {
   totalTtc: number;
   tvaRate: number;
   tvaExonere: boolean;
+  elecIncluded: boolean;
   status: 'Issued' | 'Paid' | 'Cancelled' | string;
   issuedAt: string;
   paidAt: string | null;

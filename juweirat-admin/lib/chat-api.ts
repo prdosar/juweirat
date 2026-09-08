@@ -4,6 +4,7 @@
 // sa propre URL de base. Utilise le même JWT localStorage que l'API .NET.
 
 import type { AgentEvent, ChatMessage, ChatSession } from './types';
+import { clearAuth } from './auth';
 
 // En dev, l'agent tourne sur localhost:3010.
 // En prod, nginx expose /agent → 3010.
@@ -22,8 +23,7 @@ function authHeaders(): Record<string, string> {
 async function json<T>(res: Response): Promise<T> {
   if (res.status === 401) {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('juweirat_token');
-      localStorage.removeItem('juweirat_user');
+      clearAuth();
       window.location.href = '/login';
     }
     throw new Error('Unauthorized');

@@ -21,6 +21,7 @@ public record ContractInvoiceDto(
     int TotalTtc,
     decimal TvaRate,
     bool TvaExonere,
+    bool ElecIncluded,
     string Status,           // Issued | Paid | Cancelled
     DateTime IssuedAt,
     DateTime? PaidAt,

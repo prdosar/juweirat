@@ -1,8 +1,18 @@
+import { clearAuth } from './auth';
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
 
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('juweirat_token');
+}
+
+// clearAuth() efface localStorage + cookie ; sans le cookie, le proxy
+// Next.js renvoyait /login → /dashboard en boucle.
+function handle401(): void {
+  if (typeof window === 'undefined') return;
+  clearAuth();
+  window.location.href = '/login';
 }
 
 async function request<T>(
@@ -19,11 +29,7 @@ async function request<T>(
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
 
   if (res.status === 401) {
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('juweirat_token');
-      localStorage.removeItem('juweirat_user');
-      window.location.href = '/login';
-    }
+    handle401();
     throw new Error('Unauthorized');
   }
 
@@ -64,7 +70,7 @@ export const categories = {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body,
     });
-    if (res.status === 401) { window.location.href = '/login'; throw new Error('Unauthorized'); }
+    if (res.status === 401) { handle401(); throw new Error('Unauthorized'); }
     if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error ?? `HTTP ${res.status}`); }
     return res.json();
   },
@@ -308,7 +314,7 @@ export const roomImages = {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body,
     });
-    if (res.status === 401) { window.location.href = '/login'; throw new Error('Unauthorized'); }
+    if (res.status === 401) { handle401(); throw new Error('Unauthorized'); }
     if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error ?? `HTTP ${res.status}`); }
     return res.json();
   },
@@ -443,6 +449,7 @@ export const companyContracts = {
     endDate: string;
     monthlyRate: number;
     tvaExonere: boolean;
+    elecIncluded: boolean;
     notes?: string;
   }) =>
     request<import('./types').CompanyContractDto>('/api/company-contracts', {
@@ -453,6 +460,7 @@ export const companyContracts = {
     endDate: string;
     monthlyRate: number;
     tvaExonere: boolean;
+    elecIncluded: boolean;
     notes: string;
   }>) =>
     request<import('./types').CompanyContractDto>(`/api/company-contracts/${id}`, {

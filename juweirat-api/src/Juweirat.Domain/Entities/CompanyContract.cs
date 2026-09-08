@@ -25,6 +25,12 @@ public class CompanyContract
     // TVA exonérée sur les factures mensuelles générées (miroir Reservation.TvaExonere).
     public bool TvaExonere { get; set; }
 
+    // Électricité incluse dans le loyer forfaitaire. Défaut false : sur les forfaits
+    // mensuels (comme la nuitée N30), l'électricité est facturée à part par relevé.
+    // Si true, la mention "(électricité incluse)" est apposée sur la facture et
+    // la compta n'ajoute pas de ligne conso élec en fin de mois.
+    public bool ElecIncluded { get; set; }
+
     public string? Notes { get; set; }
 
     public long? CreatedByUserId { get; set; }

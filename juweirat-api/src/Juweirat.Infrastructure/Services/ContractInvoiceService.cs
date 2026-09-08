@@ -104,6 +104,7 @@ public class ContractInvoiceService(AppDbContext db, AccountingService accountin
             TotalTtc            = totalTtc,
             TvaRate             = contract.TvaExonere ? 0m : TVA_RATE,
             TvaExonere          = contract.TvaExonere,
+            ElecIncluded        = contract.ElecIncluded,
             Status              = ContractInvoiceStatus.Issued,
             IssuedAt            = DateTime.UtcNow,
             IssuedByUserId      = userId,
@@ -122,7 +123,7 @@ public class ContractInvoiceService(AppDbContext db, AccountingService accountin
                 tvaExonere: contract.TvaExonere,
                 sourceType: "ContractInvoice",
                 sourceId:   invoice.Id,
-                label:      $"Facture {invoice.Number} · {contract.Company.Name} · Ch. {contract.Room.RoomNumber} · {month:D2}/{year}");
+                label:      $"Facture {invoice.Number} · {contract.Company.Name} · Ch. {contract.Room.RoomNumber} · {month:D2}/{year} · {(contract.ElecIncluded ? "élec incluse" : "hors élec")}");
         }
         catch { /* silent */ }
 
@@ -224,7 +225,7 @@ public class ContractInvoiceService(AppDbContext db, AccountingService accountin
         i.Contract.CompanyId, i.Contract.Company.Name,
         i.Contract.RoomId, i.Contract.Room.RoomNumber,
         i.Year, i.Month, i.PeriodStart, i.PeriodEnd,
-        i.TotalHt, i.Tva, i.TotalTtc, i.TvaRate, i.TvaExonere,
+        i.TotalHt, i.Tva, i.TotalTtc, i.TvaRate, i.TvaExonere, i.ElecIncluded,
         i.Status.ToString(),
         i.IssuedAt, i.PaidAt, i.PaymentMethod, i.PaymentRef,
         i.Notes, i.CreatedAt

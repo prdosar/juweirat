@@ -16,6 +16,7 @@ public record CompanyContractDto(
     int MonthlyRate,
     string Status,
     bool TvaExonere,
+    bool ElecIncluded,
     string? Notes,
     int OccupantCount,
     DateTime CreatedAt
@@ -34,6 +35,7 @@ public record CompanyContractDetailDto(
     int MonthlyRate,
     string Status,
     bool TvaExonere,
+    bool ElecIncluded,
     string? Notes,
     DateTime CreatedAt,
     List<ContractOccupantDto> Occupants
@@ -57,6 +59,7 @@ public record CreateCompanyContractRequest(
     [Required] DateOnly EndDate,
     [Range(0, int.MaxValue)] int MonthlyRate,
     bool TvaExonere,
+    bool ElecIncluded,
     string? Notes
 );
 
@@ -64,6 +67,7 @@ public record UpdateCompanyContractRequest(
     DateOnly? EndDate,
     int? MonthlyRate,
     bool? TvaExonere,
+    bool? ElecIncluded,
     string? Notes
 );
 

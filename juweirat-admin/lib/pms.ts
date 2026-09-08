@@ -4,6 +4,7 @@ import type {
   FactureDto, ContractDataDto,
   MaintenanceTicketDto, MaintenanceCategoryDto, MaintenanceStaffDto, DebiteurDto,
 } from './pmsTypes';
+import { clearAuth } from './auth';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8080';
 
@@ -23,8 +24,7 @@ async function pmsReq<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (res.status === 401) {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('juweirat_token');
-      localStorage.removeItem('juweirat_user');
+      clearAuth();
       window.location.href = '/login';
     }
     throw new Error('Non autorisé');

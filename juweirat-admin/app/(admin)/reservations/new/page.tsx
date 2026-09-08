@@ -239,7 +239,7 @@ function NewReservationPageInner() {
             roomId: c.roomId, roomNumber: c.roomNumber, roomNameFr: c.roomNameFr,
             startDate: c.startDate, endDate: c.endDate,
             monthlyRate: c.monthlyRate, status: c.status,
-            tvaExonere: c.tvaExonere, notes: c.notes,
+            tvaExonere: c.tvaExonere, elecIncluded: c.elecIncluded, notes: c.notes,
             occupantCount: c.occupants.length,
             createdAt: c.createdAt,
           },

@@ -9,7 +9,7 @@ import type { CompanyContractDetailDto, ContractInvoiceDto, ContractOccupantDto 
 import {
   ArrowLeft, FileSignature, Building2, BedDouble, CalendarDays,
   Users, Plus, CheckCircle2, XCircle, Pencil, Save, X, Receipt,
-  Loader2, AlertCircle,
+  Loader2, AlertCircle, Zap,
 } from 'lucide-react';
 
 export default function ContractDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -157,6 +157,11 @@ export default function ContractDetailPage({ params }: { params: Promise<{ id: s
               <InfoRow icon={BedDouble} label="Chambre" value={`${contract.roomNumber}${contract.roomNameFr ? ' · ' + contract.roomNameFr : ''}`} link={`/rooms`} />
               <InfoRow icon={CalendarDays} label="Période" value={`${formatDate(contract.startDate)} → ${formatDate(contract.endDate)}`} />
               <InfoRow icon={Receipt} label="Loyer mensuel" value={`${formatMoney(contract.monthlyRate)}${contract.tvaExonere ? ' · TVA exonérée' : ''}`} />
+              <InfoRow
+                icon={Zap}
+                label="Électricité"
+                value={contract.elecIncluded ? 'Incluse dans le loyer' : 'Non incluse — facturée à part'}
+              />
               {contract.notes && (
                 <div className="md:col-span-2">
                   <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1">Notes</div>
@@ -385,6 +390,10 @@ function InvoicesSection({ contractId, contract }: {
                   <tr key={inv.id} className="hover:bg-gray-50/70 transition-colors">
                     <td className="px-6 py-3">
                       <div className="font-mono text-xs font-semibold text-charcoal">{inv.number}</div>
+                      <div className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
+                        <Zap size={9} className={inv.elecIncluded ? 'text-green-dark' : 'text-gray-400'} />
+                        {inv.elecIncluded ? 'électricité incluse' : 'hors électricité'}
+                      </div>
                       {inv.notes && <div className="text-[10px] text-gray-400 mt-0.5">{inv.notes}</div>}
                     </td>
                     <td className="px-6 py-3 text-charcoal text-xs">
@@ -679,10 +688,11 @@ function EditForm({ contract, onCancel, onSaved }: {
   onSaved: () => void | Promise<void>;
 }) {
   const [form, setForm] = useState({
-    endDate:     contract.endDate,
-    monthlyRate: contract.monthlyRate,
-    tvaExonere:  contract.tvaExonere,
-    notes:       contract.notes ?? '',
+    endDate:      contract.endDate,
+    monthlyRate:  contract.monthlyRate,
+    tvaExonere:   contract.tvaExonere,
+    elecIncluded: contract.elecIncluded,
+    notes:        contract.notes ?? '',
   });
   const [saving, setSaving] = useState(false);
   const [error,  setError]  = useState('');
@@ -693,10 +703,11 @@ function EditForm({ contract, onCancel, onSaved }: {
     setError('');
     try {
       await companyContracts.update(contract.id, {
-        endDate:     form.endDate,
-        monthlyRate: form.monthlyRate,
-        tvaExonere:  form.tvaExonere,
-        notes:       form.notes,
+        endDate:      form.endDate,
+        monthlyRate:  form.monthlyRate,
+        tvaExonere:   form.tvaExonere,
+        elecIncluded: form.elecIncluded,
+        notes:        form.notes,
       });
       await onSaved();
     } catch (err) {
@@ -725,10 +736,16 @@ function EditForm({ contract, onCancel, onSaved }: {
           <input type="number" min={0} step={5000} value={form.monthlyRate} onChange={e => setForm(f => ({ ...f, monthlyRate: Number(e.target.value) }))} className={inputCls} />
         </div>
       </div>
-      <label className="flex items-center gap-2 text-sm text-charcoal">
-        <input type="checkbox" checked={form.tvaExonere} onChange={e => setForm(f => ({ ...f, tvaExonere: e.target.checked }))} className="rounded border-gray-300 text-green-dark focus:ring-green/30" />
-        Exonération TVA
-      </label>
+      <div className="space-y-2">
+        <label className="flex items-center gap-2 text-sm text-charcoal">
+          <input type="checkbox" checked={form.tvaExonere} onChange={e => setForm(f => ({ ...f, tvaExonere: e.target.checked }))} className="rounded border-gray-300 text-green-dark focus:ring-green/30" />
+          Exonération TVA
+        </label>
+        <label className="flex items-center gap-2 text-sm text-charcoal">
+          <input type="checkbox" checked={form.elecIncluded} onChange={e => setForm(f => ({ ...f, elecIncluded: e.target.checked }))} className="rounded border-gray-300 text-green-dark focus:ring-green/30" />
+          Électricité incluse dans le loyer
+        </label>
+      </div>
       <div>
         <label className={labelCls}>Notes</label>
         <textarea rows={3} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className={`${inputCls} resize-none`} />

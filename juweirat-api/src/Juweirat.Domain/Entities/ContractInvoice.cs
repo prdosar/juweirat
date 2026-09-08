@@ -27,6 +27,10 @@ public class ContractInvoice
     public decimal TvaRate { get; set; } // 0.18 ou 0
     public bool TvaExonere { get; set; }
 
+    // Snapshot du statut électricité au moment de l'émission (le contrat peut
+    // évoluer ; la facture émise doit rester lisible dans son état d'origine).
+    public bool ElecIncluded { get; set; }
+
     public ContractInvoiceStatus Status { get; set; } = ContractInvoiceStatus.Issued;
 
     public DateTime IssuedAt { get; set; } = DateTime.UtcNow;

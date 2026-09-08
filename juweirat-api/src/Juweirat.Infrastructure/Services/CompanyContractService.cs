@@ -83,6 +83,7 @@ public class CompanyContractService(AppDbContext db)
             MonthlyRate     = req.MonthlyRate,
             Status          = ContractStatus.Active,
             TvaExonere      = req.TvaExonere,
+            ElecIncluded    = req.ElecIncluded,
             Notes           = req.Notes,
             CreatedByUserId = userId,
         };
@@ -133,9 +134,10 @@ public class CompanyContractService(AppDbContext db)
             contract.EndDate = req.EndDate.Value;
         }
 
-        if (req.MonthlyRate is not null) contract.MonthlyRate = req.MonthlyRate.Value;
-        if (req.TvaExonere  is not null) contract.TvaExonere  = req.TvaExonere.Value;
-        if (req.Notes       is not null) contract.Notes       = req.Notes;
+        if (req.MonthlyRate  is not null) contract.MonthlyRate  = req.MonthlyRate.Value;
+        if (req.TvaExonere   is not null) contract.TvaExonere   = req.TvaExonere.Value;
+        if (req.ElecIncluded is not null) contract.ElecIncluded = req.ElecIncluded.Value;
+        if (req.Notes        is not null) contract.Notes        = req.Notes;
 
         await db.SaveChangesAsync();
         return (ToDto(contract), null);
@@ -211,7 +213,7 @@ public class CompanyContractService(AppDbContext db)
         c.CompanyId, c.Company.Name,
         c.RoomId, c.Room.RoomNumber, c.Room.NameFr,
         c.StartDate, c.EndDate, c.MonthlyRate,
-        c.Status.ToString(), c.TvaExonere, c.Notes,
+        c.Status.ToString(), c.TvaExonere, c.ElecIncluded, c.Notes,
         c.Reservations.Count(r => r.Status != ReservationStatus.Cancelled),
         c.CreatedAt
     );
@@ -221,7 +223,7 @@ public class CompanyContractService(AppDbContext db)
         c.CompanyId, c.Company.Name,
         c.RoomId, c.Room.RoomNumber, c.Room.NameFr,
         c.StartDate, c.EndDate, c.MonthlyRate,
-        c.Status.ToString(), c.TvaExonere, c.Notes,
+        c.Status.ToString(), c.TvaExonere, c.ElecIncluded, c.Notes,
         c.CreatedAt,
         c.Reservations
          .OrderBy(r => r.CheckInDate)
