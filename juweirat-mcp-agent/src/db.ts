@@ -35,6 +35,38 @@ export async function queryOne<T extends pg.QueryResultRow = pg.QueryResultRow>(
   return rows[0] ?? null;
 }
 
+/**
+ * Exécute une série d'opérations dans une seule transaction, sur un client
+ * dédié du pool. BEGIN/COMMIT/ROLLBACK sont gérés — l'appelant reçoit une
+ * fonction `q` qui route ses requêtes sur ce client.
+ *
+ * Nécessaire quand plusieurs requêtes doivent partager la même connexion
+ * (transactions, LOCK, SET LOCAL). `query()` sinon prend un client random du
+ * pool à chaque appel → BEGIN d'un côté, COMMIT de l'autre = pas de transaction.
+ */
+export async function withTransaction<T>(
+  fn: (q: (sql: string, params?: readonly unknown[]) => Promise<pg.QueryResult>) => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    // Si `params` absent → mode "simple query" pg (multi-statement autorisé),
+    // sinon "extended query" (statement unique + placeholders $1, $2…).
+    // Nécessaire pour les migrations SQL qui contiennent parfois plusieurs
+    // instructions dans un même fichier.
+    const q = (sql: string, params?: readonly unknown[]) =>
+      params ? client.query(sql, params as unknown[]) : client.query(sql);
+    const result = await fn(q);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 export async function closePool(): Promise<void> {
   await pool.end();
 }

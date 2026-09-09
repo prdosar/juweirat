@@ -34,11 +34,12 @@ COPY juweirat-mcp/package.json juweirat-mcp/package-lock.json ./
 RUN npm ci --omit=dev --fetch-timeout=600000 --fetch-retries=5
 COPY --from=mcp-build /build/dist ./dist
 
-# juweirat-mcp-agent : deps prod + dist compilé.
+# juweirat-mcp-agent : deps prod + dist compilé + migrations SQL appliquées au boot.
 WORKDIR /app/juweirat-mcp-agent
 COPY juweirat-mcp-agent/package.json juweirat-mcp-agent/package-lock.json ./
 RUN npm ci --omit=dev --fetch-timeout=600000 --fetch-retries=5
 COPY --from=agent-build /build/dist ./dist
+COPY juweirat-mcp-agent/migrations ./migrations
 
 # Pointe l'agent sur le mcp bundlé dans la même image.
 ENV MCP_SERVER_ENTRY=/app/juweirat-mcp/dist/index.js

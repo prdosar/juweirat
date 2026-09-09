@@ -3,11 +3,16 @@ import express from "express";
 import { config } from "./config.js";
 import { startMcpClient, stopMcpClient, getTools } from "./mcp-client.js";
 import { closePool } from "./db.js";
+import { runMigrations } from "./migrations.js";
 import chatRouter from "./routes/chat.js";
 import telegramRouter from "./telegram/webhook.js";
 import { startSignalRClient, stopSignalRClient } from "./notifications/signalr-client.js";
 
 async function main(): Promise<void> {
+  // Applique les migrations SQL avant tout — l'agent refuse de démarrer si le
+  // schéma n'est pas à jour, on évite un crash au premier INSERT.
+  await runMigrations();
+
   await startMcpClient();
   console.log(`[agent] Tools MCP disponibles : ${getTools().map((t) => t.name).join(", ")}`);
 

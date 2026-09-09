@@ -1,100 +1,86 @@
 # Déploiement agent MCP sur le VPS
 
-Guide à copier-coller sur le VPS `juweirat.com` pour mettre l'agent en prod.
+Le schéma est géré automatiquement : les fichiers `migrations/*.sql` sont
+appliqués au boot du container (voir `src/migrations.ts`). **Aucune commande
+`psql` manuelle** à lancer à chaque deploy — juste `.env` + `docker compose`.
 
-Toutes les commandes sont à exécuter depuis `~/apps/juweirat/` (chemin repo côté serveur — à ajuster si différent).
+## Setup initial (une seule fois par env)
 
-## 1. Pré-requis
+1. **User Postgres READ-ONLY** — création + mot de passe fort :
+   ```bash
+   MCP_RO_PW='<openssl rand -base64 24>'
+   cat juweirat-mcp/scripts/create_mcp_ro_user.sql | \
+     docker exec -i juweirat-postgres psql -U juweirat -d juweirat \
+       -v mcp_password="'${MCP_RO_PW}'"
+   ```
+   Attendu : `users` **absent** de la liste des tables SELECTables par le RO.
 
-- Docker Desktop / docker-ce fonctionnel sur le VPS (déjà OK).
-- Nginx hôte en front (déjà OK, il proxy `app.juweirat.com` vers `127.0.0.1:3002`).
-- Le repo Juweirat clone à jour sur `master`.
+2. **Tables chat initiales** (`ChatSessions`, `ChatMessages`, `McpAuditLog`) :
+   ```bash
+   cat juweirat-mcp-agent/scripts/create_chat_tables.sql | \
+     docker exec -i juweirat-postgres psql -U juweirat -d juweirat
+   ```
 
-## 2. Créer le user Postgres READ-ONLY
+3. **`.env` racine** — variables minimales :
+   ```env
+   ANTHROPIC_API_KEY=sk-ant-api03-<clé>
+   AGENT_MODEL=claude-sonnet-4-6            # optionnel, défaut = ce modèle
+   MCP_PG_USER=juweirat_mcp_ro
+   MCP_PG_PASSWORD=<même_valeur_que_MCP_RO_PW>
+   JWT_SECRET=<partagé_avec_juweirat-api>
+   # Optionnel — canal Telegram staff
+   TELEGRAM_BOT_TOKEN=<botfather>
+   TELEGRAM_WEBHOOK_SECRET=<openssl rand -hex 32>
+   TELEGRAM_ADMIN_IDS=<id_numérique_admin>
+   ```
 
-**Une seule fois.** Choisir un mot de passe fort (ex `openssl rand -base64 24`).
-
-```bash
-MCP_RO_PW='<mot_de_passe_fort_généré>'
-
-cat juweirat-mcp/scripts/create_mcp_ro_user.sql | \
-  docker exec -i juweirat-postgres psql -U juweirat -d juweirat \
-    -v mcp_password="'${MCP_RO_PW}'"
-```
-
-Attendu : liste des 29 tables lisibles par `juweirat_mcp_ro` (rooms, folios, etc.),
-et `users` **absent** de la liste.
-
-## 3. Créer les tables chat de l'agent
-
-**Idempotent** — safe à ré-exécuter.
-
-```bash
-cat juweirat-mcp-agent/scripts/create_chat_tables.sql | \
-  docker exec -i juweirat-postgres psql -U juweirat -d juweirat
-```
-
-Attendu : `ChatSessions`, `ChatMessages`, `McpAuditLog` listées.
-
-## 4. Ajouter les variables au `.env` prod
-
-Éditer `.env` à la racine du repo et ajouter (ou vérifier) :
-
-```env
-# Anthropic (Claude Messages API) — depuis la migration OpenAI → Anthropic (2026-09-09)
-ANTHROPIC_API_KEY=sk-ant-api03-<vraie_clé>
-AGENT_MODEL=claude-sonnet-4-6
-
-# Nouveau — mot de passe défini à l'étape 2
-MCP_PG_USER=juweirat_mcp_ro
-MCP_PG_PASSWORD=<même_valeur_que_MCP_RO_PW_étape_2>
-```
-
-`JWT_SECRET` doit déjà être présent (partagé avec juweirat-api).
-
-## 5. Pull + build + up
+## Déploiement courant
 
 ```bash
 git pull
-docker compose build juweirat-mcp-agent juweirat-admin
-docker compose up -d juweirat-mcp-agent juweirat-admin nginx
-# Important : nginx cache les IPs docker, si l'admin ou l'agent ont bougé
-# il faut le redémarrer pour qu'il recharge les upstreams.
-docker compose restart nginx
+docker compose build juweirat-mcp-agent
+docker compose up -d juweirat-mcp-agent
+docker compose restart nginx      # rafraîchir les upstreams (IPs Docker)
 ```
 
-## 6. Smoke tests
-
-```bash
-# Health de l'agent, direct depuis l'hôte (via nginx docker interne)
-curl -s -H "Host: app.juweirat.com" http://127.0.0.1:3002/agent/health
-# → {"status":"ok","model":"gpt-4o-mini","toolsCount":13}
-
-# Health via HTTPS public (nginx hôte SSL)
-curl -s https://app.juweirat.com/agent/health
-# → même résultat
+Les migrations `migrations/*.sql` neuves passent au boot. Log attendu :
+```
+[migrations] N migration(s) à appliquer : ...
+[migrations] ✓ 20260909_001_add_content_blocks.sql (12ms)
+[migrations] ✓ 20260909_002_grant_ro_new_tables.sql (8ms)
 ```
 
-Puis se connecter sur `https://app.juweirat.com`, ouvrir le widget chat en
-bas à droite, poser une question type « occupation de la semaine » et
-vérifier que la réponse arrive avec les vrais chiffres.
-
-## 7. Logs et diagnostic
+## Smoke tests
 
 ```bash
-# Logs live agent
+curl -s https://app.juweirat.com/agent/health | jq
+# → {"status":"ok","model":"claude-sonnet-4-6","toolsCount":17,"telegram":true}
+```
+
+Puis widget admin (`https://app.juweirat.com`) ou bot Telegram → une question
+type « occupation cette semaine ».
+
+## Diagnostic
+
+```bash
 docker compose logs -f juweirat-mcp-agent
 
-# Vérifier que le subprocess MCP a bien démarré
-docker compose logs juweirat-mcp-agent | grep "13 tools"
+# Historique des migrations appliquées
+docker exec -i juweirat-postgres psql -U juweirat -d juweirat -c \
+  'SELECT "name", "appliedAt" FROM "_agent_migrations" ORDER BY "appliedAt";'
 
-# Audit des appels de tools par l'agent
+# Audit des appels de tools MCP
 docker exec -i juweirat-postgres psql -U juweirat -d juweirat -c \
   'SELECT tool, "durationMs", "isError", "createdAt" FROM "McpAuditLog" ORDER BY "createdAt" DESC LIMIT 20;'
 ```
 
+## Ajouter une nouvelle migration
+
+1. Créer `migrations/YYYYMMDD_NNN_description.sql` (SQL pur, idempotent, pas de
+   meta-commands psql `\d` `\echo` `\gexec`).
+2. Commit + push. Le prochain deploy l'applique automatiquement au boot.
+
 ## Rollback
 
-L'agent est indépendant du reste : `docker compose stop juweirat-mcp-agent`
-suffit à le couper sans impact sur l'API / le site / l'admin. Le widget
-côté admin affichera juste une erreur au premier message.
+`docker compose stop juweirat-mcp-agent` suffit — aucun impact sur site/admin
+(le widget affichera une erreur au premier message, c'est tout).
