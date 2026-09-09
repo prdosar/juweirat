@@ -6,6 +6,7 @@ import * as comparePeriods from "./compare-periods.js";
 import * as reservations from "./reservations.js";
 import * as folios from "./folios.js";
 import * as housekeeping from "./housekeeping.js";
+import * as contracts from "./contracts.js";
 
 export interface McpTool<TSchema extends ZodTypeAny = ZodTypeAny> {
   name: string;
@@ -42,4 +43,10 @@ export const tools: McpTool[] = [
   { ...housekeeping.cleaningHistoryDefinition, handler: housekeeping.cleaningHistoryHandler as AnyHandler },
   { ...housekeeping.cleaningsOnDefinition, handler: housekeeping.cleaningsOnHandler as AnyHandler },
   { ...housekeeping.ticketsDefinition, handler: housekeeping.ticketsHandler as AnyHandler },
+
+  // ── Contrats compagnie (baux long terme + factures périodiques) ──
+  { ...contracts.listDefinition,     handler: contracts.listHandler     as AnyHandler },
+  { ...contracts.getDefinition,      handler: contracts.getHandler      as AnyHandler },
+  { ...contracts.invoicesDefinition, handler: contracts.invoicesHandler as AnyHandler },
+  { ...contracts.summaryDefinition,  handler: contracts.summaryHandler  as AnyHandler },
 ];

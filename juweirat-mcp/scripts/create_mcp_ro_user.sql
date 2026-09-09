@@ -35,13 +35,16 @@ WHERE schemaname = 'public'
   AND tablename IN (
     'rooms', 'roomCategories', 'roomImages', 'amenities', 'roomAmenities',
     'clients', 'companies', 'companyTarifs',
-    'reservations', 'payments', 'roomBlocks',
+    'companyContracts', 'contractInvoices',
+    'reservations', 'reservationChangeLogs', 'payments', 'roomBlocks',
     'hotelConfig', 'folios', 'factures', 'postings', 'clotures',
     'maintenanceCategories', 'maintenanceStaff', 'maintenanceTickets', 'debtors',
     'housekeepingLogs',
     'prestationsAnnexes', 'reservationPrestations', 'ventesDirectes',
     'contactMessages',
-    'accounts', 'accountMovements', 'cashRegisters', 'cashSessions'
+    'accounts', 'accountMovements', 'cashRegisters', 'cashSessions',
+    'suppliers', 'expenseCategories', 'expenses',
+    'fixedAssets', 'depreciationEntries'
   )
 \gexec
 
