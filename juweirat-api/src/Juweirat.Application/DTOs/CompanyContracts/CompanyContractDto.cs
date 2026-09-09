@@ -14,6 +14,7 @@ public record CompanyContractDto(
     DateOnly StartDate,
     DateOnly EndDate,
     int MonthlyRate,
+    string BillingFrequency,   // Monthly | Quarterly | SemiAnnual | Annual
     string Status,
     bool TvaExonere,
     bool ElecIncluded,
@@ -33,6 +34,7 @@ public record CompanyContractDetailDto(
     DateOnly StartDate,
     DateOnly EndDate,
     int MonthlyRate,
+    string BillingFrequency,
     string Status,
     bool TvaExonere,
     bool ElecIncluded,
@@ -58,6 +60,7 @@ public record CreateCompanyContractRequest(
     [Required] DateOnly StartDate,
     [Required] DateOnly EndDate,
     [Range(0, int.MaxValue)] int MonthlyRate,
+    string? BillingFrequency,  // "Monthly" | "Quarterly" | "SemiAnnual" | "Annual" (défaut Monthly)
     bool TvaExonere,
     bool ElecIncluded,
     string? Notes

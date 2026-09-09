@@ -17,8 +17,13 @@ public class CompanyContract
     public DateOnly StartDate { get; set; }
     public DateOnly EndDate { get; set; }
 
-    // Loyer mensuel forfaitaire facturé à la compagnie (FCFA).
+    // Loyer mensuel forfaitaire de référence (FCFA). Le montant réel facturé
+    // dépend de la fréquence : Mensuel = MonthlyRate, Trimestriel = ×3, etc.
     public int MonthlyRate { get; set; }
+
+    // Rythme de facturation. Les périodes s'alignent sur la date d'anniversaire
+    // du contrat (StartDate), pas sur le calendrier civil.
+    public BillingFrequency BillingFrequency { get; set; } = BillingFrequency.Monthly;
 
     public ContractStatus Status { get; set; } = ContractStatus.Active;
 

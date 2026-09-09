@@ -13,6 +13,11 @@ public class Reservation
     // Quand renseigné : la chambre est celle du contrat, dates ⊂ contrat, Client.CompanyId = contrat.CompanyId.
     // Ces résas ne bloquent PAS d'autres résas du même contrat (l'overlap check les ignore entre elles).
     public long? CompanyContractId { get; set; }
+
+    // Résa "conteneur" auto-générée à la création du contrat compagnie pour bloquer
+    // la chambre sur toute la durée du bail. N'apparaît PAS dans la liste des occupants
+    // réels (employés) rattachés au contrat.
+    public bool IsContractPlaceholder { get; set; }
     public DateOnly CheckInDate { get; set; }
     public DateOnly CheckOutDate { get; set; }
     public int Nights { get; set; }

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import { companies, companyContracts, rooms } from '@/lib/api';
-import type { CompanyDto, RoomDto } from '@/lib/types';
+import type { BillingFrequency, CompanyDto, RoomDto } from '@/lib/types';
 import { ArrowLeft, FileSignature, Save, AlertTriangle } from 'lucide-react';
 
 export default function NewContractPage() {
@@ -15,14 +15,15 @@ export default function NewContractPage() {
   const [roomList,    setRoomList]    = useState<RoomDto[]>([]);
 
   const [form, setForm] = useState({
-    companyId:   '' as number | '',
-    roomId:      '' as number | '',
-    startDate:   todayIso(),
-    endDate:     addYearsIso(todayIso(), 1),
-    monthlyRate:  500000,
-    tvaExonere:   true,
-    elecIncluded: false,
-    notes:        '',
+    companyId:        '' as number | '',
+    roomId:           '' as number | '',
+    startDate:        todayIso(),
+    endDate:          addYearsIso(todayIso(), 1),
+    monthlyRate:      500000,
+    billingFrequency: 'Monthly' as BillingFrequency,
+    tvaExonere:       true,
+    elecIncluded:     false,
+    notes:            '',
   });
 
   const [saving, setSaving] = useState(false);
@@ -64,14 +65,15 @@ export default function NewContractPage() {
     setError('');
     try {
       const dto = await companyContracts.create({
-        companyId:    Number(form.companyId),
-        roomId:       Number(form.roomId),
-        startDate:    form.startDate,
-        endDate:      form.endDate,
-        monthlyRate:  form.monthlyRate,
-        tvaExonere:   form.tvaExonere,
-        elecIncluded: form.elecIncluded,
-        notes:        form.notes || undefined,
+        companyId:        Number(form.companyId),
+        roomId:           Number(form.roomId),
+        startDate:        form.startDate,
+        endDate:          form.endDate,
+        monthlyRate:      form.monthlyRate,
+        billingFrequency: form.billingFrequency,
+        tvaExonere:       form.tvaExonere,
+        elecIncluded:     form.elecIncluded,
+        notes:            form.notes || undefined,
       });
       router.push(`/contracts/${dto.id}`);
     } catch (err: unknown) {
@@ -172,20 +174,35 @@ export default function NewContractPage() {
                 </div>
               </div>
 
-              <div>
-                <label className={labelCls}>Loyer mensuel (FCFA) *</label>
-                <input
-                  type="number"
-                  min={0}
-                  step={5000}
-                  value={form.monthlyRate}
-                  onChange={e => setForm(f => ({ ...f, monthlyRate: Number(e.target.value) }))}
-                  className={inputCls}
-                />
-                <p className="mt-1 text-xs text-gray-400">
-                  Ce montant sera facturé chaque mois à la compagnie, indépendamment des occupants.
-                </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls}>Loyer mensuel de référence (FCFA) *</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={5000}
+                    value={form.monthlyRate}
+                    onChange={e => setForm(f => ({ ...f, monthlyRate: Number(e.target.value) }))}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Fréquence de facturation *</label>
+                  <select
+                    value={form.billingFrequency}
+                    onChange={e => setForm(f => ({ ...f, billingFrequency: e.target.value as BillingFrequency }))}
+                    className={inputCls}
+                  >
+                    <option value="Monthly">Mensuelle (× 1 mois)</option>
+                    <option value="Quarterly">Trimestrielle (× 3 mois)</option>
+                    <option value="SemiAnnual">Semestrielle (× 6 mois)</option>
+                    <option value="Annual">Annuelle (× 12 mois)</option>
+                  </select>
+                </div>
               </div>
+              <p className="text-xs text-gray-400 -mt-2">
+                {billingHint(form.monthlyRate, form.billingFrequency)}
+              </p>
 
               <div className="space-y-2">
                 <label className="flex items-center gap-2 text-sm text-charcoal">
@@ -261,4 +278,18 @@ function addYearsIso(iso: string, years: number): string {
 function formatDate(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+const MONTHS_PER_FREQ: Record<BillingFrequency, number> = {
+  Monthly: 1, Quarterly: 3, SemiAnnual: 6, Annual: 12,
+};
+
+function billingHint(monthlyRate: number, freq: BillingFrequency): string {
+  const n = MONTHS_PER_FREQ[freq];
+  const perInvoice = monthlyRate * n;
+  const kind = freq === 'Monthly'    ? 'chaque mois'
+             : freq === 'Quarterly'  ? 'tous les 3 mois'
+             : freq === 'SemiAnnual' ? 'tous les 6 mois'
+             : 'une fois par an';
+  return `Une facture de ${new Intl.NumberFormat('fr-FR').format(perInvoice)} F HT sera émise ${kind} (aligné sur la date de début du contrat).`;
 }

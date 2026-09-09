@@ -38,7 +38,7 @@ public class CompanyContractsController(
     [Authorize(Roles = "admin,receptionniste,comptable")]
     public async Task<IActionResult> GenerateInvoice(long id, [FromBody] GenerateContractInvoiceRequest req)
     {
-        var (dto, error) = await invoiceService.GenerateAsync(id, req.Year, req.Month, GetCurrentUserId());
+        var (dto, error) = await invoiceService.GenerateAsync(id, req.PeriodIndex, GetCurrentUserId());
         if (error is not null)
             return error.Contains("introuvable") ? NotFound(new { error }) : Conflict(new { error });
         return CreatedAtAction(nameof(ContractInvoicesController.GetById), "ContractInvoices", new { invoiceId = dto!.Id }, dto);

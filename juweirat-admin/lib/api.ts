@@ -448,6 +448,7 @@ export const companyContracts = {
     startDate: string;
     endDate: string;
     monthlyRate: number;
+    billingFrequency: import('./types').BillingFrequency;
     tvaExonere: boolean;
     elecIncluded: boolean;
     notes?: string;
@@ -475,14 +476,14 @@ export const companyContracts = {
   cancel: (id: number) =>
     request<void>(`/api/company-contracts/${id}/cancel`, { method: 'POST' }),
 
-  // Factures mensuelles rattachées à un contrat.
+  // Factures périodiques rattachées à un contrat (fréquence portée par le contrat).
   invoices: {
     list: (contractId: number) =>
       request<import('./types').ContractInvoiceDto[]>(`/api/company-contracts/${contractId}/invoices`),
-    generate: (contractId: number, year: number, month: number) =>
+    generate: (contractId: number, periodIndex: number) =>
       request<import('./types').ContractInvoiceDto>(`/api/company-contracts/${contractId}/invoices`, {
         method: 'POST',
-        body: JSON.stringify({ year, month }),
+        body: JSON.stringify({ periodIndex }),
       }),
   },
 };

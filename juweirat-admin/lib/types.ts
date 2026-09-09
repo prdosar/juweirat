@@ -708,6 +708,8 @@ export interface RunDepreciationResult {
 }
 
 // ── Contrats compagnie ──────────────────────────────────────────────────────
+export type BillingFrequency = 'Monthly' | 'Quarterly' | 'SemiAnnual' | 'Annual';
+
 export interface CompanyContractDto {
   id: number;
   reference: string;
@@ -719,6 +721,7 @@ export interface CompanyContractDto {
   startDate: string;
   endDate: string;
   monthlyRate: number;
+  billingFrequency: BillingFrequency;
   status: string; // Active | Ended | Cancelled
   tvaExonere: boolean;
   elecIncluded: boolean;
@@ -738,6 +741,7 @@ export interface CompanyContractDetailDto {
   startDate: string;
   endDate: string;
   monthlyRate: number;
+  billingFrequency: BillingFrequency;
   status: string;
   tvaExonere: boolean;
   elecIncluded: boolean;
@@ -768,20 +772,21 @@ export interface CompanyContractFilterParams {
   activeOn?: boolean; // filtrer les contrats couvrant aujourd'hui
 }
 
-// Facture mensuelle d'un contrat compagnie.
+// Facture périodique d'un contrat compagnie (fréquence portée par le contrat).
 export interface ContractInvoiceDto {
   id: number;
-  number: string;                 // CT-INV-YYYY-MM-NNNN
+  number: string;                 // CT-INV-YYYY-NNNN
   companyContractId: number;
   contractReference: string;
   companyId: number;
   companyName: string;
   roomId: number;
   roomNumber: string;
-  year: number;
-  month: number;                  // 1-12
+  periodIndex: number;            // 1-based, période depuis début du contrat
+  monthsCovered: number;          // 1 | 3 | 6 | 12 (snapshot)
+  year: number;                   // année de periodStart
   periodStart: string;            // YYYY-MM-DD
-  periodEnd: string;
+  periodEnd: string;              // YYYY-MM-DD inclusive
   totalHt: number;
   tva: number;
   totalTtc: number;

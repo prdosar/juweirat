@@ -5,11 +5,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Header from '@/components/Header';
 import { companyContracts, contractInvoices as contractInvoicesApi } from '@/lib/api';
-import type { CompanyContractDetailDto, ContractInvoiceDto, ContractOccupantDto } from '@/lib/types';
+import type { BillingFrequency, CompanyContractDetailDto, ContractInvoiceDto, ContractOccupantDto } from '@/lib/types';
 import {
   ArrowLeft, FileSignature, Building2, BedDouble, CalendarDays,
   Users, Plus, CheckCircle2, XCircle, Pencil, Save, X, Receipt,
-  Loader2, AlertCircle, Zap,
+  Loader2, AlertCircle, Zap, Repeat,
 } from 'lucide-react';
 
 export default function ContractDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -158,6 +158,11 @@ export default function ContractDetailPage({ params }: { params: Promise<{ id: s
               <InfoRow icon={CalendarDays} label="Période" value={`${formatDate(contract.startDate)} → ${formatDate(contract.endDate)}`} />
               <InfoRow icon={Receipt} label="Loyer mensuel" value={`${formatMoney(contract.monthlyRate)}${contract.tvaExonere ? ' · TVA exonérée' : ''}`} />
               <InfoRow
+                icon={Repeat}
+                label="Facturation"
+                value={`${FREQ_LABEL_FR[contract.billingFrequency]} · ${formatMoney(contract.monthlyRate * MONTHS_PER_FREQ[contract.billingFrequency])} HT/facture`}
+              />
+              <InfoRow
                 icon={Zap}
                 label="Électricité"
                 value={contract.elecIncluded ? 'Incluse dans le loyer' : 'Non incluse — facturée à part'}
@@ -233,12 +238,55 @@ export default function ContractDetailPage({ params }: { params: Promise<{ id: s
   );
 }
 
-/* ─────────────────────────── Factures mensuelles ─────────────────────────── */
+/* ─────────────────────────── Factures périodiques ─────────────────────────── */
 
-const MONTHS_FR = [
-  '', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
-  'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
-];
+// Nombre de mois par période selon la fréquence de facturation.
+const MONTHS_PER_FREQ: Record<BillingFrequency, number> = {
+  Monthly: 1, Quarterly: 3, SemiAnnual: 6, Annual: 12,
+};
+
+const FREQ_LABEL_FR: Record<BillingFrequency, string> = {
+  Monthly:    'Mensuelle',
+  Quarterly:  'Trimestrielle',
+  SemiAnnual: 'Semestrielle',
+  Annual:     'Annuelle',
+};
+
+const FREQ_SHORT_FR: Record<BillingFrequency, string> = {
+  Monthly:    'Mens.',
+  Quarterly:  'Trim.',
+  SemiAnnual: 'Sem.',
+  Annual:     'An.',
+};
+
+// Calcule le libellé d'une période à partir de la date de début du contrat.
+function computePeriodBounds(contractStart: string, contractEnd: string, freq: BillingFrequency, periodIndex: number) {
+  const n = MONTHS_PER_FREQ[freq];
+  const start = new Date(contractStart + 'T00:00:00');
+  start.setMonth(start.getMonth() + (periodIndex - 1) * n);
+  const natural = new Date(start);
+  natural.setMonth(natural.getMonth() + n);
+  const end = new Date(contractEnd + 'T00:00:00');
+  const effective = natural < end ? natural : end;
+  // Inclusive end = effective - 1 day
+  const endInclusive = new Date(effective);
+  endInclusive.setDate(endInclusive.getDate() - 1);
+  return {
+    start,
+    endInclusive,
+    partial: effective.getTime() !== natural.getTime(),
+  };
+}
+
+// Nombre total de périodes couvertes par le contrat (dernière tronquée possible).
+function totalPeriods(contractStart: string, contractEnd: string, freq: BillingFrequency): number {
+  const n = MONTHS_PER_FREQ[freq];
+  const start = new Date(contractStart + 'T00:00:00');
+  const end   = new Date(contractEnd   + 'T00:00:00');
+  const months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth())
+                 + (end.getDate() >= start.getDate() ? 0 : -1);
+  return Math.max(1, Math.ceil(months / n));
+}
 
 function InvoicesSection({ contractId, contract }: {
   contractId: number;
@@ -250,10 +298,11 @@ function InvoicesSection({ contractId, contract }: {
   const [busy,    setBusy]      = useState(false);
   const [payTarget, setPayTarget] = useState<ContractInvoiceDto | null>(null);
 
-  // Sélecteur mois/année pour la génération. Par défaut : mois courant.
-  const now = new Date();
-  const [year,  setYear]  = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const total = totalPeriods(contract.startDate, contract.endDate, contract.billingFrequency);
+  const billedIndexes = new Set(invoices.filter(i => i.status !== 'Cancelled').map(i => i.periodIndex));
+  const pendingIndexes = Array.from({ length: total }, (_, i) => i + 1).filter(idx => !billedIndexes.has(idx));
+
+  const [selectedPeriod, setSelectedPeriod] = useState<number>(pendingIndexes[0] ?? 1);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -269,11 +318,18 @@ function InvoicesSection({ contractId, contract }: {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Après chargement des factures, cale le sélecteur sur la prochaine période à facturer.
+  useEffect(() => {
+    if (pendingIndexes.length > 0 && !pendingIndexes.includes(selectedPeriod)) {
+      setSelectedPeriod(pendingIndexes[0]);
+    }
+  }, [invoices, pendingIndexes, selectedPeriod]);
+
   async function handleGenerate() {
     setBusy(true);
     setError('');
     try {
-      await companyContracts.invoices.generate(contractId, year, month);
+      await companyContracts.invoices.generate(contractId, selectedPeriod);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -296,12 +352,6 @@ function InvoicesSection({ contractId, contract }: {
     }
   }
 
-  // Années sélectionnables : de l'année de début du contrat à l'année de fin.
-  const startYear = new Date(contract.startDate).getFullYear();
-  const endYear   = new Date(contract.endDate).getFullYear();
-  const yearOptions: number[] = [];
-  for (let y = startYear; y <= endYear; y++) yearOptions.push(y);
-
   const totalIssued = invoices
     .filter(i => i.status === 'Issued')
     .reduce((s, i) => s + i.totalTtc, 0);
@@ -309,32 +359,33 @@ function InvoicesSection({ contractId, contract }: {
     .filter(i => i.status === 'Paid')
     .reduce((s, i) => s + i.totalTtc, 0);
 
+  const canGenerate = contract.status !== 'Cancelled' && pendingIndexes.length > 0;
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
       <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-gray-100 flex-wrap">
         <div className="flex items-center gap-2">
           <Receipt size={16} className="text-gray-500" />
-          <h3 className="text-sm font-bold text-charcoal">Factures mensuelles ({invoices.length})</h3>
+          <h3 className="text-sm font-bold text-charcoal">
+            Factures {FREQ_LABEL_FR[contract.billingFrequency].toLowerCase()}s ({invoices.length}/{total})
+          </h3>
         </div>
-        {contract.status !== 'Cancelled' && (
+        {canGenerate && (
           <div className="flex items-center gap-2">
             <select
-              value={month}
-              onChange={e => setMonth(Number(e.target.value))}
+              value={selectedPeriod}
+              onChange={e => setSelectedPeriod(Number(e.target.value))}
               disabled={busy}
               className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-green/30 focus:border-green/40"
             >
-              {MONTHS_FR.slice(1).map((label, i) => (
-                <option key={i + 1} value={i + 1}>{label}</option>
-              ))}
-            </select>
-            <select
-              value={year}
-              onChange={e => setYear(Number(e.target.value))}
-              disabled={busy}
-              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-green/30 focus:border-green/40"
-            >
-              {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+              {pendingIndexes.map(idx => {
+                const b = computePeriodBounds(contract.startDate, contract.endDate, contract.billingFrequency, idx);
+                return (
+                  <option key={idx} value={idx}>
+                    P{idx} · {formatShortDate(b.start.toISOString())} → {formatShortDate(b.endInclusive.toISOString())}{b.partial ? ' (partielle)' : ''}
+                  </option>
+                );
+              })}
             </select>
             <button
               onClick={handleGenerate}
@@ -361,7 +412,7 @@ function InvoicesSection({ contractId, contract }: {
         </div>
       ) : invoices.length === 0 ? (
         <div className="px-6 py-10 text-center text-sm text-gray-400">
-          Aucune facture générée. Sélectionnez un mois et cliquez sur « Générer facture ».
+          Aucune facture générée. Sélectionnez une période et cliquez sur « Générer facture ».
         </div>
       ) : (
         <>
@@ -397,7 +448,12 @@ function InvoicesSection({ contractId, contract }: {
                       {inv.notes && <div className="text-[10px] text-gray-400 mt-0.5">{inv.notes}</div>}
                     </td>
                     <td className="px-6 py-3 text-charcoal text-xs">
-                      {MONTHS_FR[inv.month]} {inv.year}
+                      <div className="font-semibold">
+                        {FREQ_SHORT_FR[monthsToFreq(inv.monthsCovered)]} P{inv.periodIndex}
+                      </div>
+                      <div className="text-[10px] text-gray-500 font-mono mt-0.5">
+                        {formatShortDate(inv.periodStart)} → {formatShortDate(inv.periodEnd)}
+                      </div>
                     </td>
                     <td className="px-6 py-3 text-right text-charcoal">{formatMoney(inv.totalHt)}</td>
                     <td className="px-6 py-3 text-right text-gray-500 text-xs">
@@ -765,6 +821,18 @@ function EditForm({ contract, onCancel, onSaved }: {
 function formatDate(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function formatShortDate(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
+function monthsToFreq(months: number): BillingFrequency {
+  if (months === 12) return 'Annual';
+  if (months === 6)  return 'SemiAnnual';
+  if (months === 3)  return 'Quarterly';
+  return 'Monthly';
 }
 
 function formatMoney(n: number): string {

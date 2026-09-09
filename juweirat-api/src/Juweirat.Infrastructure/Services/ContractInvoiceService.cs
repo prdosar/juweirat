@@ -6,10 +6,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Juweirat.Infrastructure.Services;
 
-// Factures mensuelles de contrats compagnie long terme.
-// Une facture par (contrat × année × mois) — garanti par l'index unique en base.
-// La facturation est indépendante des occupants : c'est le MonthlyRate figé au
-// moment de l'émission (snapshot) qui compte.
+// Factures périodiques de contrats compagnie long terme.
+// La fréquence (Mensuelle/Trimestrielle/Semestrielle/Annuelle) est portée par le
+// contrat ; les périodes s'alignent sur StartDate (date d'anniversaire), pas sur
+// le calendrier civil. Une facture par (contrat × periodIndex) — garanti par
+// l'index unique en base.
 public class ContractInvoiceService(AppDbContext db, AccountingService accountingService)
 {
     // Taux TVA appliqué au Togo — miroir de FactureService/AccountingService.
@@ -23,7 +24,7 @@ public class ContractInvoiceService(AppDbContext db, AccountingService accountin
             .Include(i => i.Contract).ThenInclude(c => c.Company)
             .Include(i => i.Contract).ThenInclude(c => c.Room)
             .Where(i => i.CompanyContractId == contractId)
-            .OrderByDescending(i => i.Year).ThenByDescending(i => i.Month)
+            .OrderByDescending(i => i.PeriodIndex)
             .ToListAsync();
         return invoices.Select(ToDto).ToList();
     }
@@ -38,13 +39,14 @@ public class ContractInvoiceService(AppDbContext db, AccountingService accountin
     }
 
     // ── Génération ──────────────────────────────────────────────────────
-    // Idempotence : l'index unique (contractId, year, month) empêche les doublons.
-    // Si le contrat ne couvre qu'une partie du mois (démarrage/fin en cours de
-    // mois), le montant est proratisé au nombre de jours actifs / jours du mois.
+    // Idempotence : l'index unique (contractId, periodIndex) empêche les doublons.
+    // La période est calculée à partir de contract.StartDate + (periodIndex-1)×N mois,
+    // où N est le nombre de mois par période (Mensuel=1, Trimestriel=3, etc.).
+    // Si la période dépasse contract.EndDate, on tronque et on proratise.
     public async Task<(ContractInvoiceDto? dto, string? error)> GenerateAsync(
-        long contractId, int year, int month, long? userId)
+        long contractId, int periodIndex, long? userId)
     {
-        if (month is < 1 or > 12) return (null, "Mois invalide.");
+        if (periodIndex < 1) return (null, "L'index de période doit être ≥ 1.");
 
         var contract = await db.CompanyContracts
             .Include(c => c.Company)
@@ -55,50 +57,55 @@ public class ContractInvoiceService(AppDbContext db, AccountingService accountin
         if (contract.Status == ContractStatus.Cancelled)
             return (null, "Impossible de facturer un contrat annulé.");
 
-        // Chevauchement contrat × mois civil.
-        var monthStart = new DateOnly(year, month, 1);
-        var monthEnd   = monthStart.AddMonths(1).AddDays(-1); // dernier jour inclusif
-        var daysInMonth = monthEnd.DayNumber - monthStart.DayNumber + 1;
+        var monthsPerPeriod = contract.BillingFrequency.MonthsPerPeriod();
 
-        // Actif dans le mois = [max(StartDate, monthStart), min(EndDate - 1j, monthEnd)]
-        // (EndDate est exclusive dans le contrat, monthEnd est inclusif ici)
-        var contractLastDay = contract.EndDate.AddDays(-1);
-        var activeStart = contract.StartDate > monthStart ? contract.StartDate : monthStart;
-        var activeEnd   = contractLastDay   < monthEnd   ? contractLastDay   : monthEnd;
-        if (activeEnd < activeStart)
-            return (null, $"Le contrat ne couvre pas {month:D2}/{year}.");
+        // Période "naturelle" : [periodStart, naturalEnd[ (exclusive).
+        var periodStart = contract.StartDate.AddMonths((periodIndex - 1) * monthsPerPeriod);
+        var naturalEnd  = periodStart.AddMonths(monthsPerPeriod);
 
-        var activeDays = activeEnd.DayNumber - activeStart.DayNumber + 1;
+        if (periodStart >= contract.EndDate)
+            return (null, $"La période P{periodIndex} est au-delà de la fin du contrat.");
+
+        // Tronquée si le contrat s'arrête avant la fin naturelle.
+        var effectiveEnd = naturalEnd < contract.EndDate ? naturalEnd : contract.EndDate;
+
+        var activeDays = effectiveEnd.DayNumber - periodStart.DayNumber;
+        var fullDays   = naturalEnd.DayNumber - periodStart.DayNumber;
+        if (activeDays <= 0)
+            return (null, $"La période P{periodIndex} ne couvre aucun jour actif.");
 
         // Anti-doublon applicatif (double sécurité en plus de l'index DB).
         var exists = await db.ContractInvoices
-            .AnyAsync(i => i.CompanyContractId == contractId && i.Year == year && i.Month == month);
+            .AnyAsync(i => i.CompanyContractId == contractId && i.PeriodIndex == periodIndex);
         if (exists)
-            return (null, $"Une facture existe déjà pour {month:D2}/{year} sur ce contrat.");
+            return (null, $"Une facture existe déjà pour la période P{periodIndex} sur ce contrat.");
 
-        // Snapshot montant — prorata si période partielle.
-        int totalHt = activeDays == daysInMonth
-            ? contract.MonthlyRate
-            : (int)Math.Round((decimal)contract.MonthlyRate * activeDays / daysInMonth);
+        // Snapshot montant — prorata si période partielle (dernière période tronquée).
+        var fullPeriodHt = contract.MonthlyRate * monthsPerPeriod;
+        int totalHt = activeDays == fullDays
+            ? fullPeriodHt
+            : (int)Math.Round((decimal)fullPeriodHt * activeDays / fullDays);
         int tva      = contract.TvaExonere ? 0 : (int)Math.Round(totalHt * TVA_RATE);
         int totalTtc = totalHt + tva;
 
-        // Notes automatiques si période partielle.
+        // Notes automatiques si période partielle (contrat s'arrête au milieu).
         string? autoNotes = null;
-        if (activeDays != daysInMonth)
+        if (activeDays != fullDays)
         {
-            autoNotes = $"Période partielle : {activeDays} jour(s) sur {daysInMonth} " +
-                        $"({activeStart:dd/MM} → {activeEnd:dd/MM})";
+            autoNotes = $"Période partielle : {activeDays} jour(s) sur {fullDays} " +
+                        $"({periodStart:dd/MM/yyyy} → {effectiveEnd.AddDays(-1):dd/MM/yyyy})";
         }
 
+        var year = periodStart.Year;
         var invoice = new ContractInvoice
         {
-            Number              = await GenerateNumberAsync(year, month),
+            Number              = await GenerateNumberAsync(year),
             CompanyContractId   = contract.Id,
+            PeriodIndex         = periodIndex,
+            MonthsCovered       = monthsPerPeriod,
             Year                = year,
-            Month               = month,
-            PeriodStart         = monthStart,
-            PeriodEnd           = monthEnd,
+            PeriodStart         = periodStart,
+            PeriodEnd           = effectiveEnd.AddDays(-1),  // inclusive
             TotalHt             = totalHt,
             Tva                 = tva,
             TotalTtc            = totalTtc,
@@ -117,13 +124,14 @@ public class ContractInvoiceService(AppDbContext db, AccountingService accountin
         // Fire-and-forget non bloquant (miroir du pattern FactureService).
         try
         {
+            var periodLabel = FormatPeriodLabel(invoice);
             await accountingService.PostContractInvoiceSaleAsync(
                 companyId:  contract.CompanyId,
                 amountHt:   totalHt,
                 tvaExonere: contract.TvaExonere,
                 sourceType: "ContractInvoice",
                 sourceId:   invoice.Id,
-                label:      $"Facture {invoice.Number} · {contract.Company.Name} · Ch. {contract.Room.RoomNumber} · {month:D2}/{year} · {(contract.ElecIncluded ? "élec incluse" : "hors élec")}");
+                label:      $"Facture {invoice.Number} · {contract.Company.Name} · Ch. {contract.Room.RoomNumber} · {periodLabel} · {(contract.ElecIncluded ? "élec incluse" : "hors élec")}");
         }
         catch { /* silent */ }
 
@@ -209,14 +217,27 @@ public class ContractInvoiceService(AppDbContext db, AccountingService accountin
 
     // ── Helpers ─────────────────────────────────────────────────────────
 
-    // Numérotation : CT-INV-YYYY-MM-NNNN, compteur reset chaque mois.
-    // Race condition possible en concurrence (compteur = COUNT + 1) ; l'index
+    // Numérotation : CT-INV-YYYY-NNNN, compteur reset chaque année civile
+    // (basé sur l'année de PeriodStart). Race possible en concurrence ; l'index
     // unique sur `number` en base sera la sécurité en cas de collision.
-    private async Task<string> GenerateNumberAsync(int year, int month)
+    private async Task<string> GenerateNumberAsync(int year)
     {
-        var count = await db.ContractInvoices
-            .CountAsync(i => i.Year == year && i.Month == month) + 1;
-        return $"CT-INV-{year}-{month:D2}-{count:D4}";
+        var count = await db.ContractInvoices.CountAsync(i => i.Year == year) + 1;
+        return $"CT-INV-{year}-{count:D4}";
+    }
+
+    // Libellé lisible d'une période, adapté à la fréquence de la facture.
+    // Ex : Mensuel "P3 (15/08→14/09/2026)" · Trimestriel "T P2 (15/09→14/12/2026)"…
+    private static string FormatPeriodLabel(ContractInvoice i)
+    {
+        var kind = i.MonthsCovered switch
+        {
+            3  => "Trim.",
+            6  => "Sem.",
+            12 => "An.",
+            _  => "Mens.",
+        };
+        return $"{kind} P{i.PeriodIndex} ({i.PeriodStart:dd/MM/yyyy}→{i.PeriodEnd:dd/MM/yyyy})";
     }
 
     private static ContractInvoiceDto ToDto(ContractInvoice i) => new(
@@ -224,7 +245,8 @@ public class ContractInvoiceService(AppDbContext db, AccountingService accountin
         i.CompanyContractId, i.Contract.Reference,
         i.Contract.CompanyId, i.Contract.Company.Name,
         i.Contract.RoomId, i.Contract.Room.RoomNumber,
-        i.Year, i.Month, i.PeriodStart, i.PeriodEnd,
+        i.PeriodIndex, i.MonthsCovered, i.Year,
+        i.PeriodStart, i.PeriodEnd,
         i.TotalHt, i.Tva, i.TotalTtc, i.TvaRate, i.TvaExonere, i.ElecIncluded,
         i.Status.ToString(),
         i.IssuedAt, i.PaidAt, i.PaymentMethod, i.PaymentRef,

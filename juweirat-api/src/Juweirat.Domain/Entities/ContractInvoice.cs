@@ -2,22 +2,34 @@ using Juweirat.Domain.Enums;
 
 namespace Juweirat.Domain.Entities;
 
-// Facture mensuelle d'un contrat compagnie long terme.
-// Une par mois par contrat (index unique sur CompanyContractId + Year + Month).
+// Facture périodique d'un contrat compagnie long terme.
+// La périodicité dépend du contrat (Mensuel/Trimestriel/Semestriel/Annuel).
+// Une facture par (contrat × periodIndex) — garanti par l'index unique en base.
 // Séparée de Facture qui reste dédiée aux cycles PMS (folios).
 public class ContractInvoice
 {
     public long Id { get; set; }
-    public string Number { get; set; } = string.Empty; // CT-INV-2026-01-0001
+    public string Number { get; set; } = string.Empty; // CT-INV-YYYY-NNNN
 
     public long CompanyContractId { get; set; }
     public CompanyContract Contract { get; set; } = null!;
 
-    // Période couverte (calendrier civil : 1er au dernier jour du mois).
-    public int Year  { get; set; }
-    public int Month { get; set; } // 1-12
+    // Numéro d'ordre de la période depuis le début du contrat (1-based).
+    // Ex : contrat 15/06/2026 trimestriel → PeriodIndex 1 = 15/06→14/09.
+    public int PeriodIndex { get; set; }
+
+    // Nombre de mois couverts par cette facture (snapshot au moment de l'émission).
+    // Miroir de contract.BillingFrequency à l'émission ; permet de rester lisible
+    // même si la fréquence du contrat évolue (pas supporté aujourd'hui mais sécurise).
+    // 1 = Mensuel, 3 = Trimestriel, 6 = Semestriel, 12 = Annuel.
+    public int MonthsCovered { get; set; }
+
+    // Année utilisée pour la numérotation + le tri lisible (année de PeriodStart).
+    public int Year { get; set; }
+
+    // Période couverte, alignée sur l'anniversaire du contrat.
     public DateOnly PeriodStart { get; set; }
-    public DateOnly PeriodEnd   { get; set; } // inclusive : dernier jour du mois
+    public DateOnly PeriodEnd   { get; set; } // inclusive : dernier jour de la période
 
     // Snapshot des montants — figé à l'émission pour rester correct même si le
     // contrat évolue (MonthlyRate modifié, changement de statut TVA…).

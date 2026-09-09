@@ -148,6 +148,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             e.Property(c => c.Status)
              .HasConversion<string>()
              .HasDefaultValue(ContractStatus.Active);
+            e.Property(c => c.BillingFrequency)
+             .HasConversion<string>()
+             .HasDefaultValue(BillingFrequency.Monthly);
 
             e.HasOne(c => c.Company)
              .WithMany(co => co.Contracts)
@@ -168,7 +171,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         });
 
         // ── contractInvoices ──────────────────────────────────────
-        // Facture mensuelle d'un contrat compagnie. Une par mois par contrat.
+        // Facture périodique d'un contrat compagnie. Une par période (index) par contrat.
         modelBuilder.Entity<ContractInvoice>(e =>
         {
             e.HasIndex(i => i.Number).IsUnique();
@@ -182,11 +185,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
              .HasForeignKey(i => i.CompanyContractId)
              .OnDelete(DeleteBehavior.Restrict);
 
-            // Anti-doublon strict : une seule facture par mois par contrat.
-            e.HasIndex(i => new { i.CompanyContractId, i.Year, i.Month }).IsUnique();
+            // Anti-doublon strict : une seule facture par période par contrat.
+            e.HasIndex(i => new { i.CompanyContractId, i.PeriodIndex }).IsUnique();
 
-            e.ToTable(t => t.HasCheckConstraint("ck_contractInvoiceMonthValid",
-                "\"month\" BETWEEN 1 AND 12"));
+            e.ToTable(t => t.HasCheckConstraint("ck_contractInvoicePeriodValid",
+                "\"periodIndex\" > 0 AND \"monthsCovered\" IN (1, 3, 6, 12)"));
         });
 
         // ── clients ───────────────────────────────────────────────

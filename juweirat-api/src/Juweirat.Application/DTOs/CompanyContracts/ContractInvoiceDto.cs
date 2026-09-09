@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Juweirat.Application.DTOs.CompanyContracts;
 
-// Facture mensuelle d'un contrat compagnie.
+// Facture périodique d'un contrat compagnie (mensuelle/trimestrielle/semestrielle/annuelle).
 public record ContractInvoiceDto(
     long Id,
     string Number,
@@ -12,8 +12,9 @@ public record ContractInvoiceDto(
     string CompanyName,
     long RoomId,
     string RoomNumber,
-    int Year,
-    int Month,
+    int PeriodIndex,           // 1-based, période depuis début du contrat
+    int MonthsCovered,         // 1 | 3 | 6 | 12 (snapshot)
+    int Year,                  // année de PeriodStart (numérotation + tri)
     DateOnly PeriodStart,
     DateOnly PeriodEnd,
     int TotalHt,
@@ -32,8 +33,7 @@ public record ContractInvoiceDto(
 );
 
 public record GenerateContractInvoiceRequest(
-    [Range(2020, 2100)] int Year,
-    [Range(1, 12)] int Month
+    [Range(1, 240)] int PeriodIndex   // 1..N ; borne haute large (20 ans max mensuel)
 );
 
 public record MarkInvoicePaidRequest(
