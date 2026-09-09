@@ -18,6 +18,11 @@ export interface ChatMessage {
   sessionId: number;
   role: "user" | "assistant";
   content: string;
+  // Content blocks Anthropic sérialisés (text | tool_use | tool_result).
+  // Source de vérité pour le rejeu de l'historique aux tours suivants —
+  // `content` (texte) n'est là que pour l'audit humain et l'affichage rapide.
+  // Nullable pour rétrocompat (anciens messages n'ont pas de blocks).
+  contentBlocks: unknown[] | null;
   toolCalls: Array<{ tool: string; args: unknown; sizeChars: number; isError?: boolean }>;
   tokensIn: number;
   tokensOut: number;
@@ -92,7 +97,7 @@ export async function getLatestTelegramSession(
 
 export async function listMessages(sessionId: number): Promise<ChatMessage[]> {
   return query<ChatMessage>(
-    `SELECT id, "sessionId", role, content, "toolCalls",
+    `SELECT id, "sessionId", role, content, "contentBlocks", "toolCalls",
             "tokensIn", "tokensOut", "cacheReadTokens", "cacheWriteTokens",
             "createdAt"
      FROM "ChatMessages"
@@ -106,6 +111,7 @@ export async function insertMessage(input: {
   sessionId: number;
   role: "user" | "assistant";
   content: string;
+  contentBlocks?: unknown[] | null;
   toolCalls?: ChatMessage["toolCalls"];
   tokensIn?: number;
   tokensOut?: number;
@@ -114,14 +120,15 @@ export async function insertMessage(input: {
 }): Promise<number> {
   const row = await queryOne<{ id: number }>(
     `INSERT INTO "ChatMessages"
-       ("sessionId", role, content, "toolCalls",
+       ("sessionId", role, content, "contentBlocks", "toolCalls",
         "tokensIn", "tokensOut", "cacheReadTokens", "cacheWriteTokens")
-     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8)
+     VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8, $9)
      RETURNING id`,
     [
       input.sessionId,
       input.role,
       input.content,
+      input.contentBlocks ? JSON.stringify(input.contentBlocks) : null,
       JSON.stringify(input.toolCalls ?? []),
       input.tokensIn ?? 0,
       input.tokensOut ?? 0,

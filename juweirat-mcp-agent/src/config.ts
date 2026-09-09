@@ -56,9 +56,11 @@ const telegramEnabled = telegramToken !== null;
 export const config = {
   port: intFromEnv("PORT", 3010),
 
-  openai: {
-    apiKey: required("OPENAI_API_KEY"),
-    model: process.env.AGENT_MODEL ?? "gpt-4o-mini",
+  anthropic: {
+    apiKey: required("ANTHROPIC_API_KEY"),
+    // Sonnet 4.6 par défaut : équilibre coût/fiabilité, prompt caching agressif,
+    // 200K context, adaptive thinking supporté. Voir shared/models.md.
+    model: process.env.AGENT_MODEL ?? "claude-sonnet-4-6",
     maxTokens: intFromEnv("AGENT_MAX_TOKENS", 4096),
     maxToolIterations: intFromEnv("AGENT_MAX_TOOL_ITERATIONS", 8),
   },

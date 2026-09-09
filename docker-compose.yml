@@ -102,8 +102,10 @@ services:
       MCP_PG_DATABASE:   juweirat
       MCP_PG_USER:       ${MCP_PG_USER:-juweirat_mcp_ro}
       MCP_PG_PASSWORD:   ${MCP_PG_PASSWORD:-juweirat_mcp_ro_dev_2026}
-      # OpenAI + JWT (partagés avec juweirat-api pour la vérif du token admin).
-      OPENAI_API_KEY:    ${OPENAI_API_KEY}
+      # Anthropic (Claude Messages API) + JWT partagé avec juweirat-api.
+      # Migration OpenAI → Anthropic 2026-09-09 pour fiabilité tool-calling.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      AGENT_MODEL:       ${AGENT_MODEL:-claude-sonnet-4-6}
       JWT_SECRET:        ${JWT_SECRET:-CHANGE_ME_USE_A_LONG_RANDOM_SECRET_KEY_AT_LEAST_32_CHARS}
       JWT_ISSUER:        juweirat-api
       JWT_AUDIENCE:      juweirat-clients

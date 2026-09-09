@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   app.get("/health", (_req, res) => {
     res.json({
       status: "ok",
-      model: config.openai.model,
+      model: config.anthropic.model,
       toolsCount: getTools().length,
       telegram: config.telegram.enabled,
     });

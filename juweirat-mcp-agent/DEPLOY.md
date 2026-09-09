@@ -41,8 +41,9 @@ Attendu : `ChatSessions`, `ChatMessages`, `McpAuditLog` listées.
 Éditer `.env` à la racine du repo et ajouter (ou vérifier) :
 
 ```env
-# Déjà présent normalement, sinon l'ajouter
-OPENAI_API_KEY=sk-proj-<vraie_clé>
+# Anthropic (Claude Messages API) — depuis la migration OpenAI → Anthropic (2026-09-09)
+ANTHROPIC_API_KEY=sk-ant-api03-<vraie_clé>
+AGENT_MODEL=claude-sonnet-4-6
 
 # Nouveau — mot de passe défini à l'étape 2
 MCP_PG_USER=juweirat_mcp_ro
